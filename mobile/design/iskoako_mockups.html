@@ -1,0 +1,1912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IskolarAko — Student App UI Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ═══════════════════════════════════════════════════════════
+     DESIGN TOKENS
+  ═══════════════════════════════════════════════════════════ */
+  :root {
+    /* Palette — "Warm Parchment & Verified Forest" */
+    --cream:        #F9F5EF;
+    --parchment:    #EDE8DE;
+    --stamp-forest: #1A3C2E;   /* heading, accents */
+    --forest:       #2D5941;   /* primary */
+    --forest-mid:   #3D7A58;
+    --forest-light: #EBF5EE;
+    --amber:        #C97B2E;   /* secondary accent */
+    --amber-light:  #FDF3E3;
+    --amber-deep:   #7A4A15;
+    --gold:         #E8A838;
+    --seal-red:     #B34040;   /* rejected */
+    --seal-red-bg:  #FDF0F0;
+    --sky:          #2A6BA8;   /* funds released */
+    --sky-light:    #EAF3FB;
+    --ink:          #1C1C1E;
+    --ink-mid:      #3C3C43;
+    --ink-light:    #6C6C70;
+    --rule:         #D9D2C5;
+    --white:        #FFFFFF;
+
+    /* Status semantics */
+    --pending:      #C97B2E;
+    --verified:     #2D5941;
+    --approved:     #2D5941;
+    --rejected:     #B34040;
+    --released:     #2A6BA8;
+
+    /* Shadows */
+    --shadow-card: 0 4px 24px rgba(26,60,46,0.10), 0 1px 4px rgba(26,60,46,0.06);
+    --shadow-float: 0 8px 32px rgba(26,60,46,0.16), 0 2px 8px rgba(26,60,46,0.08);
+
+    /* Type */
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-body:    'Inter', system-ui, sans-serif;
+    --font-mono:    'DM Mono', 'Fira Mono', monospace;
+
+    /* Phone frame */
+    --phone-w: 390px;
+    --phone-h: 844px;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     RESET & BASE
+  ═══════════════════════════════════════════════════════════ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 16px; }
+
+  body {
+    background: linear-gradient(135deg, #E8E2D6 0%, #D5CDBC 50%, #C9C0AB 100%);
+    font-family: var(--font-body);
+    padding: 60px 24px;
+    min-height: 100vh;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PAGE LAYOUT
+  ═══════════════════════════════════════════════════════════ */
+  .page-title {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  .page-title h1 {
+    font-family: var(--font-display);
+    font-size: 2.8rem;
+    color: var(--stamp-forest);
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+  .page-title p {
+    font-family: var(--font-body);
+    font-size: 1rem;
+    color: var(--ink-light);
+    margin-top: 10px;
+    letter-spacing: 0.5px;
+  }
+
+  .screens-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 48px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+
+  .screen-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .screen-label {
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--stamp-forest);
+    opacity: 0.7;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
+     PHONE FRAME
+  ═══════════════════════════════════════════════════════════ */
+  .phone {
+    width: var(--phone-w);
+    height: var(--phone-h);
+    background: var(--cream);
+    border-radius: 48px;
+    box-shadow:
+      0 0 0 10px #1a1a1a,
+      0 0 0 12px #2d2d2d,
+      0 32px 80px rgba(0,0,0,0.45),
+      0 8px 24px rgba(0,0,0,0.25);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Dynamic island */
+  .dynamic-island {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 36px;
+    background: #0a0a0a;
+    border-radius: 20px;
+    z-index: 100;
+  }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 28px 0;
+    height: 54px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+  .status-time {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: inherit;
+  }
+  .status-icons {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 0.75rem;
+  }
+  .status-icons svg { width: 16px; height: 16px; }
+
+  /* Screen content */
+  .screen-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Bottom nav */
+  .bottom-nav {
+    height: 80px;
+    background: rgba(255,255,255,0.97);
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 8px 16px;
+    flex-shrink: 0;
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 64px;
+    cursor: pointer;
+  }
+  .nav-item svg { width: 22px; height: 22px; }
+  .nav-label {
+    font-size: 0.65rem;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  .nav-item.active svg { color: var(--forest); stroke: var(--forest); }
+  .nav-item.active .nav-label { color: var(--forest); font-weight: 600; }
+  .nav-item:not(.active) svg { color: var(--ink-light); stroke: var(--ink-light); }
+  .nav-item:not(.active) .nav-label { color: var(--ink-light); }
+  .nav-dot {
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--forest);
+    margin-top: 2px;
+  }
+
+  /* Scrollable area */
+  .scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .scroll-area::-webkit-scrollbar { display: none; }
+
+  /* ═══════════════════════════════════════════════════════════
+     SHARED COMPONENTS
+  ═══════════════════════════════════════════════════════════ */
+
+  /* Hero header with decorative border pattern */
+  .hero-header {
+    background: linear-gradient(160deg, var(--stamp-forest) 0%, var(--forest) 60%, var(--forest-mid) 100%);
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .hero-header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 80% 20%, rgba(232,168,56,0.15) 0%, transparent 50%),
+      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+  .hero-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: var(--cream);
+    border-radius: 28px 28px 0 0;
+  }
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    padding: 16px 24px 48px;
+  }
+
+  /* Section chip / badge */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+  .chip-forest { background: var(--forest-light); color: var(--forest); }
+  .chip-amber  { background: var(--amber-light);  color: var(--amber-deep); }
+  .chip-red    { background: var(--seal-red-bg);  color: var(--seal-red); }
+  .chip-sky    { background: var(--sky-light);    color: var(--sky); }
+  .chip-white  { background: rgba(255,255,255,0.18); color: rgba(255,255,255,0.9); border: 1px solid rgba(255,255,255,0.25); }
+
+  /* Card */
+  .card {
+    background: var(--white);
+    border-radius: 20px;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+  .card-pad { padding: 20px; }
+  .card-divider { height: 1px; background: var(--parchment); margin: 0; }
+
+  /* Section heading */
+  .section-heading {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--stamp-forest);
+    letter-spacing: -0.2px;
+  }
+
+  /* Scholarship pill row */
+  .filter-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 0 24px;
+    scrollbar-width: none;
+  }
+  .filter-pill {
+    flex-shrink: 0;
+    padding: 7px 16px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .filter-pill.active {
+    background: var(--stamp-forest);
+    color: var(--white);
+  }
+  .filter-pill:not(.active) {
+    background: var(--white);
+    color: var(--ink-mid);
+    border: 1px solid var(--rule);
+  }
+
+  /* Progress pill */
+  .progress-bar-outer {
+    height: 6px;
+    background: var(--parchment);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-bar-inner {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--forest-mid), var(--gold));
+  }
+
+  /* Amount text */
+  .amount {
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+  .amount-lg {
+    font-family: var(--font-mono);
+    font-size: 2.4rem;
+    font-weight: 500;
+    color: var(--white);
+    letter-spacing: -1px;
+  }
+
+  /* Divider with text */
+  .divider-text {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0;
+  }
+  .divider-text::before, .divider-text::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+  .divider-text span {
+    font-size: 0.7rem;
+    color: var(--ink-light);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* Verified badge inline */
+  .verified-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--forest);
+    background: var(--forest-light);
+    border: 1px solid rgba(45,89,65,0.2);
+    border-radius: 6px;
+    padding: 3px 8px;
+  }
+  .verified-badge svg { width: 12px; height: 12px; stroke: var(--forest); }
+
+  /* Blockchain record box */
+  .blockchain-record {
+    background: var(--stamp-forest);
+    border-radius: 14px;
+    padding: 16px 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .blockchain-record::before {
+    content: '';
+    position: absolute;
+    top: -20px; right: -20px;
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: rgba(232,168,56,0.12);
+  }
+
+  /* Step timeline */
+  .timeline-step {
+    display: flex;
+    gap: 14px;
+    padding: 0 24px;
+  }
+  .timeline-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    width: 36px;
+    flex-shrink: 0;
+  }
+  .step-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-circle svg { width: 16px; height: 16px; }
+  .step-line {
+    width: 2px;
+    flex: 1;
+    min-height: 24px;
+    margin: 4px 0;
+    border-radius: 1px;
+  }
+  .step-done   .step-circle { background: var(--forest-light); border: 2px solid var(--forest); }
+  .step-done   .step-circle svg { stroke: var(--forest); }
+  .step-done   .step-line   { background: var(--forest); }
+  .step-active .step-circle { background: var(--amber-light); border: 2px solid var(--amber); }
+  .step-active .step-circle svg { stroke: var(--amber); }
+  .step-active .step-line   { background: var(--rule); }
+  .step-future .step-circle { background: var(--parchment); border: 2px solid var(--rule); }
+  .step-future .step-circle svg { stroke: var(--ink-light); }
+  .step-future .step-line   { background: var(--rule); }
+  .step-released .step-circle { background: var(--sky-light); border: 2px solid var(--sky); }
+  .step-released .step-circle svg { stroke: var(--sky); }
+  .step-released .step-line { background: var(--sky); }
+
+  /* Input field */
+  .input-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--cream);
+    border: 1.5px solid var(--rule);
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    color: var(--ink-mid);
+    font-family: var(--font-body);
+  }
+  .input-field.focused {
+    border-color: var(--forest);
+    background: var(--white);
+  }
+  .input-field svg { width: 18px; height: 18px; stroke: var(--ink-light); flex-shrink: 0; }
+  .input-placeholder { color: var(--ink-light); font-size: 0.875rem; }
+  .input-value { color: var(--ink); font-size: 0.875rem; }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--forest-mid);
+    border-radius: 14px;
+    padding: 24px;
+    text-align: center;
+    background: var(--forest-light);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Document item */
+  .doc-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--white);
+    border-radius: 12px;
+    border: 1.5px solid var(--rule);
+  }
+  .doc-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    background: var(--amber-light);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .doc-icon svg { width: 20px; height: 20px; stroke: var(--amber); }
+  .doc-done .doc-icon { background: var(--forest-light); }
+  .doc-done .doc-icon svg { stroke: var(--forest); }
+
+  /* Notification item */
+  .notif-item {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--parchment);
+    position: relative;
+  }
+  .notif-dot {
+    position: absolute;
+    top: 20px; left: -8px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--amber);
+    flex-shrink: 0;
+  }
+  .notif-icon {
+    width: 44px; height: 44px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .notif-icon svg { width: 20px; height: 20px; }
+  .notif-icon.green  { background: var(--forest-light); }
+  .notif-icon.green svg { stroke: var(--forest); }
+  .notif-icon.amber  { background: var(--amber-light); }
+  .notif-icon.amber svg { stroke: var(--amber); }
+  .notif-icon.sky    { background: var(--sky-light); }
+  .notif-icon.sky svg { stroke: var(--sky); }
+  .notif-icon.red    { background: var(--seal-red-bg); }
+  .notif-icon.red svg { stroke: var(--seal-red); }
+
+  /* Primary button */
+  .btn-primary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: linear-gradient(135deg, var(--forest) 0%, var(--forest-mid) 100%);
+    color: var(--white);
+    border-radius: 14px;
+    padding: 14px 24px;
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(45,89,65,0.3);
+  }
+  .btn-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--white);
+    color: var(--forest);
+    border: 1.5px solid var(--forest);
+    border-radius: 14px;
+    padding: 13px 24px;
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-amber {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--amber) 0%, var(--gold) 100%);
+    color: var(--white);
+    border-radius: 14px;
+    padding: 14px 24px;
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(201,123,46,0.35);
+    cursor: pointer;
+  }
+
+  /* Cover / hero ornament */
+  .seal-ornament {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.3);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .seal-ornament::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1.5px dashed rgba(255,255,255,0.2);
+  }
+  .seal-ornament svg { width: 32px; height: 32px; stroke: rgba(255,255,255,0.85); }
+
+  /* Logo mark */
+  .logomark {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logomark-icon {
+    width: 32px; height: 32px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logomark-icon svg { width: 18px; height: 18px; stroke: rgba(255,255,255,0.9); }
+  .logomark-text {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: -0.3px;
+  }
+
+  /* Decorative stamp ring on fund confirmed */
+  .stamp-ring {
+    width: 88px; height: 88px;
+    border-radius: 50%;
+    border: 3px solid var(--forest);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    margin: 0 auto;
+  }
+  .stamp-ring::before {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border-radius: 50%;
+    border: 1px dashed rgba(45,89,65,0.35);
+  }
+  .stamp-ring-inner {
+    width: 62px; height: 62px;
+    border-radius: 50%;
+    background: var(--forest-light);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stamp-ring-inner svg { width: 28px; height: 28px; stroke: var(--forest); }
+
+  /* ─── SCREEN 1 specific ─── */
+  .greeting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .greeting-sub { font-size: 0.8rem; color: rgba(255,255,255,0.65); margin-top: 2px; }
+  .greeting-name { font-family: var(--font-display); font-size: 1.3rem; color: var(--white); font-weight: 700; line-height: 1.2; }
+  .notif-bell {
+    width: 40px; height: 40px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .notif-bell svg { width: 20px; height: 20px; stroke: var(--white); }
+  .notif-bell::after {
+    content: '3';
+    position: absolute;
+    top: -4px; right: -4px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--gold);
+    color: var(--stamp-forest);
+    font-size: 0.6rem;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    padding: 14px 16px;
+    backdrop-filter: blur(4px);
+  }
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    color: var(--white);
+    font-weight: 500;
+  }
+  .stat-label {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.6);
+    margin-top: 3px;
+    letter-spacing: 0.3px;
+  }
+
+  /* Scholarship card */
+  .sch-card {
+    background: var(--white);
+    border-radius: 18px;
+    box-shadow: var(--shadow-card);
+    padding: 16px;
+    margin-bottom: 12px;
+    border-left: 4px solid var(--forest);
+  }
+  .sch-card-amber  { border-left-color: var(--amber); }
+  .sch-card-sky    { border-left-color: var(--sky); }
+  .sch-card-row1 { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .sch-title { font-family: var(--font-display); font-size: 0.95rem; font-weight: 700; color: var(--ink); line-height: 1.25; }
+  .sch-provider { font-size: 0.72rem; color: var(--ink-light); margin-top: 3px; }
+  .sch-amount { font-family: var(--font-mono); font-size: 0.9rem; color: var(--forest); font-weight: 500; }
+  .sch-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--parchment); }
+  .deadline-text { font-size: 0.68rem; color: var(--seal-red); font-weight: 600; display: flex; gap: 4px; align-items: center; }
+  .deadline-text svg { width: 12px; height: 12px; stroke: var(--seal-red); }
+
+  /* ─── SCREEN 3 specific ─── */
+  .upload-list { display: flex; flex-direction: column; gap: 10px; }
+  .step-indicator { display: flex; gap: 6px; align-items: center; }
+  .step-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--rule);
+  }
+  .step-dot.done { background: var(--forest); }
+  .step-dot.active { background: var(--amber); width: 20px; border-radius: 4px; }
+
+  /* ─── SCREEN 5 specific ─── */
+  .confetti-bar {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+  .confetti-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .tx-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--parchment);
+  }
+  .tx-label { font-size: 0.72rem; color: var(--ink-light); text-transform: uppercase; letter-spacing: 0.5px; }
+  .tx-value { font-family: var(--font-mono); font-size: 0.8rem; color: var(--ink); }
+  .tx-value.green { color: var(--forest); font-weight: 600; }
+  .tx-value.mono-sm { font-size: 0.68rem; color: var(--ink-light); }
+
+  /* ─── Helper ─── */
+  .text-xs   { font-size: 0.72rem; }
+  .text-sm   { font-size: 0.8rem; }
+  .text-base { font-size: 0.9rem; }
+  .fw-600 { font-weight: 600; }
+  .fw-700 { font-weight: 700; }
+  .color-ink { color: var(--ink); }
+  .color-mid { color: var(--ink-mid); }
+  .color-light { color: var(--ink-light); }
+  .color-forest { color: var(--forest); }
+  .color-amber { color: var(--amber-deep); }
+  .color-sky { color: var(--sky); }
+  .color-white { color: var(--white); }
+  .color-red { color: var(--seal-red); }
+  .mt-4 { margin-top: 4px; }
+  .mt-6 { margin-top: 6px; }
+  .mt-8 { margin-top: 8px; }
+  .mt-12 { margin-top: 12px; }
+  .mt-16 { margin-top: 16px; }
+  .mt-20 { margin-top: 20px; }
+  .mb-4  { margin-bottom: 4px; }
+  .mb-8  { margin-bottom: 8px; }
+  .mb-12 { margin-bottom: 12px; }
+  .mb-16 { margin-bottom: 16px; }
+  .row   { display: flex; align-items: center; }
+  .row-sb{ display: flex; align-items: center; justify-content: space-between; }
+  .gap-6 { gap: 6px; }
+  .gap-8 { gap: 8px; }
+  .gap-10{ gap: 10px; }
+  .flex-1{ flex: 1; }
+  .px-24 { padding-left: 24px; padding-right: 24px; }
+  .py-16 { padding-top: 16px; padding-bottom: 16px; }
+
+  /* Mono ref number  */
+  .ref-num {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 1.5px;
+    word-break: break-all;
+  }
+
+  /* Design legend footer */
+  .design-legend {
+    max-width: 960px;
+    margin: 72px auto 0;
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(10px);
+    border-radius: 24px;
+    padding: 36px 40px;
+    border: 1px solid rgba(255,255,255,0.6);
+  }
+  .design-legend h2 {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    color: var(--stamp-forest);
+    font-weight: 700;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--rule);
+  }
+  .legend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 24px;
+  }
+  .legend-col h3 {
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--ink-light);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .legend-swatch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .swatch {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .swatch-label { font-size: 0.78rem; color: var(--ink-mid); }
+  .swatch-sub { font-size: 0.68rem; color: var(--ink-light); margin-top: 1px; }
+  .font-sample {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--parchment);
+    margin-bottom: 8px;
+  }
+  .font-name { font-size: 0.68rem; color: var(--ink-light); text-transform: uppercase; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+
+<!-- ─────────────── PAGE HEADER ─────────────── -->
+<div class="page-title">
+  <h1>IskolarAko</h1>
+  <p>Student App · UI Design Mockups · 2026</p>
+</div>
+
+<div class="screens-grid">
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 1 — HOME / BROWSE SCHOLARSHIPS
+═══════════════════════════════════════════ -->
+<div class="screen-wrap">
+<div class="screen-label">01 · Home &amp; Browse</div>
+<div class="phone">
+  <div class="dynamic-island"></div>
+
+  <!-- Hero header -->
+  <div class="hero-header" style="padding-top:54px;">
+    <div class="hero-content">
+      <!-- Top bar -->
+      <div class="greeting-row">
+        <div>
+          <div class="greeting-sub">Good morning ☀︎</div>
+          <div class="greeting-name">Juan dela Cruz</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;stroke:white;stroke-width:2;">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+          </div>
+          <div class="notif-bell">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value">3</div>
+          <div class="stat-label">Active Applications</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">₱45k</div>
+          <div class="stat-label">Total Received</div>
+        </div>
+      </div>
+
+      <!-- Search bar -->
+      <div style="display:flex;gap:10px;">
+        <div class="input-field flex-1" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" style="width:18px;height:18px;stroke:rgba(255,255,255,0.6);">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <span style="color:rgba(255,255,255,0.55);font-size:0.83rem;">Search scholarships…</span>
+        </div>
+        <div style="width:46px;height:46px;background:rgba(255,255,255,0.18);border-radius:12px;display:flex;align-items:center;justify-content:center;border:1.5px solid rgba(255,255,255,0.25);flex-shrink:0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" style="width:18px;height:18px;">
+            <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scrollable body -->
+  <div class="scroll-area" style="background:var(--cream);">
+    <div style="padding:20px 24px 8px;">
+      <!-- Filter pills -->
+      <div class="filter-scroll" style="padding:0;margin-bottom:18px;">
+        <div class="filter-pill active">All</div>
+        <div class="filter-pill">Government</div>
+        <div class="filter-pill">NGO/Private</div>
+        <div class="filter-pill">Merit-based</div>
+        <div class="filter-pill">Need-based</div>
+        <div class="filter-pill">STEM</div>
+      </div>
+
+      <!-- Section heading -->
+      <div class="row-sb mb-12">
+        <div class="section-heading">Featured Scholarships</div>
+        <span class="text-xs color-forest fw-600" style="cursor:pointer;">View all →</span>
+      </div>
+
+      <!-- Scholarship Card 1 -->
+      <div class="sch-card">
+        <div class="sch-card-row1">
+          <div>
+            <div class="chip chip-forest mb-4">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" style="width:10px;height:10px;stroke:var(--forest);">
+                <path d="M12 2L3 9v11h6v-5h6v5h6V9z"/>
+              </svg>
+              Government
+            </div>
+            <div class="sch-title" style="max-width:230px;">DOST-SEI Undergraduate Scholarship</div>
+            <div class="sch-provider">Dept. of Science &amp; Technology</div>
+          </div>
+          <div style="width:44px;height:44px;border-radius:13px;background:var(--forest-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="2" style="width:22px;height:22px;">
+              <path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>
+            </svg>
+          </div>
+        </div>
+        <div class="progress-bar-outer mt-6"><div class="progress-bar-inner" style="width:72%;"></div></div>
+        <div class="text-xs color-light mt-4">72 / 100 slots remaining</div>
+        <div class="sch-footer">
+          <div class="sch-amount">₱40,000 / semester</div>
+          <div class="deadline-text">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            5 days left
+          </div>
+        </div>
+      </div>
+
+      <!-- Scholarship Card 2 -->
+      <div class="sch-card sch-card-amber">
+        <div class="sch-card-row1">
+          <div>
+            <div class="chip chip-amber mb-4">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" style="width:10px;height:10px;stroke:var(--amber-deep);">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              NGO / Private
+            </div>
+            <div class="sch-title" style="max-width:200px;">Ayala Foundation Excellence Grant</div>
+            <div class="sch-provider">Ayala Foundation, Inc.</div>
+          </div>
+          <div style="width:44px;height:44px;border-radius:13px;background:var(--amber-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="width:22px;height:22px;">
+              <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
+            </svg>
+          </div>
+        </div>
+        <div class="sch-footer">
+          <div class="sch-amount" style="color:var(--amber-deep);">₱60,000 / year</div>
+          <div class="deadline-text" style="color:var(--ink-light);">Open until Dec 31</div>
+        </div>
+      </div>
+
+      <!-- Scholarship Card 3 -->
+      <div class="sch-card sch-card-sky">
+        <div class="sch-card-row1">
+          <div>
+            <div class="chip chip-sky mb-4">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" style="width:10px;height:10px;stroke:var(--sky);">
+                <path d="M12 2L3 9v11h6v-5h6v5h6V9z"/>
+              </svg>
+              Government
+            </div>
+            <div class="sch-title" style="max-width:200px;">City Gov. Academic Achievement Award</div>
+            <div class="sch-provider">Quezon City Government</div>
+          </div>
+          <div style="width:44px;height:44px;border-radius:13px;background:var(--sky-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--sky)" stroke-width="2" style="width:22px;height:22px;">
+              <polyline points="3 3 5 5"/><polyline points="19 5 21 3"/><polyline points="14 13 22 2 13 20 11 13 2 11z"/>
+            </svg>
+          </div>
+        </div>
+        <div class="sch-footer">
+          <div class="sch-amount" style="color:var(--sky);">₱25,000 / semester</div>
+          <div class="deadline-text" style="color:var(--ink-light);">Open · No deadline</div>
+        </div>
+      </div>
+
+      <!-- Bottom spacer -->
+      <div style="height:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Bottom nav -->
+  <div class="bottom-nav">
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span class="nav-label">Home</span>
+      <div class="nav-dot"></div>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <span class="nav-label">Browse</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <span class="nav-label">Apply</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      <span class="nav-label">Funds</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span class="nav-label">Profile</span>
+    </div>
+  </div>
+</div><!-- /phone -->
+</div><!-- /screen-wrap -->
+
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 2 — SCHOLARSHIP DETAIL
+═══════════════════════════════════════════ -->
+<div class="screen-wrap">
+<div class="screen-label">02 · Scholarship Detail</div>
+<div class="phone">
+  <div class="dynamic-island"></div>
+
+  <!-- Hero -->
+  <div class="hero-header" style="padding-top:54px;flex-shrink:0;">
+    <div class="hero-content" style="padding-bottom:52px;">
+      <div class="row-sb mb-16">
+        <div style="width:36px;height:36px;background:rgba(255,255,255,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" style="width:18px;height:18px;">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </div>
+        <div style="width:36px;height:36px;background:rgba(255,255,255,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" style="width:18px;height:18px;">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="row gap-10 mb-12">
+        <div class="chip chip-white">Government · DOST</div>
+        <div class="chip chip-white">Merit-based</div>
+      </div>
+      <div style="font-family:var(--font-display);font-size:1.35rem;font-weight:700;color:var(--white);line-height:1.25;margin-bottom:8px;">DOST-SEI Undergraduate Scholarship</div>
+      <div style="font-size:0.78rem;color:rgba(255,255,255,0.65);">Department of Science &amp; Technology</div>
+    </div>
+  </div>
+
+  <div class="scroll-area" style="background:var(--cream);">
+    <!-- Floating info cards -->
+    <div style="padding:0 20px;transform:translateY(-28px);">
+      <div class="card">
+        <div style="display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr;">
+          <div style="padding:16px;text-align:center;">
+            <div class="amount color-forest" style="font-size:1.05rem;">₱40k</div>
+            <div class="text-xs color-light mt-4">Per Semester</div>
+          </div>
+          <div style="background:var(--parchment);"></div>
+          <div style="padding:16px;text-align:center;">
+            <div class="fw-700 color-ink" style="font-size:1.05rem;">4 yrs</div>
+            <div class="text-xs color-light mt-4">Duration</div>
+          </div>
+          <div style="background:var(--parchment);"></div>
+          <div style="padding:16px;text-align:center;">
+            <div class="fw-700 color-ink" style="font-size:1.05rem;">100</div>
+            <div class="text-xs color-light mt-4">Slots</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:0 20px;margin-top:-12px;">
+      <!-- Deadline alert -->
+      <div style="background:rgba(179,64,64,0.07);border:1.5px solid rgba(179,64,64,0.2);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--seal-red)" stroke-width="2" style="width:18px;height:18px;flex-shrink:0;">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <div>
+          <div class="text-sm fw-600 color-red">Application closes in 5 days</div>
+          <div class="text-xs color-light">October 31, 2026 · 11:59 PM</div>
+        </div>
+      </div>
+
+      <!-- About -->
+      <div class="section-heading mb-8">About this Scholarship</div>
+      <div class="text-sm color-mid" style="line-height:1.6;margin-bottom:18px;">
+        The DOST-SEI Undergraduate Scholarships are awarded to deserving students who wish to pursue degree programs in basic sciences, mathematics, and engineering in accredited HEIs across the Philippines.
+      </div>
+
+      <!-- Coverage -->
+      <div class="section-heading mb-12">Coverage &amp; Benefits</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
+        <div class="row gap-8">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--forest);flex-shrink:0;"></div>
+          <div class="text-sm color-mid">₱40,000 monthly stipend</div>
+        </div>
+        <div class="row gap-8">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--forest);flex-shrink:0;"></div>
+          <div class="text-sm color-mid">Full tuition and miscellaneous fees</div>
+        </div>
+        <div class="row gap-8">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--forest);flex-shrink:0;"></div>
+          <div class="text-sm color-mid">Book allowance ₱10,000 / year</div>
+        </div>
+        <div class="row gap-8">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--forest);flex-shrink:0;"></div>
+          <div class="text-sm color-mid">Thesis / dissertation grant</div>
+        </div>
+      </div>
+
+      <!-- Eligibility -->
+      <div class="section-heading mb-12">Eligibility Requirements</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px;">
+        <div class="row gap-8">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="2.5" style="width:14px;height:14px;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
+          <div class="text-sm color-mid">Natural-born Filipino citizen</div>
+        </div>
+        <div class="row gap-8">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="2.5" style="width:14px;height:14px;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
+          <div class="text-sm color-mid">Top 5% of graduating class (STEM strand)</div>
+        </div>
+        <div class="row gap-8">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="2.5" style="width:14px;height:14px;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
+          <div class="text-sm color-mid">Annual family income ≤ ₱1.5M</div>
+        </div>
+        <div class="row gap-8">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="2.5" style="width:14px;height:14px;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
+          <div class="text-sm color-mid">No other active government scholarship</div>
+        </div>
+      </div>
+
+      <!-- Required docs preview -->
+      <div class="section-heading mb-12">Documents to Prepare</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:28px;">
+        <div class="doc-item">
+          <div class="doc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div>
+            <div class="text-sm fw-600 color-ink">Birth Certificate (PSA)</div>
+            <div class="text-xs color-light mt-4">PDF or JPG · max 5MB</div>
+          </div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div>
+            <div class="text-sm fw-600 color-ink">Form 138 (Grade Report)</div>
+            <div class="text-xs color-light mt-4">PDF or JPG · max 5MB</div>
+          </div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div>
+            <div class="text-sm fw-600 color-ink">ITR or Certificate of Indigency</div>
+            <div class="text-xs color-light mt-4">PDF or JPG · max 5MB</div>
+          </div>
+        </div>
+      </div>
+      <div style="height:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Bottom CTA -->
+  <div style="padding:12px 20px 20px;background:var(--white);border-top:1px solid var(--parchment);flex-shrink:0;">
+    <div class="btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" style="width:18px;height:18px;">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+      Apply for this Scholarship
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 3 — APPLICATION + DOCUMENT UPLOAD
+═══════════════════════════════════════════ -->
+<div class="screen-wrap">
+<div class="screen-label">03 · Application &amp; Upload</div>
+<div class="phone">
+  <div class="dynamic-island"></div>
+
+  <!-- Header -->
+  <div style="background:var(--stamp-forest);padding-top:54px;padding-bottom:24px;flex-shrink:0;">
+    <div style="padding:0 20px;">
+      <div class="row-sb mb-16">
+        <div class="row gap-8">
+          <div style="width:32px;height:32px;background:rgba(255,255,255,0.12);border-radius:9px;display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" style="width:16px;height:16px;"><path d="M15 18l-6-6 6-6"/></svg>
+          </div>
+          <div style="font-family:var(--font-display);font-size:1.15rem;font-weight:700;color:white;">Apply</div>
+        </div>
+        <!-- Step indicator -->
+        <div class="step-indicator">
+          <div class="step-dot done"></div>
+          <div class="step-dot active"></div>
+          <div class="step-dot"></div>
+        </div>
+      </div>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">Step 2 of 3</div>
+      <div style="font-size:0.95rem;color:rgba(255,255,255,0.9);font-weight:500;">Upload Required Documents</div>
+    </div>
+  </div>
+
+  <div class="scroll-area" style="background:var(--cream);">
+    <div style="padding:20px;">
+
+      <!-- Upload zone -->
+      <div class="upload-zone mb-16">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="1.5" style="width:40px;height:40px;opacity:0.8;">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div class="text-sm fw-600 color-forest">Tap to upload or drag &amp; drop</div>
+        <div class="text-xs color-light">JPG, PNG, PDF · Max 10MB per file</div>
+      </div>
+
+      <!-- Document list -->
+      <div class="section-heading mb-12">Required Documents</div>
+      <div class="upload-list">
+
+        <!-- Done -->
+        <div class="doc-item doc-done">
+          <div class="doc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-600 color-ink">PSA Birth Certificate</div>
+            <div class="text-xs color-light mt-4">birth_cert_jdc.pdf · 1.2 MB</div>
+          </div>
+          <span class="chip chip-forest text-xs">Uploaded</span>
+        </div>
+
+        <!-- Done -->
+        <div class="doc-item doc-done">
+          <div class="doc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-600 color-ink">Form 138 / Report Card</div>
+            <div class="text-xs color-light mt-4">form138_jdc.pdf · 0.8 MB</div>
+          </div>
+          <span class="chip chip-forest text-xs">Uploaded</span>
+        </div>
+
+        <!-- Pending upload -->
+        <div class="doc-item" style="border-color:var(--amber);background:var(--amber-light);">
+          <div class="doc-icon" style="background:rgba(201,123,46,0.12);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="width:20px;height:20px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-600 color-ink">ITR or Cert. of Indigency</div>
+            <div class="text-xs color-light mt-4">Required · Not yet uploaded</div>
+          </div>
+          <span class="chip chip-amber text-xs">Pending</span>
+        </div>
+
+        <!-- Not yet -->
+        <div class="doc-item">
+          <div class="doc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-600 color-ink">Valid Government ID</div>
+            <div class="text-xs color-light mt-4">Required · Not yet uploaded</div>
+          </div>
+          <span class="chip" style="background:var(--parchment);color:var(--ink-light);">Upload</span>
+        </div>
+
+        <!-- Optional -->
+        <div class="doc-item" style="opacity:0.65;">
+          <div class="doc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-600 color-ink">Community Service Certificate</div>
+            <div class="text-xs color-light mt-4">Optional</div>
+          </div>
+          <span class="chip" style="background:var(--parchment);color:var(--ink-light);">Upload</span>
+        </div>
+      </div>
+
+      <!-- Personal info section -->
+      <div class="section-heading mt-20 mb-12">Personal Information</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+        <div>
+          <div class="text-xs color-light mb-4" style="text-transform:uppercase;letter-spacing:0.8px;">Full Name</div>
+          <div class="input-field focused">
+            <span class="input-value">Juan dela Cruz</span>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs color-light mb-4" style="text-transform:uppercase;letter-spacing:0.8px;">Course &amp; Year</div>
+          <div class="input-field">
+            <span class="input-value">BS Computer Science · 1st Year</span>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs color-light mb-4" style="text-transform:uppercase;letter-spacing:0.8px;">School / University</div>
+          <div class="input-field">
+            <span class="input-value">University of the Philippines</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Bottom CTA -->
+  <div style="padding:12px 20px 20px;background:var(--white);border-top:1px solid var(--parchment);flex-shrink:0;">
+    <div style="display:flex;gap:10px;">
+      <div class="btn-secondary" style="flex:1;">Save Draft</div>
+      <div class="btn-primary" style="flex:2;">
+        Submit Application
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" style="width:16px;height:16px;"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+    </div>
+    <div class="text-xs color-light" style="text-align:center;margin-top:10px;">2 of 4 documents uploaded · Complete all to submit</div>
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 4 — STATUS TRACKER
+═══════════════════════════════════════════ -->
+<div class="screen-wrap">
+<div class="screen-label">04 · Status Tracker</div>
+<div class="phone">
+  <div class="dynamic-island"></div>
+
+  <!-- Header -->
+  <div class="hero-header" style="padding-top:54px;">
+    <div class="hero-content" style="padding-bottom:52px;">
+      <div class="row gap-8 mb-16">
+        <div style="width:32px;height:32px;background:rgba(255,255,255,0.12);border-radius:9px;display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" style="width:16px;height:16px;"><path d="M15 18l-6-6 6-6"/></svg>
+        </div>
+        <div style="font-family:var(--font-display);font-size:1.15rem;font-weight:700;color:white;">Application Status</div>
+      </div>
+      <div class="chip chip-amber mb-8">● Under Review</div>
+      <div style="font-family:var(--font-display);font-size:1.2rem;color:white;font-weight:700;line-height:1.25;margin-bottom:6px;">DOST-SEI Undergraduate Scholarship</div>
+      <div style="font-size:0.75rem;color:rgba(255,255,255,0.55);">Applied · Oct 10, 2026 &nbsp;·&nbsp; Ref: <span style="font-family:var(--font-mono);">ISK-2026-04821</span></div>
+    </div>
+  </div>
+
+  <div class="scroll-area" style="background:var(--cream);">
+    <div style="padding:0 0 20px;">
+
+      <!-- Timeline -->
+      <div style="transform:translateY(-24px);">
+
+        <!-- Step 1 — Done -->
+        <div class="timeline-step step-done mb-12">
+          <div class="timeline-left">
+            <div class="step-circle">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="step-line"></div>
+          </div>
+          <div style="flex:1;padding-bottom:16px;">
+            <div class="card card-pad" style="border-left:3px solid var(--forest);">
+              <div class="row-sb mb-4">
+                <div class="text-sm fw-600 color-forest">Application Submitted</div>
+                <span class="chip chip-forest text-xs">Done</span>
+              </div>
+              <div class="text-xs color-light mb-6">Oct 10, 2026 · 9:41 AM</div>
+              <div class="text-xs color-mid" style="line-height:1.5;">Your application and all initial requirements have been received by the portal.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2 — Done -->
+        <div class="timeline-step step-done mb-12">
+          <div class="timeline-left">
+            <div class="step-circle">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="step-line"></div>
+          </div>
+          <div style="flex:1;padding-bottom:16px;">
+            <div class="card card-pad" style="border-left:3px solid var(--forest);">
+              <div class="row-sb mb-4">
+                <div class="text-sm fw-600 color-forest">Documents Verified</div>
+                <span class="chip chip-forest text-xs">Done</span>
+              </div>
+              <div class="text-xs color-light mb-6">Oct 12, 2026 · 2:05 PM</div>
+              <div class="text-xs color-mid" style="line-height:1.5;">All uploaded documents passed authenticity checks. Your file is complete.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 — Active -->
+        <div class="timeline-step step-active mb-12">
+          <div class="timeline-left">
+            <div class="step-circle">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+            </div>
+            <div class="step-line"></div>
+          </div>
+          <div style="flex:1;padding-bottom:16px;">
+            <div class="card card-pad" style="border-left:3px solid var(--amber);box-shadow:0 4px 24px rgba(201,123,46,0.18);">
+              <div class="row-sb mb-4">
+                <div class="text-sm fw-600 color-amber">Under Review</div>
+                <span class="chip chip-amber text-xs">● Active</span>
+              </div>
+              <div class="text-xs color-light mb-6">Since Oct 14, 2026 · Est. 5–10 business days</div>
+              <div class="text-xs color-mid" style="line-height:1.5;">The scholarship committee is evaluating your application. You'll be notified when a decision is made.</div>
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--parchment);">
+                <div class="row gap-6">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="width:12px;height:12px;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <span class="text-xs" style="color:var(--amber-deep);">No action needed from you right now.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4 — Future -->
+        <div class="timeline-step step-future mb-12">
+          <div class="timeline-left">
+            <div class="step-circle">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            </div>
+            <div class="step-line"></div>
+          </div>
+          <div style="flex:1;padding-bottom:16px;">
+            <div class="card card-pad" style="opacity:0.6;">
+              <div class="text-sm fw-600 color-mid mb-4">Final Decision</div>
+              <div class="text-xs color-light">Pending · Awaiting committee review</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 5 — Future (Funds) -->
+        <div class="timeline-step step-future">
+          <div class="timeline-left">
+            <div class="step-circle">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+          </div>
+          <div style="flex:1;padding-bottom:16px;">
+            <div class="card card-pad" style="opacity:0.5;">
+              <div class="text-sm fw-600 color-mid mb-4">Funds Released</div>
+              <div class="text-xs color-light">Pending · Via PayMongo · Blockchain-verified</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /timeline -->
+    </div>
+  </div>
+
+  <!-- Bottom -->
+  <div style="padding:12px 20px 20px;background:var(--white);border-top:1px solid var(--parchment);flex-shrink:0;">
+    <div class="btn-secondary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="2" style="width:16px;height:16px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      Notify me of updates
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 5 — FUND RELEASE CONFIRMATION
+═══════════════════════════════════════════ -->
+<div class="screen-wrap">
+<div class="screen-label">05 · Fund Release &amp; Blockchain</div>
+<div class="phone">
+  <div class="dynamic-island"></div>
+
+  <!-- Header -->
+  <div class="hero-header" style="padding-top:54px;flex-shrink:0;">
+    <div style="padding:12px 20px 52px 20px;position:relative;z-index:2;">
+      <div class="row-sb mb-0">
+        <div style="font-family:var(--font-display);font-size:1.15rem;font-weight:700;color:white;">Funds Received</div>
+        <div style="width:32px;height:32px;background:rgba(255,255,255,0.12);border-radius:9px;display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" style="width:16px;height:16px;"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-area" style="background:var(--cream);">
+    <div style="padding:0 20px 24px;transform:translateY(-28px);">
+
+      <!-- Main amount card -->
+      <div class="card" style="background:linear-gradient(145deg,var(--stamp-forest),var(--forest-mid));overflow:visible;position:relative;">
+        <!-- Confetti dots -->
+        <div class="confetti-bar" style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);">
+          <div class="confetti-dot" style="background:var(--gold);width:10px;height:10px;"></div>
+          <div class="confetti-dot" style="background:var(--amber);width:6px;height:6px;margin-top:4px;"></div>
+          <div class="confetti-dot" style="background:var(--gold);width:8px;height:8px;"></div>
+          <div class="confetti-dot" style="background:#6EBAFF;width:6px;height:6px;margin-top:3px;"></div>
+          <div class="confetti-dot" style="background:var(--gold);width:10px;height:10px;"></div>
+        </div>
+        <div style="padding:28px 24px 24px;text-align:center;">
+          <div class="stamp-ring" style="background:none;border-color:rgba(255,255,255,0.3);margin-bottom:16px;">
+            <div style="width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" style="width:28px;height:28px;"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+          </div>
+          <div style="font-size:0.78rem;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">Amount Disbursed</div>
+          <div class="amount-lg">₱ 40,000.00</div>
+          <div style="font-size:0.78rem;color:rgba(255,255,255,0.55);margin-top:6px;">CHED Merit Stipend · S.Y. 2026–2027</div>
+          <!-- Verified badge -->
+          <div style="display:flex;justify-content:center;gap:10px;margin-top:16px;">
+            <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 12px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2.5" style="width:14px;height:14px;"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+              <span style="font-size:0.7rem;color:rgba(255,255,255,0.85);font-weight:600;">PayMongo Transfer</span>
+            </div>
+            <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 12px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="width:14px;height:14px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span style="font-size:0.7rem;color:rgba(255,255,255,0.85);font-weight:600;">Blockchain Logged</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transaction details -->
+      <div class="card mt-16">
+        <div style="padding:18px 20px 0;">
+          <div class="section-heading mb-12">Transfer Details</div>
+        </div>
+        <div style="padding:0 20px 16px;">
+          <div class="tx-row">
+            <div class="tx-label">From</div>
+            <div class="tx-value">CHED — Scholarship Fund</div>
+          </div>
+          <div class="tx-row">
+            <div class="tx-label">To</div>
+            <div class="tx-value">Juan dela Cruz · BPI ×4821</div>
+          </div>
+          <div class="tx-row">
+            <div class="tx-label">Amount</div>
+            <div class="tx-value green">₱ 40,000.00</div>
+          </div>
+          <div class="tx-row">
+            <div class="tx-label">Date &amp; Time</div>
+            <div class="tx-value">Oct 15, 2026 · 10:22 AM</div>
+          </div>
+          <div class="tx-row">
+            <div class="tx-label">Payment via</div>
+            <div class="tx-value">PayMongo · Instant Transfer</div>
+          </div>
+          <div class="tx-row">
+            <div class="tx-label">Reference No.</div>
+            <div class="tx-value" style="font-family:var(--font-mono);font-size:0.78rem;">PM-20261015-84729</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Blockchain record -->
+      <div class="blockchain-record mt-16">
+        <div class="row-sb mb-10">
+          <div class="row gap-8">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="width:18px;height:18px;flex-shrink:0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <div style="font-size:0.78rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px;">Blockchain Record</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;background:rgba(232,168,56,0.15);border:1px solid rgba(232,168,56,0.3);border-radius:6px;padding:3px 8px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--gold);"></div>
+            <span style="font-size:0.65rem;color:var(--gold);font-weight:600;letter-spacing:0.5px;">VERIFIED</span>
+          </div>
+        </div>
+        <div style="color:rgba(255,255,255,0.55);font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Transaction Hash</div>
+        <div class="ref-num" style="margin-bottom:14px;">0x8fB3c19A2d4eF57b9aC0d2e314aa19bC3f7e9a12</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <div style="color:rgba(255,255,255,0.45);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Block No.</div>
+            <div style="font-family:var(--font-mono);font-size:0.75rem;color:rgba(255,255,255,0.8);">#18,472,931</div>
+          </div>
+          <div>
+            <div style="color:rgba(255,255,255,0.45);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Network</div>
+            <div style="font-family:var(--font-mono);font-size:0.75rem;color:rgba(255,255,255,0.8);">IskolarChain PH</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);">
+          <div style="font-size:0.68rem;color:rgba(255,255,255,0.4);line-height:1.5;">This record is permanently logged and cannot be altered. This serves as your tamper-proof receipt of fund release.</div>
+        </div>
+      </div>
+
+      <!-- Action row -->
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <div class="btn-secondary" style="flex:1;font-size:0.82rem;padding:12px 16px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--forest)" stroke-width="2" style="width:16px;height:16px;"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          Save Receipt
+        </div>
+        <div class="btn-primary" style="flex:1;font-size:0.82rem;padding:12px 16px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" style="width:16px;height:16px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share Record
+        </div>
+      </div>
+
+      <div style="height:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span class="nav-label">Home</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <span class="nav-label">Browse</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <span class="nav-label">Apply</span>
+    </div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      <span class="nav-label">Funds</span>
+      <div class="nav-dot"></div>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span class="nav-label">Profile</span>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 6 — NOTIFICATIONS
+═══════════════════════════════════════════ -->
+<div class="screen-wrap">
+<div class="screen-label">06 · Notifications</div>
+<div class="phone">
+  <div class="dynamic-island"></div>
+
+  <!-- Header -->
+  <div style="background:var(--stamp-forest);padding-top:54px;flex-shrink:0;">
+    <div style="padding:14px 24px 0;">
+      <div class="row-sb mb-0">
+        <div style="font-family:var(--font-display);font-size:1.2rem;font-weight:700;color:white;">Notifications</div>
+        <span style="font-size:0.72rem;color:rgba(255,255,255,0.5);font-weight:600;cursor:pointer;">Mark all read</span>
+      </div>
+    </div>
+    <!-- Tab row -->
+    <div style="display:flex;gap:0;margin-top:14px;">
+      <div style="flex:1;text-align:center;padding:10px;border-bottom:2.5px solid var(--gold);color:var(--gold);font-size:0.78rem;font-weight:600;">All <span style="background:var(--gold);color:var(--stamp-forest);border-radius:10px;padding:1px 7px;margin-left:4px;font-size:0.65rem;">4</span></div>
+      <div style="flex:1;text-align:center;padding:10px;border-bottom:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.4);font-size:0.78rem;">Updates</div>
+      <div style="flex:1;text-align:center;padding:10px;border-bottom:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.4);font-size:0.78rem;">Reminders</div>
+    </div>
+  </div>
+
+  <div class="scroll-area" style="background:var(--cream);">
+    <div style="padding:16px 20px;">
+
+      <!-- TODAY label -->
+      <div class="divider-text"><span>Today</span></div>
+
+      <!-- Notif 1 — Unread — Approved -->
+      <div style="background:var(--white);border-radius:16px;padding:16px;margin-bottom:10px;box-shadow:var(--shadow-card);border-left:4px solid var(--forest);position:relative;">
+        <div style="position:absolute;top:14px;right:14px;width:8px;height:8px;border-radius:50%;background:var(--amber);"></div>
+        <div class="row gap-10 mb-10">
+          <div class="notif-icon green">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-700 color-ink">Application Approved! 🎉</div>
+            <div class="text-xs color-light mt-4">10 minutes ago</div>
+          </div>
+        </div>
+        <div class="text-xs color-mid" style="line-height:1.5;margin-bottom:10px;">
+          Congratulations! Your application for <strong>CHED Merit Scholarship</strong> has been approved by the provider. Funds will be released soon.
+        </div>
+        <div class="chip chip-forest text-xs">View Application →</div>
+      </div>
+
+      <!-- Notif 2 — Unread — Funds Released -->
+      <div style="background:var(--white);border-radius:16px;padding:16px;margin-bottom:10px;box-shadow:var(--shadow-card);border-left:4px solid var(--sky);position:relative;">
+        <div style="position:absolute;top:14px;right:14px;width:8px;height:8px;border-radius:50%;background:var(--amber);"></div>
+        <div class="row gap-10 mb-10">
+          <div class="notif-icon sky">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-700 color-ink">Funds Released</div>
+            <div class="text-xs color-light mt-4">2 hours ago</div>
+          </div>
+        </div>
+        <div class="text-xs color-mid" style="line-height:1.5;margin-bottom:10px;">
+          <strong style="font-family:var(--font-mono);">₱ 20,000.00</strong> has been transferred to your account via PayMongo for Q2 2026. Blockchain-verified. Ref: <span style="font-family:var(--font-mono);color:var(--sky);">PM-20261015-84729</span>
+        </div>
+        <div class="row gap-8">
+          <div class="chip chip-sky text-xs">View Receipt →</div>
+          <div class="verified-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Chain-verified
+          </div>
+        </div>
+      </div>
+
+      <!-- EARLIER label -->
+      <div class="divider-text"><span>Earlier</span></div>
+
+      <!-- Notif 3 — Read — Action required -->
+      <div style="background:var(--white);border-radius:16px;padding:16px;margin-bottom:10px;box-shadow:0 2px 8px rgba(26,60,46,0.06);">
+        <div class="row gap-10 mb-10">
+          <div class="notif-icon amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-600 color-ink">Action Required</div>
+            <div class="text-xs color-light mt-4">5 days ago</div>
+          </div>
+        </div>
+        <div class="text-xs color-mid" style="line-height:1.5;margin-bottom:10px;">Please upload your <strong>Certificate of Registration</strong> for the City Government Grant. Deadline: Oct 20, 2026.</div>
+        <div class="chip chip-amber text-xs">Upload Now →</div>
+      </div>
+
+      <!-- Notif 4 — Read — Deadline reminder -->
+      <div style="background:var(--white);border-radius:16px;padding:16px;margin-bottom:10px;box-shadow:0 2px 8px rgba(26,60,46,0.06);">
+        <div class="row gap-10 mb-10">
+          <div class="notif-icon red">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-600 color-ink">Application Deadline Soon</div>
+            <div class="text-xs color-light mt-4">1 week ago</div>
+          </div>
+        </div>
+        <div class="text-xs color-mid" style="line-height:1.5;">The <strong>DOST-SEI Scholarship</strong> closes in 5 days. Complete your application before Oct 31, 2026.</div>
+      </div>
+
+      <!-- Notif 5 — Read — New scholarship -->
+      <div style="background:var(--white);border-radius:16px;padding:16px;margin-bottom:10px;box-shadow:0 2px 8px rgba(26,60,46,0.06);">
+        <div class="row gap-10 mb-10">
+          <div class="notif-icon green">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm fw-600 color-ink">New Match Found</div>
+            <div class="text-xs color-light mt-4">1 week ago</div>
+          </div>
+        </div>
+        <div class="text-xs color-mid" style="line-height:1.5;">A new scholarship matching your profile — <strong>SM Foundation Scholars Program</strong> — is now open for applications.</div>
+      </div>
+
+      <div style="height:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span class="nav-label">Home</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <span class="nav-label">Browse</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <span class="nav-label">Apply</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      <span class="nav-label">Funds</span>
+    </div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="nav-label">Alerts</span>
+      <div class="nav-dot"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div><!-- /screens-grid -->
+
+
+<!-- ═══════════════════════════════════════════
+     DESIGN SYSTEM LEGEND
+═══════════════════════════════════════════ -->
+<div class="design-legend">
+  <h2>Design System · IskolarAko Student App</h2>
+  <div class="legend-grid">
+
+    <div class="legend-col">
+      <h3>Visual Metaphor</h3>
+      <div class="font-sample">
+        <div style="font-family:var(--font-display);font-size:1rem;color:var(--stamp-forest);font-weight:700;margin-bottom:4px;">Official Certificates &amp; Verification Seals</div>
+        <div style="font-size:0.78rem;color:var(--ink-light);line-height:1.5;">Carry a ledger/document aesthetic throughout — border patterns, seal stamps, receipt-style transaction layouts, parchment tones — balanced with a warm, encouraging student voice.</div>
+      </div>
+    </div>
+
+    <div class="legend-col">
+      <h3>Typography Pairing</h3>
+      <div class="font-sample">
+        <div style="font-family:var(--font-display);font-size:1.1rem;color:var(--stamp-forest);font-weight:700;">Playfair Display</div>
+        <div class="font-name">Display / headings · Serif — conveys credibility and authority</div>
+      </div>
+      <div class="font-sample">
+        <div style="font-family:var(--font-body);font-size:0.95rem;color:var(--ink-mid);font-weight:500;">Inter Regular · Medium</div>
+        <div class="font-name">Body / UI labels · Geometric sans — clean and legible</div>
+      </div>
+      <div class="font-sample" style="border:none;">
+        <div style="font-family:var(--font-mono);font-size:0.9rem;color:var(--forest);">₱ 40,000 · 0x8fB3…9a12</div>
+        <div class="font-name">DM Mono · Amounts, IDs, hashes — signals precision and trust</div>
+      </div>
+    </div>
+
+    <div class="legend-col">
+      <h3>Color Palette</h3>
+      <div class="legend-swatch">
+        <div class="swatch" style="background:var(--stamp-forest);"></div>
+        <div><div class="swatch-label">Stamp Forest #1A3C2E</div><div class="swatch-sub">Headers, deep text</div></div>
+      </div>
+      <div class="legend-swatch">
+        <div class="swatch" style="background:var(--forest);"></div>
+        <div><div class="swatch-label">Forest #2D5941</div><div class="swatch-sub">Primary · Verified / Approved</div></div>
+      </div>
+      <div class="legend-swatch">
+        <div class="swatch" style="background:var(--amber);border:1px solid var(--rule);"></div>
+        <div><div class="swatch-label">Amber #C97B2E</div><div class="swatch-sub">Pending / Action required</div></div>
+      </div>
+      <div class="legend-swatch">
+        <div class="swatch" style="background:var(--gold);"></div>
+        <div><div class="swatch-label">Gold #E8A838</div><div class="swatch-sub">Blockchain verified · celebration</div></div>
+      </div>
+      <div class="legend-swatch">
+        <div class="swatch" style="background:var(--sky);"></div>
+        <div><div class="swatch-label">Sky #2A6BA8</div><div class="swatch-sub">Funds released</div></div>
+      </div>
+      <div class="legend-swatch">
+        <div class="swatch" style="background:var(--seal-red);"></div>
+        <div><div class="swatch-label">Seal Red #B34040</div><div class="swatch-sub">Rejected / Deadlines</div></div>
+      </div>
+      <div class="legend-swatch">
+        <div class="swatch" style="background:var(--cream);border:1px solid var(--rule);"></div>
+        <div><div class="swatch-label">Cream #F9F5EF</div><div class="swatch-sub">Background — parchment warmth</div></div>
+      </div>
+    </div>
+
+    <div class="legend-col">
+      <h3>Status Color Semantics</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+        <div class="row gap-8"><span class="chip chip-forest">Verified / Approved</span></div>
+        <div class="row gap-8"><span class="chip chip-amber">Pending / Under Review</span></div>
+        <div class="row gap-8"><span class="chip chip-sky">Funds Released</span></div>
+        <div class="row gap-8"><span class="chip chip-red">Rejected / Deadline</span></div>
+        <div class="row gap-8"><div class="verified-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Blockchain-verified
+        </div></div>
+      </div>
+      <div style="margin-top:16px;">
+        <h3 style="margin-bottom:8px;">Key Design Principles</h3>
+        <div style="font-size:0.78rem;color:var(--ink-mid);line-height:1.6;">
+          ✦ Warm parchment background — never cold white<br>
+          ✦ DM Mono for all numbers, hashes, refs — signals precision<br>
+          ✦ Blockchain shown as a receipt, never as crypto UI<br>
+          ✦ PayMongo surfaces only as "funds received" — no payment flow<br>
+          ✦ Status tracked on a clear vertical timeline — reassurance over control<br>
+          ✦ Green forest = trust · Amber = attention · Gold = celebration
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Node / React
+web/node_modules/
+web/dist/
+web/.env.local
+web/.env.*.local
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
+mobile/ephemeral/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.DS_Store
