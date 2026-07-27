@@ -124,20 +124,20 @@ class _MainLayoutState extends State<MainLayout>
 
                     // 2. Floating Circular Bubble containing the selected icon
                     Positioned(
-                      left: currentX - 28.0, // 28 is half of bubble width (56)
+                      left: currentX - 24.0, // 24 is half of bubble width (48)
                       top:
-                          -35.0, // Increased floating height above the top edge to create more gap
+                          -24.0, // Positioned lower while maintaining the gap shape
                       child: Container(
-                        width: 56.0,
-                        height: 56.0,
+                        width: 48.0,
+                        height: 48.0,
                         decoration: BoxDecoration(
                           color: AppColors.primary, // System green theme color
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withAlpha(80), // Tinted shadow for green bubble
-                              blurRadius: 12,
-                              spreadRadius: 2,
+                              color: AppColors.primary.withAlpha(70), // Tinted shadow for green bubble
+                              blurRadius: 10,
+                              spreadRadius: 1,
                               offset: const Offset(0, 4),
                             ),
                           ],
@@ -146,7 +146,7 @@ class _MainLayoutState extends State<MainLayout>
                           child: Icon(
                             _navItems[_currentIndex].icon,
                             color: Colors.white, // White icon color
-                            size: 26.0,
+                            size: 22.0, // Sleeker icon size matching the smaller bubble
                           ),
                         ),
                       ),
@@ -234,7 +234,6 @@ class _NavBarPainter extends CustomPainter {
       ..color = Colors.black.withAlpha(20)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
 
-    final path = Path();
     final double w = size.width;
     final double h = size.height;
     final double r = 24.0; // Rounded corners of the floating bar
@@ -242,48 +241,57 @@ class _NavBarPainter extends CustomPainter {
     final double itemWidth = w / 5;
     final double cx = (activeIndex + 0.5) * itemWidth;
 
-    // Draw outline
+    final path = Path();
+    
+    // Draw outline with smooth fillet cutout
     path.moveTo(0, r);
-
-    // Top Left Corner
     path.arcToPoint(Offset(r, 0), radius: Radius.circular(r), clockwise: true);
 
-    // Curve Cutout around activeIndex
-    final double cutoutHalfWidth = 46.0;
-    final double cutoutStart = cx - cutoutHalfWidth;
-    final double cutoutEnd = cx + cutoutHalfWidth;
+    // Flat line to start of cutout fillet
+    path.lineTo(cx - 42.0, 0);
 
-    path.lineTo(cutoutStart, 0);
+    // Fillet curve down: starts flat at y=0, curves down to y=12.0
+    path.cubicTo(
+      cx - 34.0, 0,
+      cx - 32.0, 6.0,
+      cx - 28.0, 12.0,
+    );
 
-    // Smooth Bezier Curve mapping perfectly to the circular bubble shape
-    path.cubicTo(cx - 24, 0, cx - 22, 28, cx, 28);
-    path.cubicTo(cx + 22, 28, cx + 24, 0, cutoutEnd, 0);
+    // Main dip curve: curves down to y=30.0 at center cx (6.0px gap under bubble)
+    path.cubicTo(
+      cx - 20.0, 24.0,
+      cx - 14.0, 30.0,
+      cx, 30.0,
+    );
+
+    // Main dip curve back up: curves up to y=12.0
+    path.cubicTo(
+      cx + 14.0, 30.0,
+      cx + 20.0, 24.0,
+      cx + 28.0, 12.0,
+    );
+
+    // Fillet curve up: starts at y=12.0, curves flat to y=0 at cx+42.0
+    path.cubicTo(
+      cx + 32.0, 6.0,
+      cx + 34.0, 0,
+      cx + 42.0, 0,
+    );
 
     path.lineTo(w - r, 0);
-
-    // Top Right Corner
     path.arcToPoint(Offset(w, r), radius: Radius.circular(r), clockwise: true);
 
-    // Bottom Right Corner
     path.lineTo(w, h - r);
-    path.arcToPoint(
-      Offset(w - r, h),
-      radius: Radius.circular(r),
-      clockwise: true,
-    );
+    path.arcToPoint(Offset(w - r, h), radius: Radius.circular(r), clockwise: true);
 
-    // Bottom Left Corner
     path.lineTo(r, h);
-    path.arcToPoint(
-      Offset(0, h - r),
-      radius: Radius.circular(r),
-      clockwise: true,
-    );
-
+    path.arcToPoint(Offset(0, h - r), radius: Radius.circular(r), clockwise: true);
+    
     path.close();
 
-    // Intersect the drawn path with the perfect rounded rectangle boundary of the nav bar
-    // to cleanly remove any pixels spilling outside the rounded corners on leftmost (Home) and rightmost (Profile) tabs.
+    // Intersect the drawn path with the perfect rounded rectangle boundary of the nav bar.
+    // This cleanly handles overlap at leftmost (Home) and rightmost (Profile) tabs,
+    // ensuring the outer rounded corners are never cut off.
     final RRect rrect = RRect.fromRectAndRadius(
       Rect.fromLTWH(0, 0, w, h),
       Radius.circular(r),
