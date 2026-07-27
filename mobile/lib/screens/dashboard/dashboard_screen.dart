@@ -27,15 +27,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background, // Clean light cream white
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 1. Sticky Top Header Row
-            Container(
+      body: Column(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Container(
               color: AppColors.background,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               child: _buildTopHeader(context),
             ),
+          ),
 
             // Scrollable Content Body
             Expanded(
@@ -96,8 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     ],
   ),
-),
-    );
+);
   }
 
   // ─── 1. Top Header Row ──────────────────────────────────────────────────────
