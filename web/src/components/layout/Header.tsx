@@ -2,7 +2,11 @@ import React from 'react';
 import { APP_INFO } from '@/constants/theme';
 import { Button } from '@/components/common/Button';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onSignInClick?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
   return (
     <header className="sticky top-0 z-50 bg-[#F9F5EF]/90 backdrop-blur-md border-b border-[#D9D2C5]">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -31,10 +35,10 @@ export const Header: React.FC = () => {
         </nav>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="py-2 px-4 text-xs">
+          <Button variant="outline" className="py-2 px-4 text-xs cursor-pointer" onClick={onSignInClick}>
             Sign In
           </Button>
-          <Button variant="primary" className="py-2 px-4 text-xs">
+          <Button variant="primary" className="py-2 px-4 text-xs cursor-pointer">
             Apply Now
           </Button>
         </div>
@@ -42,3 +46,4 @@ export const Header: React.FC = () => {
     </header>
   );
 };
+
