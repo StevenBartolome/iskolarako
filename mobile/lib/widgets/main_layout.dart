@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../screens/dashboard/dashboard_screen.dart';
@@ -20,6 +21,7 @@ class _MainLayoutState extends State<MainLayout>
   int _currentIndex = 0;
   late AnimationController _animationController;
   late Animation<double> _animation;
+  bool _isNavbarShrunk = false;
 
   final List<Widget> _pages = [
     const DashboardScreen(),
@@ -66,6 +68,7 @@ class _MainLayoutState extends State<MainLayout>
 
     setState(() {
       _currentIndex = index;
+      _isNavbarShrunk = false;
     });
 
     _animation = Tween<double>(begin: start, end: end).animate(
@@ -81,7 +84,27 @@ class _MainLayoutState extends State<MainLayout>
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      body: IndexedStack(index: _currentIndex, children: _pages),
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (scrollNotification) {
+          if (scrollNotification is UserScrollNotification) {
+            if (scrollNotification.direction == ScrollDirection.reverse) {
+              if (!_isNavbarShrunk) {
+                setState(() {
+                  _isNavbarShrunk = true;
+                });
+              }
+            } else if (scrollNotification.direction == ScrollDirection.forward) {
+              if (_isNavbarShrunk) {
+                setState(() {
+                  _isNavbarShrunk = false;
+                });
+              }
+            }
+          }
+          return false;
+        },
+        child: IndexedStack(index: _currentIndex, children: _pages),
+      ),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -92,125 +115,148 @@ class _MainLayoutState extends State<MainLayout>
     const double bottomMargin = 24.0;
     const double navBarHeight = 68.0;
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          horizontalMargin,
-          0,
-          horizontalMargin,
-          bottomMargin,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final double totalWidth = constraints.maxWidth;
-            final double itemWidth = totalWidth / _navItems.length;
+    return AnimatedScale(
+      scale: _isNavbarShrunk ? 0.95 : 1.0,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutBack,
+      child: AnimatedOpacity(
+        opacity: _isNavbarShrunk ? 0.5 : 1.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              horizontalMargin,
+              0,
+              horizontalMargin,
+              bottomMargin,
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final double totalWidth = constraints.maxWidth;
+                final double itemWidth = totalWidth / _navItems.length;
 
-            return AnimatedBuilder(
-              animation: _animation,
-              builder: (context, child) {
-                final double currentX = (_animation.value + 0.5) * itemWidth;
+                return AnimatedBuilder(
+                  animation: _animation,
+                  builder: (context, child) {
+                    final double currentX = (_animation.value + 0.5) * itemWidth;
 
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // 1. Custom Painted Background with Bezier Cutout Curve
-                    CustomPaint(
-                      size: Size(totalWidth, navBarHeight),
-                      painter: _NavBarPainter(
-                        activeIndex: _animation.value,
-                        color: AppColors.surface,
-                      ),
-                    ),
-
-                    // 2. Floating Circular Bubble containing the selected icon
-                    Positioned(
-                      left: currentX - 24.0, // 24 is half of bubble width (48)
-                      top:
-                          -24.0, // Positioned lower while maintaining the gap shape
-                      child: Container(
-                        width: 48.0,
-                        height: 48.0,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary, // System green theme color
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withAlpha(70), // Tinted shadow for green bubble
-                              blurRadius: 10,
-                              spreadRadius: 1,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Icon(
-                            _navItems[_currentIndex].icon,
-                            color: Colors.white, // White icon color
-                            size: 22.0, // Sleeker icon size matching the smaller bubble
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // 1. Custom Painted Background with Bezier Cutout Curve
+                        CustomPaint(
+                          size: Size(totalWidth, navBarHeight),
+                          painter: _NavBarPainter(
+                            activeIndex: _animation.value,
+                            color: AppColors.surface,
                           ),
                         ),
-                      ),
-                    ),
 
-                    // 3. Tab Items Row
-                    SizedBox(
-                      height: navBarHeight,
-                      child: Row(
-                        children: List.generate(_navItems.length, (i) {
-                          final item = _navItems[i];
-                          final isSelected = _currentIndex == i;
-
-                          return Expanded(
-                            child: GestureDetector(
-                              onTap: () => _onTabTapped(i),
-                              behavior: HitTestBehavior.opaque,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  // Icon: Visible only when not selected
-                                  AnimatedOpacity(
-                                    duration: const Duration(milliseconds: 150),
-                                    opacity: isSelected ? 0.0 : 1.0,
-                                    child: AnimatedScale(
-                                      duration: const Duration(
-                                        milliseconds: 150,
-                                      ),
-                                      scale: isSelected ? 0.5 : 1.0,
-                                      child: isSelected
-                                          ? const SizedBox(height: 24)
-                                          : Icon(
-                                              item.icon,
-                                              size: 22.0,
-                                              color: AppColors.textMuted,
-                                            ),
+                        // 2. Floating Circular Bubble containing the selected icon
+                        Positioned(
+                          left: currentX - 24.0, // 24 is half of bubble width (48)
+                          top:
+                              -24.0, // Positioned lower while maintaining the gap shape
+                          child: Container(
+                            width: 48.0,
+                            height: 48.0,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary, // System green theme color
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withAlpha(70), // Tinted shadow for green bubble
+                                  blurRadius: 10,
+                                  spreadRadius: 1,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 250),
+                                transitionBuilder: (Widget child, Animation<double> animation) {
+                                  return ScaleTransition(
+                                    scale: animation,
+                                    child: FadeTransition(
+                                      opacity: animation,
+                                      child: child,
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  // Label Text
-                                  Text(
-                                    item.label,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 10.0,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w800
-                                          : FontWeight.w500,
-                                      color: isSelected
-                                          ? AppColors.primary
-                                          : AppColors.textMuted,
-                                    ),
-                                  ),
-                                ],
+                                  );
+                                },
+                                child: Icon(
+                                  _navItems[_currentIndex].icon,
+                                  key: ValueKey<int>(_currentIndex),
+                                  color: Colors.white, // White icon color
+                                  size: 22.0, // Sleeker icon size matching the smaller bubble
+                                ),
                               ),
                             ),
-                          );
-                        }),
-                      ),
-                    ),
-                  ],
+                          ),
+                        ),
+
+                        // 3. Tab Items Row
+                        SizedBox(
+                          height: navBarHeight,
+                          child: Row(
+                            children: List.generate(_navItems.length, (i) {
+                              final item = _navItems[i];
+                              final isSelected = _currentIndex == i;
+
+                              return Expanded(
+                                child: GestureDetector(
+                                  onTap: () => _onTabTapped(i),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      // Icon: Visible only when not selected
+                                      AnimatedOpacity(
+                                        duration: const Duration(milliseconds: 150),
+                                        opacity: isSelected ? 0.0 : 1.0,
+                                        child: AnimatedScale(
+                                          duration: const Duration(
+                                            milliseconds: 150,
+                                          ),
+                                          scale: isSelected ? 0.5 : 1.0,
+                                          child: isSelected
+                                              ? const SizedBox(height: 24)
+                                              : Icon(
+                                                  item.icon,
+                                                  size: 22.0,
+                                                  color: AppColors.textMuted,
+                                                ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      // Label Text
+                                      Text(
+                                        item.label,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10.0,
+                                          fontWeight: isSelected
+                                              ? FontWeight.w800
+                                              : FontWeight.w500,
+                                          color: isSelected
+                                              ? AppColors.primary
+                                              : AppColors.textMuted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
-            );
-          },
+            ),
+          ),
         ),
       ),
     );

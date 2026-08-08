@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/custom_button.dart';
 import 'package:iskoako/widgets/custom_text_field.dart';
-
 
 class ApplicationFormScreen extends StatefulWidget {
   const ApplicationFormScreen({super.key});
@@ -14,24 +14,60 @@ class ApplicationFormScreen extends StatefulWidget {
 
 class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
   int _currentStep = 0;
-  final int _totalSteps = 3;
+  final int _totalSteps = 4;
+
+  // Track uploaded documents
+  final Map<String, String?> _uploadedFiles = {
+    'grades': null,
+    'cor': null,
+    'income': null,
+    'brgy': null,
+    'birth': null,
+  };
+
+  void _simulateUpload(String key, String title) {
+    if (_uploadedFiles[key] != null) {
+      setState(() {
+        _uploadedFiles[key] = null;
+      });
+    } else {
+      setState(() {
+        _uploadedFiles[key] = '${title.replaceAll(" ", "_").toLowerCase()}_signed.pdf';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$title uploaded successfully!'),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Apply Scholarship'),
+        title: Text(
+          'Apply Scholarship',
+          style: GoogleFonts.playfairDisplay(
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryDark,
+          ),
+        ),
         leading: IconButton(
-          icon: const Icon(LucideIcons.chevronLeft),
+          icon: const Icon(LucideIcons.chevronLeft, color: AppColors.primary),
           onPressed: () => Navigator.pop(context),
         ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
       body: Column(
         children: [
           _buildProgressBar(),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
                 child: _buildStepContent(),
@@ -46,17 +82,29 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
 
   Widget _buildProgressBar() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Step ${_currentStep + 1} of $_totalSteps',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
-              Text('${((_currentStep + 1) / _totalSteps * 100).toInt()}%',
-                  style: const TextStyle(color: AppColors.textSecondary)),
+              Text(
+                'Step ${_currentStep + 1} of $_totalSteps',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                '${((_currentStep + 1) / _totalSteps * 100).toInt()}%',
+                style: GoogleFonts.inter(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -64,7 +112,7 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: (_currentStep + 1) / _totalSteps,
-              minHeight: 8,
+              minHeight: 6,
               backgroundColor: AppColors.textSecondary.withAlpha(20),
               valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
             ),
@@ -82,6 +130,8 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
         return _buildStep2(key: const ValueKey(1));
       case 2:
         return _buildStep3(key: const ValueKey(2));
+      case 3:
+        return _buildStep4(key: const ValueKey(3));
       default:
         return const SizedBox();
     }
@@ -92,9 +142,19 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
       key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Personal Information', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        Text('Let\'s start with your basic details.', style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          'Personal Information',
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryDark,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Let\'s start with your basic details.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
         const SizedBox(height: 24),
         const CustomTextField(label: 'Full Name', hint: 'Juan Dela Cruz', prefixIcon: LucideIcons.user),
         const SizedBox(height: 16),
@@ -110,9 +170,19 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
       key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Academic Details', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        Text('Tell us about your educational background.', style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          'Academic Details',
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryDark,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Tell us about your educational background.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
         const SizedBox(height: 24),
         const CustomTextField(label: 'University/School', hint: 'Enter institution name', prefixIcon: LucideIcons.school),
         const SizedBox(height: 16),
@@ -128,27 +198,209 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
       key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Final Review', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        Text('Almost there! Please verify your information.', style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          'Submit Requirements',
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryDark,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Please upload the required files by category section.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 24),
+
+        // Section A: Academic Requirements
+        _buildSectionTitle('SECTION A: ACADEMIC DOCUMENTS'),
+        const SizedBox(height: 10),
+        _buildUploadCard(
+          title: 'Transcript of Records / Report Card',
+          description: 'Upload latest grades (PDF, Max 5MB)',
+          docKey: 'grades',
+        ),
+        const SizedBox(height: 12),
+        _buildUploadCard(
+          title: 'Certificate of Registration (COR)',
+          description: 'Official enrollment form for current term',
+          docKey: 'cor',
+        ),
+
+        const SizedBox(height: 24),
+
+        // Section B: Financial Requirements
+        _buildSectionTitle('SECTION B: FINANCIAL DOCUMENTS'),
+        const SizedBox(height: 10),
+        _buildUploadCard(
+          title: 'Income Tax Return (ITR) / Indigency Cert',
+          description: 'Proof of family annual income',
+          docKey: 'income',
+        ),
+
+        const SizedBox(height: 24),
+
+        // Section C: Personal Identification
+        _buildSectionTitle('SECTION C: PERSONAL IDENTIFICATION'),
+        const SizedBox(height: 10),
+        _buildUploadCard(
+          title: 'Barangay Clearance',
+          description: 'Issued within the last 6 months',
+          docKey: 'brgy',
+        ),
+        const SizedBox(height: 12),
+        _buildUploadCard(
+          title: 'PSA Birth Certificate',
+          description: 'Clear copy of birth registry document',
+          docKey: 'birth',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStep4({Key? key}) {
+    return Column(
+      key: key,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Final Review',
+          style: GoogleFonts.playfairDisplay(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryDark,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Almost there! Please verify your information.',
+          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+        ),
         const SizedBox(height: 32),
         Center(
           child: Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: AppColors.success.withAlpha(20),
+              color: AppColors.successBg,
               shape: BoxShape.circle,
             ),
             child: const Icon(LucideIcons.checkCircle2, color: AppColors.success, size: 64),
           ),
         ),
         const SizedBox(height: 24),
-        const Text(
-          'By submitting, you confirm that all information provided is accurate and true to the best of your knowledge.',
+        Text(
+          'By submitting, you confirm that all information and uploaded documents provided are accurate and true to the best of your knowledge.',
           textAlign: TextAlign.center,
-          style: TextStyle(height: 1.5),
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+            height: 1.5,
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: GoogleFonts.inter(
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+        color: AppColors.textMuted,
+        letterSpacing: 1.1,
+      ),
+    );
+  }
+
+  Widget _buildUploadCard({
+    required String title,
+    required String description,
+    required String docKey,
+  }) {
+    final fileName = _uploadedFiles[docKey];
+    final isUploaded = fileName != null;
+
+    return GestureDetector(
+      onTap: () => _simulateUpload(docKey, title),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isUploaded ? AppColors.successBg : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isUploaded ? AppColors.success : AppColors.rule,
+            width: isUploaded ? 1.2 : 0.8,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(3),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isUploaded ? AppColors.success.withAlpha(20) : AppColors.surfaceAlt,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isUploaded ? LucideIcons.fileCheck2 : LucideIcons.uploadCloud,
+                color: isUploaded ? AppColors.success : AppColors.textSecondary,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    isUploaded ? fileName : description,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: isUploaded ? AppColors.success : AppColors.textSecondary,
+                      fontWeight: isUploaded ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (isUploaded)
+              const Icon(LucideIcons.checkCircle2, color: AppColors.success, size: 20)
+            else
+              Text(
+                'Upload',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -196,6 +448,7 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
                     const SnackBar(
                       content: Text('Application Submitted Successfully!'),
                       backgroundColor: AppColors.success,
+                      behavior: SnackBarBehavior.floating,
                     ),
                   );
                 }

@@ -100,6 +100,17 @@ class NotificationScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
+                    if (Navigator.canPop(context)) ...[
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: const Icon(
+                          LucideIcons.chevronLeft,
+                          color: AppColors.primary,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     const Icon(
                       Icons.diamond_rounded,
                       size: 14,
