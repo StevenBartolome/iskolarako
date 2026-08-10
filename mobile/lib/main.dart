@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'constants/app_theme.dart';
+import 'constants/supabase_config.dart';
 import 'utils/app_router.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    anonKey: SupabaseConfig.anonKey,
+  );
+
   runApp(const IskolarAkoApp());
 }
 

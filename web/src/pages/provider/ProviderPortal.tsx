@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 
-interface AdminPortalProps {
+interface ProviderPortalProps {
   onLogout: () => void;
 }
 
@@ -55,7 +55,7 @@ interface ScholarAward {
   dateAwarded: string;
 }
 
-export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
+export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<TabType>('programs');
 
   // Search & filter states
@@ -67,10 +67,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
 
   // Toast indicator
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({
+    management: false,
+    operations: false
+  });
+
+  const toggleGroup = (group: string) => {
+    if (isCollapsed) return;
+    setCollapsedGroups(prev => ({ ...prev, [group]: !prev[group] }));
+  };
 
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
+  const [isBigMapModalOpen, setIsBigMapModalOpen] = useState(false);
 
   // New program form inputs
   const [formTitle, setFormTitle] = useState('');
@@ -84,7 +95,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   const [selectedPayoutProgram, setSelectedPayoutProgram] = useState('DOST-SEI Undergraduate Scholarship');
 
   // Google Maps simulation states
-  const [selectedExamLocation, setSelectedExamLocation] = useState('UP Diliman Examination Hall');
+  const [selectedExamLocation, setSelectedExamLocation] = useState('');
+  const [mapSearchText, setMapSearchText] = useState('');
   const [examCoords, setExamCoords] = useState({
     lat: 14.6538,
     lng: 121.0685,
@@ -115,8 +127,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
       const lng = place.geometry?.location?.lng() || 121.0685;
 
       setSelectedExamLocation(name || address);
+      setMapSearchText(name || address);
       setExamCoords({ lat, lng, address });
       showToast(`Selected: ${name || address}`);
+    }
+  };
+
+  const handleMapClick = (e: google.maps.MapMouseEvent) => {
+    if (e.latLng) {
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+      if (window.google && window.google.maps) {
+        const geocoder = new window.google.maps.Geocoder();
+        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            const address = results[0].formatted_address;
+            setSelectedExamLocation(address);
+            setMapSearchText(address);
+            setExamCoords({ lat, lng, address });
+            showToast(`Location set to: ${address}`);
+          } else {
+            const coordsString = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            setSelectedExamLocation(coordsString);
+            setMapSearchText(coordsString);
+            setExamCoords({ lat, lng, address: `Coordinates: ${coordsString}` });
+            showToast(`Location set to: ${coordsString}`);
+          }
+        });
+      } else {
+        const coordsString = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        setSelectedExamLocation(coordsString);
+        setMapSearchText(coordsString);
+        setExamCoords({ lat, lng, address: `Coordinates: ${coordsString}` });
+        showToast(`Location set to: ${coordsString}`);
+      }
     }
   };
 
@@ -349,16 +393,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
   };
 
   const filteredApplicants = applicantsList.filter(app => {
-    const matchesSearch = app.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          app.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          app.program.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      app.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      app.program.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'All' || app.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const filteredScholars = scholarsList.filter(sch => {
-    const matchesSearch = sch.scholarName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          sch.programTitle.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = sch.scholarName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      sch.programTitle.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -367,21 +411,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
     return (
       <button
         onClick={() => setActiveTab(tab)}
-        className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
-          isActive
+        title={label}
+        className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer border-0 ${isCollapsed ? 'justify-center p-2.5' : 'gap-3.5 px-4 py-3'
+          } ${isActive
             ? 'bg-white/10 text-white font-semibold shadow-sm'
-            : 'text-[#9BA89F] hover:bg-white/5 hover:text-white'
-        }`}
+            : 'text-[#9BA89F] hover:bg-white/5 hover:text-white bg-transparent'
+          }`}
       >
         {icon}
-        {label}
+        {!isCollapsed && <span>{label}</span>}
       </button>
     );
   };
 
   return (
     <div className="min-h-screen bg-[#F9F5EF] flex font-sans relative">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#1A3C2E] text-[#F9F5EF] border border-[#2D5941] px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">
@@ -430,7 +475,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                   className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1">Initial Application Cycle</label>
@@ -479,10 +524,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-8 max-w-md w-full space-y-6 relative animate-fade-in">
             <button onClick={() => setIsPayoutModalOpen(false)} className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer">✕</button>
-            
+
             <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">Release Program Payouts</h3>
             <p className="text-xs text-[#6C6C70]">Select the target program whose pending fund releases should be processed first.</p>
-            
+
             <form onSubmit={handleReleaseProgramFunds} className="space-y-5">
               <div>
                 <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Scholarship Program</label>
@@ -527,45 +572,209 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
         </div>
       )}
 
-      {/* Sidebar */}
-      <aside className="w-72 bg-[#1A3C2E] text-white flex flex-col justify-between p-6 border-r border-[#2D5941]/30 shrink-0">
-        <div className="space-y-8">
-          <div className="pt-2">
-            <h1 className="text-2xl font-bold font-serif text-[#E8A838] tracking-wide">ISKOLARAKO</h1>
-            <p className="text-xs text-[#9BA89F] mt-1 font-semibold uppercase tracking-wider">DOST-SEI Portal</p>
+      {/* Large Map Selector Modal */}
+      {isBigMapModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-6 max-w-4xl w-full space-y-4 relative animate-fade-in">
+            <button 
+              type="button"
+              onClick={() => setIsBigMapModalOpen(false)} 
+              className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
+            >
+              ✕
+            </button>
+            <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">Select Exam Center Location</h3>
+            <p className="text-xs text-[#6C6C70]">Search for the venue or click anywhere directly on the map to automatically pin and extract coordinates and address details.</p>
+
+            <div className="space-y-3">
+              {isLoaded ? (
+                <Autocomplete
+                  onLoad={onAutocompleteLoad}
+                  onPlaceChanged={onPlaceChanged}
+                >
+                  <input
+                    type="text"
+                    placeholder="Search venue e.g. UP Diliman Examination Hall..."
+                    value={mapSearchText}
+                    onChange={(e) => setMapSearchText(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] text-sm font-semibold bg-white focus:outline-none focus:border-[#2D5941]"
+                  />
+                </Autocomplete>
+              ) : (
+                <div className="text-xs font-medium text-[#6C6C70]">Loading search script...</div>
+              )}
+
+              <div className="w-full h-96 rounded-2xl border border-[#D9D2C5] overflow-hidden relative shadow-inner bg-slate-100">
+                {isLoaded ? (
+                  <GoogleMap
+                    mapContainerStyle={{ width: '100%', height: '100%' }}
+                    center={{ lat: examCoords.lat, lng: examCoords.lng }}
+                    zoom={mapZoom}
+                    onClick={handleMapClick}
+                    options={{
+                      disableDefaultUI: false,
+                      zoomControl: true,
+                    }}
+                  >
+                    <Marker position={{ lat: examCoords.lat, lng: examCoords.lng }} />
+                  </GoogleMap>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-sm font-semibold text-[#6C6C70]">
+                    Loading Live Google Maps...
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center text-xs bg-[#F9F5EF] p-3 rounded-xl border border-[#D9D2C5]/50">
+                <span className="font-medium text-[#6C6C70]">
+                  <strong>Pinned Coordinates:</strong> {examCoords.lat.toFixed(6)}° N, {examCoords.lng.toFixed(6)}° E
+                </span>
+                <span className="font-medium text-[#1A3C2E] max-w-md truncate">
+                  <strong>Address:</strong> {examCoords.address}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button 
+                type="button" 
+                onClick={() => setIsBigMapModalOpen(false)}
+                className="px-5 py-2.5 rounded-xl border border-solid border-[#D9D2C5] hover:bg-slate-50 text-xs font-bold cursor-pointer text-[#6C6C70] bg-transparent"
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setIsBigMapModalOpen(false)}
+                className="px-6 py-2.5 rounded-xl bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold cursor-pointer border-0"
+              >
+                Confirm Location
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 ${isCollapsed ? 'w-20' : 'w-72'}`}>
+        <div className="p-4 overflow-y-auto">
+          {/* Sidebar Header */}
+          <div className={`flex items-center justify-between mb-8 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center text-[#1A3C2E] font-bold text-lg shadow-md font-serif shrink-0">
+                IA
+              </div>
+              {!isCollapsed && (
+                <div>
+                  <h1 className="text-xl font-bold font-serif text-[#E8A838] tracking-wide leading-none">ISKOLARAKO</h1>
+                  <p className="text-[10px] text-[#9BA89F] mt-1 font-semibold uppercase tracking-wider">DOST-SEI Portal</p>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="text-[#9BA89F] hover:text-white transition-colors cursor-pointer border-0 bg-transparent p-1"
+              title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            >
+              <svg className="w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isCollapsed ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"} />
+              </svg>
+            </button>
           </div>
 
-          <nav className="space-y-1.5">
-            {renderSidebarItem('dashboard', 'Dashboard', <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>)}
-            {renderSidebarItem('applicants', 'Applicants & Scholars', <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>)}
-            {renderSidebarItem('programs', 'Programs', <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>)}
-            {renderSidebarItem('disbursements', 'Disbursements', <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 8h6m-5 0a3 3 0 110 6H9l3 3m-3-6h6m6 1a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>)}
-            {renderSidebarItem('announcements', 'Announcements', <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>)}
-            {renderSidebarItem('reports', 'Reports', <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>)}
+          {/* Grouped Navigation Links */}
+          <nav className="space-y-4">
+            {/* Group 1: Management */}
+            <div className="space-y-1">
+              {!isCollapsed ? (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup('management')}
+                  className="w-full flex items-center justify-between text-[10px] text-[#6C7E74] font-bold uppercase tracking-wider px-4 mb-2 hover:text-white transition-colors cursor-pointer border-0 bg-transparent"
+                >
+                  <span>Management</span>
+                  <svg className={`w-3 h-3 transition-transform duration-200 ${collapsedGroups.management ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              ) : (
+                <div className="border-t border-[#2D5941]/20 my-2" />
+              )}
+              {(!isCollapsed && collapsedGroups.management) ? null : (
+                <div className="space-y-1 animate-fade-in">
+                  {renderSidebarItem('dashboard', 'Dashboard', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>)}
+                  {renderSidebarItem('applicants', 'Applicants & Scholars', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>)}
+                  {renderSidebarItem('programs', 'Programs', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>)}
+                </div>
+              )}
+            </div>
+
+            {/* Group 2: Operations */}
+            <div className="space-y-1">
+              {!isCollapsed ? (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup('operations')}
+                  className="w-full flex items-center justify-between text-[10px] text-[#6C7E74] font-bold uppercase tracking-wider px-4 mb-2 hover:text-white transition-colors cursor-pointer border-0 bg-transparent"
+                >
+                  <span>Operations</span>
+                  <svg className={`w-3 h-3 transition-transform duration-200 ${collapsedGroups.operations ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              ) : (
+                <div className="border-t border-[#2D5941]/20 my-2" />
+              )}
+              {(!isCollapsed && collapsedGroups.operations) ? null : (
+                <div className="space-y-1 animate-fade-in">
+                  {renderSidebarItem('disbursements', 'Disbursements', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 8h6m-5 0a3 3 0 110 6H9l3 3m-3-6h6m6 1a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>)}
+                  {renderSidebarItem('announcements', 'Announcements', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>)}
+                  {renderSidebarItem('reports', 'Reports', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>)}
+                </div>
+              )}
+            </div>
           </nav>
         </div>
 
-        <div className="space-y-4">
-          <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/5 border border-white/10">
-            <div className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center font-bold text-[#1A3C2E]">DS</div>
-            <div className="min-w-0 flex-1">
-              <h4 className="text-sm font-semibold truncate text-white">DOST-SEI</h4>
-              <p className="text-xs text-[#9BA89F] truncate">Public Provider</p>
-            </div>
-          </div>
-          <button
-            onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/20 text-[#9BA89F] hover:text-white hover:bg-white/5 transition-all text-xs font-semibold cursor-pointer"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            Sign Out
-          </button>
+        {/* Footer Profile / Logout */}
+        <div className={`p-4 border-t border-[#2D5941]/30 ${isCollapsed ? 'flex flex-col items-center gap-4' : 'space-y-4'}`}>
+          {!isCollapsed ? (
+            <>
+              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/5 border border-white/10">
+                <div className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center font-bold text-[#1A3C2E] shrink-0">DS</div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-sm font-semibold truncate text-white">DOST-SEI</h4>
+                  <p className="text-xs text-[#9BA89F] truncate">Public Provider</p>
+                </div>
+              </div>
+              <button
+                onClick={onLogout}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-solid border-white/20 text-[#9BA89F] hover:text-white hover:bg-white/5 transition-all text-xs font-semibold cursor-pointer bg-transparent"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center font-bold text-[#1A3C2E] shrink-0" title="DOST-SEI - Public Provider">DS</div>
+              <button
+                onClick={onLogout}
+                className="text-[#9BA89F] hover:text-white cursor-pointer border-0 bg-transparent text-sm flex items-center justify-center"
+                title="Sign Out"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-10 max-w-7xl mx-auto">
-        
+
         {/* ==================== 1. DASHBOARD VIEW ==================== */}
         {activeTab === 'dashboard' && (
           <div className="space-y-8 animate-fade-in">
@@ -652,7 +861,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
         {/* ==================== 2. APPLICANTS & SCHOLARS VIEW (SPLIT SECTIONS) ==================== */}
         {activeTab === 'applicants' && (
           <div className="space-y-8 animate-fade-in">
-            
+
             {/* Header and Toggle Button between Applicants and Scholars */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
@@ -660,7 +869,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                   {subTab === 'applicants' ? 'Cycle Applicants' : 'Continuing Scholars'}
                 </h2>
                 <p className="text-sm text-[#6C6C70] mt-1 font-medium">
-                  {subTab === 'applicants' 
+                  {subTab === 'applicants'
                     ? 'Review incoming entries for active intake cycles. Approving them creates a continuing Scholar Award.'
                     : 'Monitor active scholar awards, GWA requirements, and renewal conditions.'
                   }
@@ -671,17 +880,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
               <div className="flex bg-[#EDE8DE]/60 p-1 rounded-xl text-xs font-semibold gap-1">
                 <button
                   onClick={() => { setSubTab('applicants'); setStatusFilter('All'); }}
-                  className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${
-                    subTab === 'applicants' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
-                  }`}
+                  className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${subTab === 'applicants' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
+                    }`}
                 >
                   Applicants ({applicantsList.length})
                 </button>
                 <button
                   onClick={() => { setSubTab('scholars'); setStatusFilter('All'); }}
-                  className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${
-                    subTab === 'scholars' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
-                  }`}
+                  className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${subTab === 'scholars' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
+                    }`}
                 >
                   Continuing Scholars ({scholarsList.length})
                 </button>
@@ -698,7 +905,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     className="w-full pl-11 pr-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none focus:border-[#2D5941] text-xs"
                   />
                 </div>
-                
+
                 <div className="flex gap-1 bg-[#EDE8DE]/45 p-1 rounded-lg text-[10px] font-bold">
                   {['All', 'Pending', 'Under Review', 'For Exam', 'Rejected'].map(st => (
                     <button
@@ -742,13 +949,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                         <td className="px-6 py-4 text-xs font-bold text-[#2D5941]">{app.cycle}</td>
                         <td className="px-6 py-4 text-center font-serif text-[#1C1C1E]">{app.grade}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                            app.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${app.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
                             app.status === 'Pending' ? 'bg-[#F9F0E0] text-[#C97B2E]' :
-                            app.status === 'Under Review' ? 'bg-[#EAF3FA] text-[#2A6BA8]' :
-                            app.status === 'For Exam' ? 'bg-purple-100 text-purple-700' :
-                            'bg-[#FDF2F2] text-[#B34040]'
-                          }`}>
+                              app.status === 'Under Review' ? 'bg-[#EAF3FA] text-[#2A6BA8]' :
+                                app.status === 'For Exam' ? 'bg-purple-100 text-purple-700' :
+                                  'bg-[#FDF2F2] text-[#B34040]'
+                            }`}>
                             {app.status}
                           </span>
                         </td>
@@ -797,12 +1003,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                         <td className="px-6 py-4 text-xs font-semibold text-[#6C6C70]">{sch.cycleJoined}</td>
                         <td className="px-6 py-4 text-center font-serif font-bold text-[#2D5941]">{sch.gwa}</td>
                         <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                            sch.status === 'Maintaining' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${sch.status === 'Maintaining' ? 'bg-[#EBF5EE] text-[#2D5941]' :
                             sch.status === 'Awaiting Grades' ? 'bg-amber-50 text-[#C97B2E]' :
-                            sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
+                              sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
+                                'bg-gray-100 text-gray-700'
+                            }`}>
                             {sch.status}
                           </span>
                         </td>
@@ -864,11 +1069,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                         {prog.cycles.map((cyc) => (
                           <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
                             <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                              cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
                               cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
-                              'bg-gray-200 text-gray-600'
-                            }`}>
+                                'bg-gray-200 text-gray-600'
+                              }`}>
                               {cyc.status}
                             </span>
                           </div>
@@ -955,13 +1159,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       <td className="px-6 py-4 text-[#2D5941] font-bold">{tx.amount}</td>
                       <td className="px-6 py-4">
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold ${
-                            tx.status === 'Completed'
-                              ? 'bg-[#EBF5EE] text-[#2D5941]'
-                              : tx.status === 'Processing'
+                          className={`px-3 py-1 rounded-full text-xs font-bold ${tx.status === 'Completed'
+                            ? 'bg-[#EBF5EE] text-[#2D5941]'
+                            : tx.status === 'Processing'
                               ? 'bg-[#F9F0E0] text-[#C97B2E]'
                               : 'bg-[#FDF2F2] text-[#B34040]'
-                          }`}
+                            }`}
                         >
                           {tx.status}
                         </span>
@@ -984,30 +1187,52 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-              
               {/* Broadcast Announcement Form */}
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-5">
+              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-4">
                 <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Broadcast Announcement</h3>
-                <form onSubmit={handleAddAnnouncement} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Announcement Type</label>
-                    <select
-                      value={newAnnType}
-                      onChange={(e) => setNewAnnType(e.target.value as AnnType)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-sm font-semibold cursor-pointer"
-                    >
-                      <option value="General Notice">General Notice</option>
-                      <option value="Examination Schedule">Examination Schedule</option>
-                      <option value="Release of Funds">Release of Funds</option>
-                      <option value="Requirements Update">Requirements Update</option>
-                    </select>
+                <form onSubmit={handleAddAnnouncement} className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Type</label>
+                      <select
+                        value={newAnnType}
+                        onChange={(e) => setNewAnnType(e.target.value as AnnType)}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                      >
+                        <option value="General Notice">General Notice</option>
+                        <option value="Examination Schedule">Exam Schedule</option>
+                        <option value="Release of Funds">Release of Funds</option>
+                        <option value="Requirements Update">Requirements</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Audience</label>
+                      <select
+                        value={newAnnAudience} onChange={(e) => setNewAnnAudience(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                      >
+                        <option value="All Scholars">All Scholars</option>
+                        <option value="DOST-SEI Only">DOST-SEI Only</option>
+                        <option value="CHED Only">CHED Only</option>
+                      </select>
+                    </div>
                   </div>
 
                   {/* Google Maps Autocomplete Search Input */}
                   {newAnnType === 'Examination Schedule' && (
-                    <div className="space-y-3 p-3 rounded-2xl border border-[#D9D2C5] bg-[#F9F5EF]/50 animate-fade-in">
-                      <label className="block text-xs font-bold text-[#1A3C2E] uppercase tracking-wide">🔍 Search Exam Location (Google Places)</label>
-                      
+                    <div className="space-y-2 p-2.5 rounded-2xl border border-[#D9D2C5] bg-[#F9F5EF]/50 animate-fade-in">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-[10px] font-bold text-[#1A3C2E] uppercase tracking-wide">🔍 Search Location</label>
+                        <button
+                          type="button"
+                          onClick={() => setIsBigMapModalOpen(true)}
+                          className="text-[10px] font-bold text-[#2D5941] hover:underline cursor-pointer bg-transparent border-0"
+                        >
+                          Choose on Larger Map 🗺️
+                        </button>
+                      </div>
+
                       {isLoaded ? (
                         <Autocomplete
                           onLoad={onAutocompleteLoad}
@@ -1016,7 +1241,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                           <input
                             type="text"
                             placeholder="Type venue e.g. UP Diliman..."
-                            className="w-full px-3 py-2 rounded-lg border border-[#D9D2C5] text-xs font-semibold bg-white focus:outline-none focus:border-[#2D5941]"
+                            value={mapSearchText}
+                            onChange={(e) => setMapSearchText(e.target.value)}
+                            className="w-full px-3 py-1.5 rounded-lg border border-[#D9D2C5] text-xs font-semibold bg-white focus:outline-none focus:border-[#2D5941]"
                           />
                         </Autocomplete>
                       ) : (
@@ -1024,12 +1251,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       )}
 
                       {/* Google Maps live viewport */}
-                      <div className="w-full h-44 rounded-xl border border-[#D9D2C5] overflow-hidden relative flex flex-col justify-between shadow-inner bg-slate-100">
+                      <div className="w-full h-28 rounded-xl border border-[#D9D2C5] overflow-hidden relative flex flex-col justify-between shadow-inner bg-slate-100">
                         {isLoaded ? (
                           <GoogleMap
                             mapContainerStyle={{ width: '100%', height: '100%' }}
                             center={{ lat: examCoords.lat, lng: examCoords.lng }}
                             zoom={mapZoom}
+                            onClick={handleMapClick}
                             options={{
                               disableDefaultUI: true,
                               zoomControl: false,
@@ -1042,25 +1270,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                             Loading Live Google Maps...
                           </div>
                         )}
-                        
-                        <div className="absolute top-2 left-2 z-10 bg-white/90 backdrop-blur px-2 py-1 rounded text-[8px] text-[#6C6C70] font-semibold border border-[#D9D2C5]/50 shadow-sm">
+
+                        <div className="absolute top-1.5 left-1.5 z-10 bg-white/90 backdrop-blur px-1.5 py-0.5 rounded text-[7px] text-[#6C6C70] font-semibold border border-[#D9D2C5]/50 shadow-sm">
                           <span>
                             {examCoords.lat.toFixed(4)}° N, {examCoords.lng.toFixed(4)}° E
                           </span>
                         </div>
 
-                        <div className="absolute bottom-2 left-2 right-2 z-10 flex justify-between items-center">
-                          <span className="text-[7px] text-[#2D5941] bg-white/90 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shadow">
-                            Google Maps Live ({mapZoom}x)
+                        <div className="absolute bottom-1.5 left-1.5 right-1.5 z-10 flex justify-between items-center">
+                          <span className="text-[6px] text-[#2D5941] bg-white/90 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shadow">
+                            Google Maps
                           </span>
                           <div className="flex gap-1">
-                            <button type="button" onClick={() => setMapZoom(prev => Math.min(prev + 1, 18))} className="w-5 h-5 bg-white border border-[#D9D2C5] hover:bg-slate-50 text-[10px] font-bold rounded flex items-center justify-center cursor-pointer shadow-sm">+</button>
-                            <button type="button" onClick={() => setMapZoom(prev => Math.max(prev - 1, 10))} className="w-5 h-5 bg-white border border-[#D9D2C5] hover:bg-slate-50 text-[10px] font-bold rounded flex items-center justify-center cursor-pointer shadow-sm">-</button>
+                            <button type="button" onClick={() => setMapZoom(prev => Math.min(prev + 1, 18))} className="w-4 h-4 bg-white border border-[#D9D2C5] hover:bg-slate-50 text-[9px] font-bold rounded flex items-center justify-center cursor-pointer shadow-sm">+</button>
+                            <button type="button" onClick={() => setMapZoom(prev => Math.max(prev - 1, 10))} className="w-4 h-4 bg-white border border-[#D9D2C5] hover:bg-slate-50 text-[9px] font-bold rounded flex items-center justify-center cursor-pointer shadow-sm">-</button>
                           </div>
                         </div>
                       </div>
-                      
-                      <p className="text-[10px] text-[#6C6C70] leading-relaxed italic">
+
+                      <p className="text-[9px] text-[#6C6C70] leading-relaxed italic truncate">
                         <strong>Address:</strong> {examCoords.address}
                       </p>
                     </div>
@@ -1071,34 +1299,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                     <input
                       type="text" required placeholder="e.g. Schedule of Qualifying Examinations"
                       value={newAnnTitle} onChange={(e) => setNewAnnTitle(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-sm"
+                      className="w-full px-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold"
                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Target Audience</label>
-                    <select
-                      value={newAnnAudience} onChange={(e) => setNewAnnAudience(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-sm cursor-pointer"
-                    >
-                      <option value="All Scholars">All Scholars</option>
-                      <option value="DOST-SEI Only">DOST-SEI Only</option>
-                      <option value="CHED Only">CHED Only</option>
-                    </select>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Message / Details</label>
                     <textarea
-                      required rows={4} placeholder="Specify date, times, venues or step-by-step info here..."
+                      required rows={3} placeholder="Specify date, times, venues or step-by-step info here..."
                       value={newAnnBody} onChange={(e) => setNewAnnBody(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-sm"
+                      className="w-full px-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] text-white py-3 rounded-xl text-sm font-semibold tracking-wide shadow-md transition-all cursor-pointer"
+                    className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] text-white py-2.5 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer border-0"
                   >
                     Publish Announcement
                   </button>
@@ -1113,15 +1329,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                       <div className="flex justify-between items-start gap-4">
                         <div>
                           <span
-                            className={`inline-block px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
-                              ann.type === 'Examination Schedule'
-                                ? 'bg-amber-100 text-[#C97B2E] border border-amber-200'
-                                : ann.type === 'Release of Funds'
+                            className={`inline-block px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${ann.type === 'Examination Schedule'
+                              ? 'bg-amber-100 text-[#C97B2E] border border-amber-200'
+                              : ann.type === 'Release of Funds'
                                 ? 'bg-blue-100 text-blue-700 border border-blue-200'
                                 : ann.type === 'Requirements Update'
-                                ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                : 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20'
-                            }`}
+                                  ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                  : 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20'
+                              }`}
                           >
                             {ann.type}
                           </span>
@@ -1134,9 +1349,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onLogout }) => {
                           {ann.audience}
                         </span>
                       </div>
-                      
+
                       <p className="text-sm text-[#6C6C70] leading-relaxed">{ann.body}</p>
-                      
+
                       {ann.location && (
                         <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#C97B2E]">
                           <span>📍 Venue:</span>

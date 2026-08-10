@@ -1,21 +1,26 @@
 import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
-import { HomePage } from '@/pages/HomePage';
-import { LoginRegister } from '@/pages/LoginRegister';
-import { AdminPortal } from '@/pages/AdminPortal';
+import { HomePage } from '@/pages/home/HomePage';
+import { LoginRegister } from '@/pages/auth/LoginRegister';
+import { ProviderPortal } from '@/pages/provider/ProviderPortal';
+import { SystemAdminPortal } from '@/pages/admin/SystemAdminPortal';
 
 function App() {
-  const [view, setView] = useState<'home' | 'auth' | 'admin'>('home');
+  const [view, setView] = useState<'home' | 'auth' | 'provider' | 'admin'>('home');
 
   if (view === 'admin') {
-    return <AdminPortal onLogout={() => setView('home')} />;
+    return <SystemAdminPortal onLogout={() => setView('home')} />;
+  }
+
+  if (view === 'provider') {
+    return <ProviderPortal onLogout={() => setView('home')} />;
   }
 
   if (view === 'auth') {
     return (
       <LoginRegister
-        onLogin={() => setView('admin')}
+        onLogin={(role) => setView(role)}
         onBackToHome={() => setView('home')}
       />
     );
