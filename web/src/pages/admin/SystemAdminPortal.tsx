@@ -312,6 +312,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   const [newReqName, setNewReqName] = useState('');
   const [newReqDesc, setNewReqDesc] = useState('');
   const [newReqRequired, setNewReqRequired] = useState(true);
+  const [newReqProviderTypes, setNewReqProviderTypes] = useState<string[]>(['public']);
   const [isSavingReq, setIsSavingReq] = useState(false);
 
 
@@ -386,24 +387,105 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     }
   };
 
-  const handleAddRequirement = (e: React.FormEvent) => {
+  const handleAddRequirement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReqName.trim()) return;
+    if (newReqProviderTypes.length === 0) {
+      showToast('Please select at least one provider type.');
+      return;
+    }
+
     const item: RequirementItem = {
       name: newReqName.trim(),
       description: newReqDesc.trim(),
       required: newReqRequired
     };
-    setReqItems(prev => [...prev, item]);
+
+    // Save to each selected provider type
+    let lastSuccessType = '';
+    for (const pType of newReqProviderTypes) {
+      let targetItems: RequirementItem[] = [];
+      try {
+        const { data } = await supabase
+          .from('provider_requirements_config')
+          .select('required_fields')
+          .eq('provider_type', pType)
+          .maybeSingle();
+
+        if (data?.required_fields && Array.isArray(data.required_fields)) {
+          targetItems = data.required_fields as RequirementItem[];
+        }
+      } catch (err) {
+        console.warn(`Could not fetch existing requirements for ${pType}, starting fresh.`);
+      }
+
+      const updated = [...targetItems, item];
+
+      try {
+        const { error } = await supabase
+          .from('provider_requirements_config')
+          .upsert({
+            provider_type: pType,
+            required_fields: updated,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'provider_type'
+          });
+
+        if (error) throw error;
+
+        lastSuccessType = pType;
+        addAuditLog('ADDED REQUIREMENT', `${item.name} → ${pType}`);
+        // If this type is currently viewed, update the list
+        if (pType === selectedProviderType) {
+          setReqItems(updated);
+        }
+      } catch (err: any) {
+        console.error(`Error saving requirement to ${pType}:`, err);
+        showToast(`Failed to save to ${pType}: ${err.message || 'database error'}`);
+      }
+    }
+
+    if (lastSuccessType) {
+      const typeLabels = newReqProviderTypes.map(t =>
+        t === 'public' ? 'Government' : t === 'private' ? 'Private Partner' : 'NGO'
+      ).join(', ');
+      showToast(`"${item.name}" added to: ${typeLabels}.`);
+      // Switch filter to last saved type so user can see it
+      setSelectedProviderType(lastSuccessType);
+      await fetchRequirementsConfig(lastSuccessType);
+    }
+
     setNewReqName('');
     setNewReqDesc('');
     setNewReqRequired(true);
   };
 
-  const handleRemoveRequirement = (index: number) => {
-    setReqItems(prev => prev.filter((_, idx) => idx !== index));
+  const handleRemoveRequirement = async (index: number) => {
+    const updated = reqItems.filter((_, idx) => idx !== index);
+    setReqItems(updated);
     if (editingReqIndex === index) {
       setEditingReqIndex(null);
+    }
+
+    // Persist deletion to database immediately
+    try {
+      const { error } = await supabase
+        .from('provider_requirements_config')
+        .upsert({
+          provider_type: selectedProviderType,
+          required_fields: updated,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'provider_type'
+        });
+
+      if (error) throw error;
+      showToast('Requirement removed and saved.');
+      addAuditLog('REMOVED REQUIREMENT', `Provider Type: ${selectedProviderType}`);
+    } catch (err: any) {
+      console.error('Error saving after removal:', err);
+      showToast(`Failed to save: ${err.message || 'database error'}`);
     }
   };
 
@@ -484,7 +566,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     setEditReqRequired(item.required);
   };
 
-  const handleSaveEditRequirement = (idx: number) => {
+  const handleSaveEditRequirement = async (idx: number) => {
     if (!editReqName.trim()) {
       showToast('Requirement title cannot be empty.');
       return;
@@ -497,7 +579,26 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     };
     setReqItems(updated);
     setEditingReqIndex(null);
-    showToast('Requirement updated in list. Click "Save Requirements Config" to persist to DB.');
+
+    // Persist to database immediately
+    try {
+      const { error } = await supabase
+        .from('provider_requirements_config')
+        .upsert({
+          provider_type: selectedProviderType,
+          required_fields: updated,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'provider_type'
+        });
+
+      if (error) throw error;
+      showToast('Requirement saved successfully!');
+      addAuditLog('UPDATED REQUIREMENTS CONFIG', `Provider Type: ${selectedProviderType}`);
+    } catch (err: any) {
+      console.error('Error saving requirement edit:', err);
+      showToast(`Failed to save: ${err.message || 'database error'}`);
+    }
   };
 
 
@@ -1986,6 +2087,53 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                 <div className="bg-[#F9F5EF]/10 p-4 border border-[#D9D2C5] rounded-xl space-y-3 h-fit">
                   <span className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Add Document Requirement</span>
                   <form onSubmit={handleAddRequirement} className="space-y-3">
+                    {/* Provider Type Multi-Select Checkboxes */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-2">Apply to Provider Types</label>
+                      <div className="space-y-1.5">
+                        {([
+                          { value: 'public', label: 'Government' },
+                          { value: 'private', label: 'Private Partner' },
+                          { value: 'ngo', label: 'NGO / Foundation' },
+                        ] as const).map(({ value, label }) => (
+                          <label key={value} className="flex items-center gap-2.5 cursor-pointer group">
+                            <div className="relative">
+                              <input
+                                type="checkbox"
+                                checked={newReqProviderTypes.includes(value)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setNewReqProviderTypes(prev => [...prev, value]);
+                                  } else {
+                                    setNewReqProviderTypes(prev => prev.filter(t => t !== value));
+                                  }
+                                }}
+                                className="w-4 h-4 accent-[#2D5941] cursor-pointer rounded"
+                              />
+                            </div>
+                            <span className={`text-xs font-semibold transition-colors ${
+                              newReqProviderTypes.includes(value) ? 'text-[#2D5941]' : 'text-[#6C6C70] group-hover:text-[#1C1C1E]'
+                            }`}>{label}</span>
+                            {newReqProviderTypes.includes(value) && (
+                              <span className="ml-auto text-[9px] bg-[#2D5941]/10 text-[#2D5941] px-1.5 py-0.5 rounded-full font-bold">✓ Selected</span>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                      {newReqProviderTypes.length === 0 && (
+                        <p className="text-[9px] text-[#B34040] mt-1">Select at least one provider type.</p>
+                      )}
+                      {newReqProviderTypes.length > 0 && (
+                        <p className="text-[9px] text-[#8E8E93] mt-1">
+                          Adding to: <span className="font-bold text-[#2D5941]">
+                            {newReqProviderTypes.map(t =>
+                              t === 'public' ? 'Gov\'t' : t === 'private' ? 'Private' : 'NGO'
+                            ).join(', ')}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
                     <div>
                       <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">Document Title</label>
                       <input
@@ -2018,9 +2166,10 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                     </div>
                     <button
                       type="submit"
-                      className="w-full py-2 bg-[#2D5941]/10 hover:bg-[#2D5941]/20 text-[#2D5941] hover:text-[#1A3C2E] border border-solid border-[#2D5941]/30 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      disabled={newReqProviderTypes.length === 0}
+                      className="w-full py-2 bg-[#2D5941]/10 hover:bg-[#2D5941]/20 text-[#2D5941] hover:text-[#1A3C2E] border border-solid border-[#2D5941]/30 rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      + Add Item
+                      + Add to {newReqProviderTypes.length === 3 ? 'All Types' : newReqProviderTypes.length === 0 ? '(Select a Type)' : newReqProviderTypes.map(t => t === 'public' ? 'Gov\'t' : t === 'private' ? 'Private' : 'NGO').join(' & ')}
                     </button>
                   </form>
                 </div>
