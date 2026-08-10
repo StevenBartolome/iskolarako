@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/app_components.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 
 class DashboardScreen extends StatefulWidget {
@@ -22,6 +23,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'LGU-Funded',
     'Private/NGO'
   ];
+
+  String _scholarName = 'SCHOLAR';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadScholarName();
+  }
+
+  Future<void> _loadScholarName() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      try {
+        final data = await Supabase.instance.client
+            .from('scholar')
+            .select('first_name')
+            .eq('user_id', user.id)
+            .single();
+        if (mounted) {
+          setState(() {
+            _scholarName = (data['first_name'] as String).toUpperCase();
+          });
+        }
+      } catch (_) {
+        // Fallback to default
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(width: 6),
             Text(
-              'MAGANDANG UMAGA, JUAN',
+              'MAGANDANG UMAGA, $_scholarName',
               style: GoogleFonts.inter(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,

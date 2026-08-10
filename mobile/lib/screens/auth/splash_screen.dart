@@ -4,7 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
-
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -41,7 +42,12 @@ class _SplashScreenState extends State<SplashScreen>
     // Auto navigate after 2.5 seconds
     _timer = Timer(const Duration(milliseconds: 2500), () {
       if (mounted) {
-        Navigator.pushReplacementNamed(context, AppRouter.home);
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session != null) {
+          Navigator.pushReplacementNamed(context, AppRouter.home);
+        } else {
+          Navigator.pushReplacementNamed(context, AppRouter.login);
+        }
       }
     });
   }
@@ -55,7 +61,12 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _proceedNow() {
     _timer?.cancel();
-    Navigator.pushReplacementNamed(context, AppRouter.home);
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      Navigator.pushReplacementNamed(context, AppRouter.home);
+    } else {
+      Navigator.pushReplacementNamed(context, AppRouter.login);
+    }
   }
 
   @override
@@ -128,7 +139,6 @@ class _SplashScreenState extends State<SplashScreen>
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Inner Gold Ring Accent
                             Container(
                               width: 100,
                               height: 100,
@@ -140,10 +150,13 @@ class _SplashScreenState extends State<SplashScreen>
                                 ),
                               ),
                             ),
-                            const Icon(
-                              LucideIcons.graduationCap,
-                              size: 54,
-                              color: Colors.white,
+                            SvgPicture.asset(
+                              'assets/logo/iskolarakologo-notext.svg',
+                              height: 52,
+                              colorFilter: const ColorFilter.mode(
+                                Colors.white,
+                                BlendMode.srcIn,
+                              ),
                             ),
                           ],
                         ),
