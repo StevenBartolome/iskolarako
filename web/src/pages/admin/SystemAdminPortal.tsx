@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import LogoSvg from '@/assets/logo/iskolarakologo.svg';
+import { supabase } from '@/services/supabaseClient';
+
 
 interface SystemAdminPortalProps {
   onLogout: () => void;
+  showWelcome?: boolean;
 }
 
 type AdminTab =
@@ -79,9 +83,58 @@ interface AuditLogEntry {
   ip: string;
 }
 
-export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }) => {
+interface RequirementItem {
+  name: string;
+  description: string;
+  required: boolean;
+}
+
+
+export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, showWelcome }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  
+  // Profile state loaded dynamically from Supabase
+  const [profile, setProfile] = useState<{
+    firstName: string;
+    lastName: string;
+    role: string;
+  } | null>(null);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: userData, error: userErr } = await supabase
+          .from('users')
+          .select('first_name, last_name, role')
+          .eq('id', user.id)
+          .single();
+
+        if (userErr || !userData) return;
+
+        setProfile({
+          firstName: userData.first_name,
+          lastName: userData.last_name,
+          role: userData.role
+        });
+
+        // Show welcome toast dynamically only on successful login flow, not on page reload session restores
+        if (showWelcome) {
+          setToastMessage(`Welcome back, ${userData.first_name}!`);
+          setTimeout(() => setToastMessage(null), 3000);
+        }
+      } catch (err) {
+        console.error('Error fetching admin profile:', err);
+      }
+    };
+
+    fetchProfile();
+  }, [showWelcome]);
+
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({
     operations: false,
@@ -211,11 +264,243 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }
   ]);
 
   // System Config States
-  const [categories, setCategories] = useState(['STEM', 'Engineering & IT', 'General Academic', 'Arts', 'Sports', 'Agriculture']);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [announcementTarget, setAnnouncementTarget] = useState<'Students' | 'Providers' | 'Both'>('Both');
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementBody, setAnnouncementBody] = useState('');
+
+  // Fetch categories from the database on tab settings or mount
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('scholarship_categories')
+        .select('id, name')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching categories:', error);
+        return;
+      }
+      setCategories(data || []);
+    } catch (err) {
+      console.error('Error in fetchCategories:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      fetchCategories();
+    }
+  }, [activeTab]);
+
+  // Category Multi-Add and Editing States
+  const [showAddCategoryForm, setShowAddCategoryForm] = useState(false);
+  const [categoryInputs, setCategoryInputs] = useState<string[]>(['']);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState<string>('');
+
+  // Requirement Editing States
+  const [editingReqIndex, setEditingReqIndex] = useState<number | null>(null);
+  const [editReqName, setEditReqName] = useState<string>('');
+  const [editReqDesc, setEditReqDesc] = useState<string>('');
+  const [editReqRequired, setEditReqRequired] = useState<boolean>(true);
+
+  // Provider Requirements Customization States
+  const [selectedProviderType, setSelectedProviderType] = useState<string>('public');
+  const [reqItems, setReqItems] = useState<RequirementItem[]>([]);
+  const [newReqName, setNewReqName] = useState('');
+  const [newReqDesc, setNewReqDesc] = useState('');
+  const [newReqRequired, setNewReqRequired] = useState(true);
+  const [isSavingReq, setIsSavingReq] = useState(false);
+
+
+  // Load requirements configurations from Supabase or use defaults
+  const fetchRequirementsConfig = async (type: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('provider_requirements_config')
+        .select('required_fields')
+        .eq('provider_type', type)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching requirements config:', error);
+        return;
+      }
+
+      if (data && data.required_fields && Array.isArray(data.required_fields)) {
+        setReqItems(data.required_fields as RequirementItem[]);
+      } else {
+        // Fallback default templates
+        if (type === 'public') {
+          setReqItems([
+            { name: 'Government Charter or Mandate', description: 'Copy of the official establishing act/mandate', required: true },
+            { name: 'Representative ID', description: 'Valid government ID of the focal person', required: true }
+          ]);
+        } else if (type === 'private') {
+          setReqItems([
+            { name: 'SEC Registration Certificate', description: 'SEC Certificate of Registration', required: true },
+            { name: 'BIR Form 2303', description: 'Certificate of Registration with BIR', required: true },
+            { name: 'Business Permit', description: 'Current year Mayor\'s Business Permit', required: true }
+          ]);
+        } else {
+          setReqItems([
+            { name: 'SEC or DTI Registration Certificate', description: 'Official corporate registration copy', required: true },
+            { name: 'BIR Certificate / Tax Exemption', description: 'Tax exemption certificate if applicable', required: false }
+          ]);
+        }
+      }
+    } catch (err) {
+      console.error('Error in fetchRequirementsConfig:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      fetchRequirementsConfig(selectedProviderType);
+    }
+  }, [activeTab, selectedProviderType]);
+
+  const handleSaveRequirements = async () => {
+    setIsSavingReq(true);
+    try {
+      const { error } = await supabase
+        .from('provider_requirements_config')
+        .upsert({
+          provider_type: selectedProviderType,
+          required_fields: reqItems,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'provider_type'
+        });
+
+      if (error) throw error;
+      showToast('Requirements configuration saved successfully!');
+      addAuditLog('UPDATED REQUIREMENTS CONFIG', `Provider Type: ${selectedProviderType}`);
+    } catch (err: any) {
+      console.error('Error saving requirements:', err);
+      showToast(`Error: ${err.message || 'Failed to save configuration.'}`);
+    } finally {
+      setIsSavingReq(false);
+    }
+  };
+
+  const handleAddRequirement = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newReqName.trim()) return;
+    const item: RequirementItem = {
+      name: newReqName.trim(),
+      description: newReqDesc.trim(),
+      required: newReqRequired
+    };
+    setReqItems(prev => [...prev, item]);
+    setNewReqName('');
+    setNewReqDesc('');
+    setNewReqRequired(true);
+  };
+
+  const handleRemoveRequirement = (index: number) => {
+    setReqItems(prev => prev.filter((_, idx) => idx !== index));
+    if (editingReqIndex === index) {
+      setEditingReqIndex(null);
+    }
+  };
+
+  const handleSaveMultipleCategories = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const allNames: string[] = [];
+    categoryInputs.forEach(input => {
+      input.split(',').forEach(part => {
+        const trimmed = part.trim();
+        if (trimmed && !allNames.includes(trimmed) && !categories.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+          allNames.push(trimmed);
+        }
+      });
+    });
+
+    if (allNames.length === 0) {
+      showToast('Please enter at least one new category name.');
+      return;
+    }
+
+    try {
+      const recordsToInsert = allNames.map(name => ({ name }));
+      const { data, error } = await supabase
+        .from('scholarship_categories')
+        .insert(recordsToInsert)
+        .select();
+
+      if (error) throw error;
+
+      if (data) {
+        setCategories(prev => [...prev, ...data]);
+        addAuditLog('ADDED SCHOLARSHIP CATEGORIES', allNames.join(', '));
+        showToast(`Added ${data.length} new category(ies).`);
+      }
+      setCategoryInputs(['']);
+      setShowAddCategoryForm(false);
+    } catch (err: any) {
+      console.error('Error saving categories:', err);
+      showToast(`Failed to save categories: ${err.message || 'database error'}`);
+    }
+  };
+
+  const handleStartEditCategory = (cat: { id: string; name: string }) => {
+    setEditingCategoryId(cat.id);
+    setEditingCategoryName(cat.name);
+  };
+
+  const handleSaveEditCategory = async (id: string) => {
+    const trimmed = editingCategoryName.trim();
+    if (!trimmed) {
+      showToast('Category name cannot be empty.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('scholarship_categories')
+        .update({ name: trimmed })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setCategories(prev => prev.map(c => c.id === id ? { ...c, name: trimmed } : c));
+      addAuditLog('UPDATED SCHOLARSHIP CATEGORY', trimmed);
+      showToast(`Category updated to "${trimmed}".`);
+      setEditingCategoryId(null);
+    } catch (err: any) {
+      console.error('Error updating category:', err);
+      showToast(`Failed to update category: ${err.message || 'database error'}`);
+    }
+  };
+
+  // Requirement Edit Handlers
+  const handleStartEditRequirement = (idx: number, item: RequirementItem) => {
+    setEditingReqIndex(idx);
+    setEditReqName(item.name);
+    setEditReqDesc(item.description || '');
+    setEditReqRequired(item.required);
+  };
+
+  const handleSaveEditRequirement = (idx: number) => {
+    if (!editReqName.trim()) {
+      showToast('Requirement title cannot be empty.');
+      return;
+    }
+    const updated = [...reqItems];
+    updated[idx] = {
+      name: editReqName.trim(),
+      description: editReqDesc.trim(),
+      required: editReqRequired
+    };
+    setReqItems(updated);
+    setEditingReqIndex(null);
+    showToast('Requirement updated in list. Click "Save Requirements Config" to persist to DB.');
+  };
+
+
 
   const [adminsList, setAdminsList] = useState([
     { id: 1, username: 'admin01', role: 'Super Admin', status: 'Active' },
@@ -332,17 +617,25 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }
     );
   };
 
-  const handleAddCategory = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      const val = e.currentTarget.value.trim();
-      if (val && !categories.includes(val)) {
-        setCategories([...categories, val]);
-        addAuditLog(`ADDED SCHOLARSHIP CATEGORY`, val);
-        showToast(`Category "${val}" added.`);
-        e.currentTarget.value = '';
-      }
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    try {
+      const { error } = await supabase
+        .from('scholarship_categories')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setCategories(prev => prev.filter(c => c.id !== id));
+      addAuditLog(`DELETED SCHOLARSHIP CATEGORY`, name);
+      showToast(`Category "${name}" deleted.`);
+    } catch (err: any) {
+      console.error('Error deleting category:', err);
+      showToast(`Failed to delete category: ${err.message || 'database error'}`);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-[#F9F5EF] flex font-sans relative">
@@ -362,9 +655,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }
           {/* Sidebar Header */}
           <div className={`flex items-center justify-between mb-8 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#2D5941] flex items-center justify-center text-white font-bold text-lg shadow-md font-serif shrink-0">
-                IA
-              </div>
+              <img src={LogoSvg} alt="IskolarAko Logo" className="w-10 h-10 object-contain shrink-0" />
               {!isCollapsed && (
                 <div>
                   <h2 className="text-lg font-bold font-serif leading-none tracking-tight">IskolarAko</h2>
@@ -471,10 +762,16 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }
           {!isCollapsed ? (
             <>
               <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10">
-                <div className="w-8 h-8 rounded-full bg-[#2D5941] flex items-center justify-center font-bold text-white text-xs">AD</div>
+                <div className="w-8 h-8 rounded-full bg-[#2D5941] flex items-center justify-center font-bold text-white text-xs shrink-0">
+                  {profile ? `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`.toUpperCase() : 'AD'}
+                </div>
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-semibold truncate text-white">admin01</h4>
-                  <p className="text-[10px] text-[#9BA89F] truncate">Super Admin</p>
+                  <h4 className="text-xs font-semibold truncate text-white">
+                    {profile ? `${profile.firstName} ${profile.lastName}` : 'Loading...'}
+                  </h4>
+                  <p className="text-[10px] text-[#9BA89F] truncate">
+                    {profile ? (profile.role === 'admin' ? 'System Admin' : profile.role) : 'Loading...'}
+                  </p>
                 </div>
               </div>
               <button
@@ -486,7 +783,12 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }
             </>
           ) : (
             <>
-              <div className="w-8 h-8 rounded-full bg-[#2D5941] flex items-center justify-center font-bold text-white text-xs" title="admin01 - Super Admin">AD</div>
+              <div 
+                className="w-8 h-8 rounded-full bg-[#2D5941] flex items-center justify-center font-bold text-white text-xs shrink-0" 
+                title={profile ? `${profile.firstName} ${profile.lastName} - System Admin` : 'Admin'}
+              >
+                {profile ? `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`.toUpperCase() : 'AD'}
+              </div>
               <button
                 onClick={onLogout}
                 className="text-[#9BA89F] hover:text-white cursor-pointer border-0 bg-transparent flex items-center justify-center"
@@ -499,6 +801,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }
             </>
           )}
         </div>
+
       </aside>
 
       {/* Main Content Area */}
@@ -1360,25 +1663,152 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Categories */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-[#1C1C1E] uppercase">Scholarship Categories</h4>
-                <div className="flex flex-wrap gap-2">
-                  {categories.map(cat => (
-                    <span key={cat} className="px-3 py-1 rounded-full bg-[#EDE8DE] text-xs font-semibold text-[#1C1C1E]">
-                      {cat}
-                    </span>
-                  ))}
+              <div className="space-y-3 text-left">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-[#1C1C1E] uppercase">Scholarship Categories</h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCategoryForm(!showAddCategoryForm)}
+                    className="px-3 py-1 bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold rounded-lg transition-all cursor-pointer border-0 flex items-center gap-1 shadow-sm"
+                  >
+                    {showAddCategoryForm ? '✕ Close Form' : '+ Add Categories'}
+                  </button>
                 </div>
-                <input
-                  type="text"
-                  placeholder="Press Enter to add new category..."
-                  onKeyDown={handleAddCategory}
-                  className="w-full max-w-xs px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs focus:outline-none bg-white mt-2"
-                />
+
+                {/* Categories Chips with Inline Editing */}
+                <div className="flex flex-wrap gap-2">
+                  {categories.length === 0 ? (
+                    <span className="text-xs text-[#8E8E93] italic">No categories loaded. Add one below!</span>
+                  ) : (
+                    categories.map(cat => (
+                      <div key={cat.id} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EDE8DE] text-xs font-semibold text-[#1C1C1E] border border-solid border-[#D9D2C5]">
+                        {editingCategoryId === cat.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={editingCategoryName}
+                              onChange={(e) => setEditingCategoryName(e.target.value)}
+                              className="px-2 py-0.5 rounded border border-[#2D5941] text-xs bg-white focus:outline-none w-28"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEditCategory(cat.id);
+                                if (e.key === 'Escape') setEditingCategoryId(null);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditCategory(cat.id)}
+                              className="text-[#2D5941] hover:text-[#1A3C2E] font-bold text-xs cursor-pointer border-0 bg-transparent p-0"
+                              title="Save"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCategoryId(null)}
+                              className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-xs cursor-pointer border-0 bg-transparent p-0"
+                              title="Cancel"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span>{cat.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditCategory(cat)}
+                              className="w-3.5 h-3.5 rounded-full hover:bg-[#2D5941]/20 text-[#2D5941] flex items-center justify-center text-[9px] cursor-pointer transition-all border-0 p-0"
+                              title={`Edit ${cat.name}`}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                              className="w-3.5 h-3.5 rounded-full bg-[#B34040]/10 hover:bg-[#B34040] text-[#B34040] hover:text-white flex items-center justify-center text-[8px] font-bold cursor-pointer transition-all border-0 p-0"
+                              title={`Delete ${cat.name}`}
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Multiple Category Addition Form */}
+                {showAddCategoryForm && (
+                  <form onSubmit={handleSaveMultipleCategories} className="p-4 bg-[#F9F5EF] border border-[#D9D2C5] rounded-xl space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#1A3C2E] uppercase">Add New Categories</span>
+                      <span className="text-[10px] text-[#6C6C70]">Separate multiple with commas or add fields</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {categoryInputs.map((val, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder={`Category ${idx + 1} (e.g. STEM or Arts, Sports)`}
+                            value={val}
+                            onChange={(e) => {
+                              const updated = [...categoryInputs];
+                              updated[idx] = e.target.value;
+                              setCategoryInputs(updated);
+                            }}
+                            className="flex-1 px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs focus:outline-none bg-white"
+                          />
+                          {categoryInputs.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCategoryInputs(categoryInputs.filter((_, i) => i !== idx));
+                              }}
+                              className="text-[#B34040] hover:text-[#8E2F2F] text-xs font-bold p-1 border-0 bg-transparent cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setCategoryInputs([...categoryInputs, ''])}
+                        className="text-xs font-semibold text-[#2D5941] hover:underline cursor-pointer border-0 bg-transparent"
+                      >
+                        + Add Another Field
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddCategoryForm(false);
+                            setCategoryInputs(['']);
+                          }}
+                          className="px-3 py-1.5 text-xs text-[#6C6C70] hover:text-[#1C1C1E] cursor-pointer border-0 bg-transparent font-medium"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-1.5 bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold rounded-xl cursor-pointer border-0 shadow-sm"
+                        >
+                          Save Categories
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
               </div>
 
               {/* Maintenance toggle */}
-              <div className="space-y-4">
+              <div className="space-y-4 text-left">
                 <h4 className="text-xs font-bold text-[#1C1C1E] uppercase">System State</h4>
                 <div className="flex items-center justify-between p-4 rounded-xl border border-[#D9D2C5] bg-[#F9F5EF]/20">
                   <div>
@@ -1400,6 +1830,222 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout }
                     {maintenanceMode ? 'ACTIVE' : 'INACTIVE'}
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Provider Requirements Config Section */}
+            <div className="border-t border-[#D9D2C5] pt-6 mt-6 space-y-4 text-left">
+              <div>
+                <h4 className="text-sm font-bold text-[#1A3C2E] font-serif mb-1">Provider Verification Documents Customization</h4>
+                <p className="text-xs text-[#6C6C70]">Configure what registration documents and credentials scholarship organizations must submit depending on their category.</p>
+              </div>
+
+              {/* Provider Type Selector */}
+              <div className="flex bg-[#F9F5EF] p-1 rounded-xl border border-solid border-[#D9D2C5] max-w-md">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProviderType('public')}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer border-0 ${
+                    selectedProviderType === 'public'
+                      ? 'bg-[#2D5941] text-white shadow-sm'
+                      : 'text-[#6c757d] hover:text-[#2D5941] bg-transparent'
+                  }`}
+                >
+                  Government
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProviderType('private')}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer border-0 ${
+                    selectedProviderType === 'private'
+                      ? 'bg-[#2D5941] text-white shadow-sm'
+                      : 'text-[#6c757d] hover:text-[#2D5941] bg-transparent'
+                  }`}
+                >
+                  Private Partner
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProviderType('ngo')}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer border-0 ${
+                    selectedProviderType === 'ngo'
+                      ? 'bg-[#2D5941] text-white shadow-sm'
+                      : 'text-[#6c757d] hover:text-[#2D5941] bg-transparent'
+                  }`}
+                >
+                  NGO / Foundation
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+                {/* Requirements List (Col Span 2) */}
+                <div className="lg:col-span-2 space-y-3">
+                  <span className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Current Configured Documents</span>
+                  {reqItems.length === 0 ? (
+                    <div className="text-center py-8 rounded-xl border border-dashed border-[#D9D2C5] text-xs text-[#8E8E93]">
+                      No requirements configured yet. Add some below!
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                      {reqItems.map((item, idx) => (
+                        <div key={idx} className="p-3.5 bg-[#F9F5EF]/30 border border-[#D9D2C5] rounded-xl hover:border-[#2D5941] transition-all">
+                          {editingReqIndex === idx ? (
+                            /* Inline Editing Mode for Requirement */
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">Document Title</label>
+                                <input
+                                  type="text"
+                                  value={editReqName}
+                                  onChange={(e) => setEditReqName(e.target.value)}
+                                  className="w-full px-3 py-1.5 rounded-lg border border-[#2D5941] text-xs focus:outline-none bg-white font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">Description</label>
+                                <input
+                                  type="text"
+                                  value={editReqDesc}
+                                  onChange={(e) => setEditReqDesc(e.target.value)}
+                                  className="w-full px-3 py-1.5 rounded-lg border border-[#D9D2C5] text-xs focus:outline-none bg-white"
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 text-xs text-[#1C1C1E] font-semibold cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={editReqRequired}
+                                    onChange={(e) => setEditReqRequired(e.target.checked)}
+                                    className="w-3.5 h-3.5 text-[#2D5941] rounded"
+                                  />
+                                  Required Document
+                                </label>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingReqIndex(null)}
+                                    className="px-3 py-1 text-xs text-[#6C6C70] hover:text-[#1C1C1E] border-0 bg-transparent cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveEditRequirement(idx)}
+                                    className="px-3 py-1 bg-[#2D5941] text-white text-xs font-bold rounded-lg border-0 cursor-pointer"
+                                  >
+                                    Save Edit
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Normal View Mode for Requirement */
+                            <div className="flex items-center justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-[#1C1C1E]">{item.name}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                    item.required ? 'bg-[#B34040]/10 text-[#B34040]' : 'bg-[#EDE8DE] text-[#6C6C70]'
+                                  }`}>
+                                    {item.required ? 'REQUIRED' : 'OPTIONAL'}
+                                  </span>
+                                </div>
+                                {item.description && (
+                                  <p className="text-[10px] text-[#6C6C70] truncate mt-0.5">{item.description}</p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditRequirement(idx, item)}
+                                  className="text-[#2D5941] hover:bg-[#2D5941]/10 p-1.5 rounded-lg cursor-pointer transition-all border-0 bg-transparent"
+                                  title="Edit document requirement"
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveRequirement(idx)}
+                                  className="text-[#B34040] hover:text-[#8E2F2F] hover:bg-[#B34040]/10 p-1.5 rounded-lg cursor-pointer transition-all border-0 bg-transparent"
+                                  title="Remove document"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add New Requirement form */}
+                <div className="bg-[#F9F5EF]/10 p-4 border border-[#D9D2C5] rounded-xl space-y-3 h-fit">
+                  <span className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Add Document Requirement</span>
+                  <form onSubmit={handleAddRequirement} className="space-y-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">Document Title</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. SEC Registration"
+                        value={newReqName}
+                        onChange={(e) => setNewReqName(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs focus:outline-none bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">Description / Instruction</label>
+                      <textarea
+                        rows={2}
+                        placeholder="e.g. Must be verified and updated copy"
+                        value={newReqDesc}
+                        onChange={(e) => setNewReqDesc(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs focus:outline-none bg-white resize-none"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-[#EDE8DE]/40">
+                      <span className="text-[10px] font-bold text-[#1C1C1E] uppercase">Submission Required</span>
+                      <input
+                        type="checkbox"
+                        checked={newReqRequired}
+                        onChange={(e) => setNewReqRequired(e.target.checked)}
+                        className="w-4 h-4 text-[#2D5941] focus:ring-[#2D5941] border-[#D9D2C5] rounded cursor-pointer"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full py-2 bg-[#2D5941]/10 hover:bg-[#2D5941]/20 text-[#2D5941] hover:text-[#1A3C2E] border border-solid border-[#2D5941]/30 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      + Add Item
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  disabled={isSavingReq}
+                  onClick={handleSaveRequirements}
+                  className="px-6 py-2.5 bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all disabled:opacity-50 border-0 flex items-center gap-2"
+                >
+                  {isSavingReq ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Requirements Config'
+                  )}
+                </button>
               </div>
             </div>
           </div>

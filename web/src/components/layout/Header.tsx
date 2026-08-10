@@ -1,19 +1,31 @@
 import React from 'react';
 import { APP_INFO } from '@/constants/theme';
 import { Button } from '@/components/common/Button';
+import LogoSvg from '@/assets/logo/iskolarakologo.svg';
 
 interface HeaderProps {
   onSignInClick?: () => void;
+  onHomeClick?: () => void;
+  onAboutClick?: () => void;
+  onImpactClick?: () => void;
+  onScholarshipsClick?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
+export const Header: React.FC<HeaderProps> = ({ 
+  onSignInClick, 
+  onHomeClick, 
+  onAboutClick,
+  onImpactClick,
+  onScholarshipsClick
+}) => {
   return (
     <header className="sticky top-0 z-50 bg-[#F9F5EF]/90 backdrop-blur-md border-b border-[#D9D2C5]">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#1A3C2E] flex items-center justify-center text-white font-bold text-lg shadow-md font-serif">
-            IA
-          </div>
+        <div 
+          className="flex items-center gap-3 cursor-pointer select-none"
+          onClick={onHomeClick}
+        >
+          <img src={LogoSvg} alt="IskolarAko Logo" className="w-14 h-14 object-contain" />
           <div>
             <h1 className="text-xl font-bold text-[#1A3C2E] tracking-tight font-serif">
               {APP_INFO.name}
@@ -23,15 +35,34 @@ export const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
         </div>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-[#1C1C1E]">
-          <a href="#scholarships" className="hover:text-[#2D5941] transition-colors">
+          <button 
+            type="button"
+            onClick={onHomeClick} 
+            className="hover:text-[#2D5941] transition-colors border-0 bg-transparent cursor-pointer font-medium text-sm text-[#1C1C1E] p-0"
+          >
+            Home
+          </button>
+          <button 
+            type="button"
+            onClick={onScholarshipsClick} 
+            className="hover:text-[#2D5941] transition-colors border-0 bg-transparent cursor-pointer font-medium text-sm text-[#1C1C1E] p-0"
+          >
             Scholarships
-          </a>
-          <a href="#stats" className="hover:text-[#2D5941] transition-colors">
+          </button>
+          <button 
+            type="button"
+            onClick={onImpactClick} 
+            className="hover:text-[#2D5941] transition-colors border-0 bg-transparent cursor-pointer font-medium text-sm text-[#1C1C1E] p-0"
+          >
             Impact
-          </a>
-          <a href="#about" className="hover:text-[#2D5941] transition-colors">
+          </button>
+          <button 
+            type="button"
+            onClick={onAboutClick} 
+            className="hover:text-[#2D5941] transition-colors border-0 bg-transparent cursor-pointer font-medium text-sm text-[#1C1C1E] p-0"
+          >
             About
-          </a>
+          </button>
         </nav>
 
         <div className="flex items-center gap-3">
@@ -46,4 +77,3 @@ export const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
     </header>
   );
 };
-

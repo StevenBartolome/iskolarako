@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
+import LogoSvg from '@/assets/logo/iskolarakologo.svg';
+import { supabase } from '@/services/supabaseClient';
+
 
 interface ProviderPortalProps {
   onLogout: () => void;
+  showWelcome?: boolean;
 }
 
 type TabType = 'dashboard' | 'applicants' | 'programs' | 'disbursements' | 'announcements' | 'reports';
@@ -55,10 +59,68 @@ interface ScholarAward {
   dateAwarded: string;
 }
 
-export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout }) => {
+export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWelcome }) => {
   const [activeTab, setActiveTab] = useState<TabType>('programs');
+  
+  // Profile state loaded dynamically from Supabase
+  const [profile, setProfile] = useState<{
+    firstName: string;
+    lastName: string;
+    role: string;
+    providerName: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Fetch user record
+        const { data: userData, error: userErr } = await supabase
+          .from('users')
+          .select('first_name, last_name, role, provider_id')
+          .eq('id', user.id)
+          .single();
+
+        if (userErr || !userData) return;
+
+        // Fetch provider name if exists
+        let provName = 'Public Provider';
+        if (userData.provider_id) {
+          const { data: provData } = await supabase
+            .from('provider')
+            .select('name')
+            .eq('id', userData.provider_id)
+            .single();
+          if (provData) {
+            provName = provData.name;
+          }
+        }
+
+        setProfile({
+          firstName: userData.first_name,
+          lastName: userData.last_name,
+          role: userData.role,
+          providerName: provName
+        });
+
+        // Show welcome toast dynamically only on successful login flow, not on page reload session restores
+        if (showWelcome) {
+          setToastMessage(`Welcome back, ${userData.first_name}!`);
+          setTimeout(() => setToastMessage(null), 3000);
+        }
+      } catch (err) {
+        console.error('Error fetching provider profile:', err);
+      }
+    };
+
+
+    fetchProfile();
+  }, [showWelcome]);
 
   // Search & filter states
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
 
@@ -660,9 +722,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout }) => {
           {/* Sidebar Header */}
           <div className={`flex items-center justify-between mb-8 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center text-[#1A3C2E] font-bold text-lg shadow-md font-serif shrink-0">
-                IA
-              </div>
+              <img src={LogoSvg} alt="IskolarAko Logo" className="w-10 h-10 object-contain shrink-0" />
               {!isCollapsed && (
                 <div>
                   <h1 className="text-xl font-bold font-serif text-[#E8A838] tracking-wide leading-none">ISKOLARAKO</h1>
@@ -741,10 +801,16 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout }) => {
           {!isCollapsed ? (
             <>
               <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-white/5 border border-white/10">
-                <div className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center font-bold text-[#1A3C2E] shrink-0">DS</div>
+                <div className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center font-bold text-[#1A3C2E] shrink-0">
+                  {profile ? `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`.toUpperCase() : 'U'}
+                </div>
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-sm font-semibold truncate text-white">DOST-SEI</h4>
-                  <p className="text-xs text-[#9BA89F] truncate">Public Provider</p>
+                  <h4 className="text-sm font-semibold truncate text-white">
+                    {profile ? `${profile.firstName} ${profile.lastName}` : 'Loading...'}
+                  </h4>
+                  <p className="text-xs text-[#9BA89F] truncate">
+                    {profile ? profile.providerName : 'Loading...'}
+                  </p>
                 </div>
               </div>
               <button
@@ -757,7 +823,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout }) => {
             </>
           ) : (
             <>
-              <div className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center font-bold text-[#1A3C2E] shrink-0" title="DOST-SEI - Public Provider">DS</div>
+              <div 
+                className="w-10 h-10 rounded-xl bg-[#E8A838] flex items-center justify-center font-bold text-[#1A3C2E] shrink-0" 
+                title={profile ? `${profile.firstName} ${profile.lastName} - ${profile.providerName}` : 'User'}
+              >
+                {profile ? `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`.toUpperCase() : 'U'}
+              </div>
               <button
                 onClick={onLogout}
                 className="text-[#9BA89F] hover:text-white cursor-pointer border-0 bg-transparent text-sm flex items-center justify-center"
@@ -770,6 +841,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout }) => {
             </>
           )}
         </div>
+
       </aside>
 
       {/* Main Content */}

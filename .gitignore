@@ -3,6 +3,8 @@ web/node_modules/
 web/dist/
 web/.env.local
 web/.env.*.local
+.env
+.env.*
 
 # Flutter / Dart
 mobile/.dart_tool/
