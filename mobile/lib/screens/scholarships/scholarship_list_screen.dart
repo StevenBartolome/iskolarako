@@ -4,6 +4,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/app_components.dart';
+import 'package:iskoako/utils/eligibility_helper.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 
 class ScholarshipListScreen extends StatefulWidget {
@@ -19,60 +21,116 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
     'All', 'Government', 'NGO / Private', 'Merit', 'Need-based', 'STEM'
   ];
 
-  static const List<_ScholarshipData> _items = [
-    _ScholarshipData(
-      title: 'DOST-SEI Undergraduate Scholarship',
-      provider: 'Dept. of Science & Technology',
-      amount: '₱40,000',
-      period: 'per semester',
-      tag: 'Government',
-      tagType: StatusType.approved,
-      deadlineLabel: '5 days left',
-      isUrgent: true,
-      slots: 72,
-      totalSlots: 100,
-    ),
-    _ScholarshipData(
-      title: 'Ayala Foundation Excellence Grant',
-      provider: 'Ayala Foundation, Inc.',
-      amount: '₱60,000',
-      period: 'per year',
-      tag: 'NGO / Private',
-      tagType: StatusType.pending,
-      deadlineLabel: 'Open · Dec 31',
-      isUrgent: false,
-    ),
-    _ScholarshipData(
-      title: 'QC Academic Achievement Award',
-      provider: 'Quezon City Government',
-      amount: '₱25,000',
-      period: 'per semester',
-      tag: 'Government',
-      tagType: StatusType.released,
-      deadlineLabel: 'Open · No deadline',
-      isUrgent: false,
-    ),
-    _ScholarshipData(
-      title: 'SM Foundation Scholars Program',
-      provider: 'SM Foundation',
-      amount: '₱30,000',
-      period: 'per year',
-      tag: 'NGO / Private',
-      tagType: StatusType.pending,
-      deadlineLabel: '18 days left',
-      isUrgent: false,
-    ),
-    _ScholarshipData(
-      title: 'CHED Merit Scholarship Program',
-      provider: 'Commission on Higher Education',
-      amount: '₱22,000',
-      period: 'per semester',
-      tag: 'Government',
-      tagType: StatusType.approved,
-      deadlineLabel: '12 days left',
-      isUrgent: false,
-    ),
-  ];
+  Map<String, dynamic>? _scholarProfile;
+  List<dynamic> _allPrograms = [];
+  List<dynamic> _qualifiedPrograms = [];
+  List<dynamic> _displayedPrograms = [];
+  bool _isProfileComplete = false;
+  bool _isLoading = true;
+  final _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    _searchController.addListener(_applyFilters);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      try {
+        final scholarData = await Supabase.instance.client
+            .from('scholar')
+            .select()
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        final programsData = await Supabase.instance.client
+            .from('scholarship_programs')
+            .select('*, provider:provider_id(*), cycles:application_cycles(*)')
+            .eq('status', 'active');
+
+        if (mounted) {
+          setState(() {
+            _scholarProfile = scholarData;
+            _isProfileComplete = EligibilityHelper.isProfileComplete(scholarData);
+            _allPrograms = programsData;
+
+            if (_isProfileComplete && scholarData != null) {
+              _qualifiedPrograms = _allPrograms
+                  .where((p) => EligibilityHelper.isQualified(scholarData, p))
+                  .toList();
+            } else {
+              _qualifiedPrograms = [];
+            }
+            _applyFilters();
+            _isLoading = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('Error loading list screen: $e');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    }
+  }
+
+  void _applyFilters() {
+    final query = _searchController.text.toLowerCase().trim();
+    List<dynamic> filtered = List.from(_qualifiedPrograms);
+
+    // 1. Chip filter
+    if (_activeFilter > 0) {
+      final filterLabel = _filters[_activeFilter];
+      if (filterLabel == 'Government') {
+        filtered = filtered.where((p) {
+          final prov = p['provider'] as Map<String, dynamic>?;
+          return prov?['provider_type']?.toString().toLowerCase() == 'public';
+        }).toList();
+      } else if (filterLabel == 'NGO / Private') {
+        filtered = filtered.where((p) {
+          final prov = p['provider'] as Map<String, dynamic>?;
+          final type = prov?['provider_type']?.toString().toLowerCase() ?? '';
+          return type == 'private' || type == 'ngo';
+        }).toList();
+      } else if (filterLabel == 'Merit') {
+        filtered = filtered.where((p) => p['scholarship_type']?.toString().toLowerCase().contains('merit') == true).toList();
+      } else if (filterLabel == 'Need-based') {
+        filtered = filtered.where((p) => p['scholarship_type']?.toString().toLowerCase().contains('need') == true).toList();
+      } else if (filterLabel == 'STEM') {
+        filtered = filtered.where((p) {
+          final title = p['title']?.toString().toLowerCase() ?? '';
+          final desc = p['description']?.toString().toLowerCase() ?? '';
+          final category = p['category']?.toString().toLowerCase() ?? '';
+          return category.contains('stem') || title.contains('stem') || desc.contains('stem');
+        }).toList();
+      }
+    }
+
+    // 2. Search query filter
+    if (query.isNotEmpty) {
+      filtered = filtered.where((p) {
+        final title = p['title']?.toString().toLowerCase() ?? '';
+        final prov = p['provider'] as Map<String, dynamic>?;
+        final provName = prov?['name']?.toString().toLowerCase() ?? '';
+        return title.contains(query) || provName.contains(query);
+      }).toList();
+    }
+
+    setState(() {
+      _displayedPrograms = filtered;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -176,6 +234,8 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: TextField(
+                            controller: _searchController,
+                            onChanged: (_) => _applyFilters(),
                             decoration: InputDecoration(
                               hintText: 'Search by name or provider…',
                               hintStyle: GoogleFonts.inter(
@@ -209,7 +269,10 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
               itemBuilder: (_, i) {
                 final active = _activeFilter == i;
                 return GestureDetector(
-                  onTap: () => setState(() => _activeFilter = i),
+                  onTap: () => setState(() {
+                    _activeFilter = i;
+                    _applyFilters();
+                  }),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     padding: const EdgeInsets.symmetric(
@@ -245,7 +308,7 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
             child: Row(
               children: [
                 Text(
-                  '${_items.length} scholarships available',
+                  '${_displayedPrograms.length} scholarships available',
                   style: GoogleFonts.inter(
                       fontSize: 11,
                       color: AppColors.textSecondary,
@@ -256,13 +319,34 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
           ),
           // List
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-              itemCount: _items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (_, i) =>
-                  _ScholarshipCard(data: _items[i]),
-            ),
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(AppColors.primary)))
+                : _displayedPrograms.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Text(
+                            !_isProfileComplete
+                                ? 'Complete your profile to view matching scholarships'
+                                : 'No qualified scholarships found.',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.inter(
+                                color: AppColors.textSecondary),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                        itemCount: _displayedPrograms.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (_, i) => _ScholarshipCard(
+                          program: _displayedPrograms[i],
+                          scholar: _scholarProfile,
+                        ),
+                      ),
           ),
         ],
       ),
@@ -270,60 +354,46 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
   }
 }
 
-// ─── Data model ──────────────────────────────────────────────────────────────
-
-class _ScholarshipData {
-  final String title;
-  final String provider;
-  final String amount;
-  final String period;
-  final String tag;
-  final StatusType tagType;
-  final String deadlineLabel;
-  final bool isUrgent;
-  final int? slots;
-  final int? totalSlots;
-
-  const _ScholarshipData({
-    required this.title,
-    required this.provider,
-    required this.amount,
-    required this.period,
-    required this.tag,
-    required this.tagType,
-    required this.deadlineLabel,
-    required this.isUrgent,
-    this.slots,
-    this.totalSlots,
-  });
-}
-
 // ─── Card ────────────────────────────────────────────────────────────────────
 
 class _ScholarshipCard extends StatelessWidget {
-  final _ScholarshipData data;
+  final Map<String, dynamic> program;
+  final Map<String, dynamic>? scholar;
 
-  const _ScholarshipCard({required this.data});
+  const _ScholarshipCard({required this.program, this.scholar});
 
   Color get _accentColor {
-    switch (data.tagType) {
-      case StatusType.approved:
-        return AppColors.primary;
-      case StatusType.pending:
-        return AppColors.amber;
-      case StatusType.released:
-        return AppColors.released;
-      default:
-        return AppColors.primary;
+    final type = program['scholarship_type']?.toString().toLowerCase() ?? 'merit';
+    if (type.contains('merit')) {
+      return AppColors.primary;
+    } else if (type.contains('need')) {
+      return AppColors.amber;
+    } else {
+      return AppColors.released;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final provider = program['provider'] as Map<String, dynamic>?;
+    final providerName = provider?['name'] ?? 'Provider';
+    final title = program['title'] ?? 'Scholarship';
+    final coversTuition = program['covers_tuition'] == true;
+    final coversStipend = program['covers_stipend'] == true;
+    final stipendAmt = program['stipend_amount'] != null ? '₱${program['stipend_amount']}' : '₱0';
+    final amountText = coversStipend ? '$stipendAmt' : (coversTuition ? 'Tuition Covered' : 'Varies');
+    final periodText = coversStipend ? 'per semester' : '';
+
     return AppCard(
       borderLeftColor: _accentColor,
-      onTap: () =>
-          Navigator.pushNamed(context, AppRouter.scholarshipDetail),
+      onTap: () => Navigator.pushNamed(
+        context,
+        AppRouter.scholarshipDetail,
+        arguments: {
+          'program': program,
+          'scholar': scholar,
+        },
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -335,10 +405,21 @@ class _ScholarshipCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    StatusChip(label: data.tag, type: data.tagType),
+                    StatusChip(
+                      label: providerName.length > 25
+                          ? providerName.substring(0, 25) + '...'
+                          : providerName,
+                      type: program['scholarship_type']
+                                  ?.toString()
+                                  .toLowerCase()
+                                  .contains('merit') ==
+                              true
+                          ? StatusType.approved
+                          : StatusType.pending,
+                    ),
                     const SizedBox(height: 8),
                     Text(
-                      data.title,
+                      title,
                       style: GoogleFonts.playfairDisplay(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -348,7 +429,7 @@ class _ScholarshipCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      data.provider,
+                      providerName,
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         color: AppColors.textSecondary,
@@ -365,7 +446,11 @@ class _ScholarshipCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  data.tagType == StatusType.pending
+                  program['scholarship_type']
+                              ?.toString()
+                              .toLowerCase()
+                              .contains('need') ==
+                          true
                       ? LucideIcons.award
                       : LucideIcons.graduationCap,
                   color: _accentColor,
@@ -374,25 +459,6 @@ class _ScholarshipCard extends StatelessWidget {
               ),
             ],
           ),
-          // Slots bar
-          if (data.slots != null && data.totalSlots != null) ...[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: data.slots! / data.totalSlots!,
-                minHeight: 5,
-                backgroundColor: AppColors.surfaceAlt,
-                valueColor: AlwaysStoppedAnimation<Color>(_accentColor),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${data.slots} / ${data.totalSlots} slots remaining',
-              style: GoogleFonts.inter(
-                  fontSize: 10, color: AppColors.textMuted),
-            ),
-          ],
           const SizedBox(height: 12),
           Divider(height: 1, color: AppColors.rule),
           const SizedBox(height: 12),
@@ -402,7 +468,7 @@ class _ScholarshipCard extends StatelessWidget {
             children: [
               Flexible(
                 child: Text(
-                  '${data.amount} / ${data.period}',
+                  '$amountText $periodText',
                   style: GoogleFonts.dmMono(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
@@ -415,22 +481,18 @@ class _ScholarshipCard extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
+                  const Icon(
                     LucideIcons.clock,
                     size: 11,
-                    color: data.isUrgent
-                        ? AppColors.error
-                        : AppColors.textMuted,
+                    color: AppColors.textMuted,
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    data.deadlineLabel,
+                    'Open',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: data.isUrgent
-                          ? AppColors.error
-                          : AppColors.textMuted,
+                      color: AppColors.textMuted,
                     ),
                   ),
                 ],

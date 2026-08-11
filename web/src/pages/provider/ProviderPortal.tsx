@@ -6,6 +6,18 @@ import { CloseProgramConfirmModal } from './components/CloseProgramConfirmModal'
 import { DeleteCycleConfirmModal } from './components/DeleteCycleConfirmModal';
 import { RenewCycleModal } from './components/RenewCycleModal';
 
+const parseLocalMidnight = (dateStr: string) => {
+  if (!dateStr) return new Date();
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const getTodayMidnight = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+};
+
 
 interface ProviderPortalProps {
   onLogout: () => void;
@@ -763,6 +775,14 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     const matchedCat = categories.find(c => c.name === formCategory);
     const categoryId = matchedCat ? matchedCat.id : null;
 
+    // Resolve parent names from selection codes
+    const selectedProvObj = psgcProvinces.find(p => p.code === selectedProvinceCode);
+    const provinceName = selectedProvObj ? selectedProvObj.name : '';
+    const selectedMuniObj = psgcMunicipalities.find(m => m.code === selectedMunicipalityCode);
+    const municipalityName = selectedMuniObj ? selectedMuniObj.name : '';
+    const selectedBrgyObj = psgcBarangays.find(b => b.code === selectedBarangayCode);
+    const barangayName = selectedBrgyObj ? selectedBrgyObj.name : '';
+
     try {
       // 1. Insert into scholarship_programs
       const { data: progData, error: progErr } = await supabase
@@ -784,7 +804,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           minimum_gwa: formMinGwa ? parseFloat(formMinGwa) : null,
           availability_scope: formAvailabilityScope,
           available_regions: formAvailableRegions ? formAvailableRegions.split(',').map(s => s.trim()) : [],
-          available_provinces: formAvailabilityScope === 'provincial' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
+          available_provinces: (formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && provinceName ? [provinceName] : [],
+          available_municipalities: (formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && municipalityName ? [municipalityName] : [],
+          available_barangays: formAvailabilityScope === 'barangay' && barangayName ? [barangayName] : [],
           available_schools: formAvailabilityScope === 'specific_schools' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
           application_requirements: formRequirements,
           total_slots: formTotalSlots ? parseInt(formTotalSlots, 10) : null,
@@ -804,7 +826,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       }
 
       // 2. Insert initial application cycle
-      const cycleStatus = formCycleStartDate && new Date(formCycleStartDate) > new Date() ? 'upcoming' : 'open';
+      const cycleStatus = formCycleStartDate && parseLocalMidnight(formCycleStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
       const { error: cycleErr } = await supabase
         .from('application_cycles')
         .insert({
@@ -914,6 +936,14 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     const matchedCat = categories.find(c => c.name === formCategory);
     const categoryId = matchedCat ? matchedCat.id : null;
 
+    // Resolve parent names from selection codes
+    const selectedProvObj = psgcProvinces.find(p => p.code === selectedProvinceCode);
+    const provinceName = selectedProvObj ? selectedProvObj.name : '';
+    const selectedMuniObj = psgcMunicipalities.find(m => m.code === selectedMunicipalityCode);
+    const municipalityName = selectedMuniObj ? selectedMuniObj.name : '';
+    const selectedBrgyObj = psgcBarangays.find(b => b.code === selectedBarangayCode);
+    const barangayName = selectedBrgyObj ? selectedBrgyObj.name : '';
+
     try {
       const { error } = await supabase
         .from('scholarship_programs')
@@ -933,6 +963,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           minimum_gwa: formMinGwa ? parseFloat(formMinGwa) : null,
           availability_scope: formAvailabilityScope,
           available_regions: formAvailableRegions ? formAvailableRegions.split(',').map(s => s.trim()) : [],
+          available_provinces: (formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && provinceName ? [provinceName] : [],
+          available_municipalities: (formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && municipalityName ? [municipalityName] : [],
+          available_barangays: formAvailabilityScope === 'barangay' && barangayName ? [barangayName] : [],
           available_schools: formAvailabilityScope === 'specific_schools' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
           application_requirements: formRequirements,
           total_slots: formTotalSlots ? parseInt(formTotalSlots, 10) : null,
@@ -947,6 +980,40 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         console.error('Error updating program:', error);
         showToast('Error updating scholarship program.');
         return;
+      }
+
+      // Update or insert the active application cycle
+      if (selectedProgram.cycles && selectedProgram.cycles.length > 0) {
+        const activeCycle = selectedProgram.cycles[0];
+        const cycleStatus = formCycleStartDate && parseLocalMidnight(formCycleStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
+        const { error: cycleErr } = await supabase
+          .from('application_cycles')
+          .update({
+            cycle_name: formCycleName,
+            application_start_date: formCycleStartDate,
+            application_end_date: formCycleEndDate,
+            status: cycleStatus
+          })
+          .eq('id', activeCycle.id);
+
+        if (cycleErr) {
+          console.error('Error updating cycle:', cycleErr);
+        }
+      } else {
+        const cycleStatus = formCycleStartDate && parseLocalMidnight(formCycleStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
+        const { error: cycleErr } = await supabase
+          .from('application_cycles')
+          .insert({
+            program_id: selectedProgram.id,
+            cycle_name: formCycleName,
+            application_start_date: formCycleStartDate || new Date().toISOString().split('T')[0],
+            application_end_date: formCycleEndDate || new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
+            status: cycleStatus
+          });
+
+        if (cycleErr) {
+          console.error('Error inserting cycle on edit:', cycleErr);
+        }
       }
 
       showToast(`"${formTitle}" updated successfully!`);
@@ -1036,7 +1103,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
 
     try {
-      const cycleStatus = new Date(renewStartDate) > new Date() ? 'upcoming' : 'open';
+      const cycleStatus = parseLocalMidnight(renewStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
       
       // 1. Insert new cycle
       const { error: cycleErr } = await supabase
@@ -1829,6 +1896,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                         <input
                           type="date" required
                           value={formCycleEndDate} onChange={(e) => setFormCycleEndDate(e.target.value)}
+                          min={formCycleStartDate}
                           className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm cursor-pointer"
                         />
                       </div>

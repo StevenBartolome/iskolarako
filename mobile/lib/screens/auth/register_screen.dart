@@ -8,6 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -199,9 +200,9 @@ class _RegisterScreenState extends State<RegisterScreen>
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'service_id': 'service_tgyk2rm',
-          'template_id': 'template_wml3hht',
-          'user_id': '7PBB4DOM3kQ5k7sjM',
+          'service_id': dotenv.env['EMAILJS_SERVICE_ID'] ?? '',
+          'template_id': dotenv.env['EMAILJS_TEMPLATE_ID'] ?? '',
+          'user_id': dotenv.env['EMAILJS_PUBLIC_KEY'] ?? '',
           'template_params': {
             'to_name': toName,
             'to_email': toEmail,

@@ -233,12 +233,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             icon: LucideIcons.user,
                             title: 'Personal Information',
                             subtitle: 'Full name, DOB, address & contact',
+                            onTap: () async {
+                              final updated = await Navigator.pushNamed(
+                                  context, AppRouter.profileEdit);
+                              if (updated == true) {
+                                _loadProfileData();
+                              }
+                            },
                           ),
                           const Divider(height: 1, color: AppColors.rule),
                           _buildProfileItem(
                             icon: LucideIcons.graduationCap,
                             title: 'Academic Details',
                             subtitle: 'University, GWA & course records',
+                            onTap: () async {
+                              final updated = await Navigator.pushNamed(
+                                  context, AppRouter.profileEdit);
+                              if (updated == true) {
+                                _loadProfileData();
+                              }
+                            },
                           ),
                           const Divider(height: 1, color: AppColors.rule),
                           _buildProfileItem(
@@ -273,50 +287,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
+    VoidCallback? onTap,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withAlpha(18),
-              borderRadius: BorderRadius.circular(12),
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withAlpha(18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: AppColors.primary, size: 20),
             ),
-            child: Icon(icon, color: AppColors.primary, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const Icon(
-            LucideIcons.chevronRight,
-            size: 16,
-            color: AppColors.textMuted,
-          ),
-        ],
+            const Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: AppColors.textMuted,
+            ),
+          ],
+        ),
       ),
     );
   }

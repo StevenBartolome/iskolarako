@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/app_components.dart';
+import 'package:iskoako/utils/eligibility_helper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 
@@ -25,29 +26,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ];
 
   String _scholarName = 'SCHOLAR';
+  Map<String, dynamic>? _scholarProfile;
+  List<dynamic> _allPrograms = [];
+  List<dynamic> _qualifiedPrograms = [];
+  bool _isProfileComplete = false;
+  bool _isLoadingData = true;
 
   @override
   void initState() {
     super.initState();
-    _loadScholarName();
+    _loadDashboardData();
   }
 
-  Future<void> _loadScholarName() async {
+  Future<void> _loadDashboardData() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       try {
-        final data = await Supabase.instance.client
+        final scholarData = await Supabase.instance.client
             .from('scholar')
-            .select('first_name')
+            .select()
             .eq('user_id', user.id)
-            .single();
+            .maybeSingle();
+
+        final programsData = await Supabase.instance.client
+            .from('scholarship_programs')
+            .select('*, provider:provider_id(*), cycles:application_cycles(*)')
+            .eq('status', 'active');
+
         if (mounted) {
           setState(() {
-            _scholarName = (data['first_name'] as String).toUpperCase();
+            _scholarProfile = scholarData;
+            _isProfileComplete = EligibilityHelper.isProfileComplete(scholarData);
+            _scholarName = (scholarData != null && scholarData['first_name'] != null)
+                ? (scholarData['first_name'] as String).toUpperCase()
+                : 'SCHOLAR';
+
+            _allPrograms = programsData;
+            if (_isProfileComplete && scholarData != null) {
+              _qualifiedPrograms = _allPrograms
+                  .where((p) => EligibilityHelper.isQualified(scholarData, p))
+                  .toList();
+            } else {
+              _qualifiedPrograms = [];
+            }
+            _isLoadingData = false;
           });
         }
-      } catch (_) {
-        // Fallback to default
+      } catch (e) {
+        debugPrint('Error loading dashboard data: $e');
+        if (mounted) {
+          setState(() {
+            _isLoadingData = false;
+          });
+        }
       }
     }
   }
@@ -204,6 +235,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ─── 2. Headlines ───────────────────────────────────────────────────────────
   Widget _buildHeadlines() {
+    final count = _qualifiedPrograms.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -218,7 +250,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          '14 new opportunities matched to your profile',
+          _isProfileComplete
+              ? '$count opportunity(ies) matched to your profile'
+              : 'Complete your profile to find matching opportunities',
           style: GoogleFonts.inter(
             fontSize: 13,
             color: AppColors.textSecondary,
@@ -581,136 +615,272 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ─── 8. Recommended Card (Matches Image Design) ────────────────────────────
   Widget _buildRecommendedCard(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, AppRouter.scholarshipDetail),
-      child: AppCard(
-        borderLeftColor: AppColors.gold,
+    if (_isLoadingData) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20.0),
+          child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
+        ),
+      );
+    }
+
+    if (!_isProfileComplete) {
+      return AppCard(
+        borderLeftColor: AppColors.error,
         padding: const EdgeInsets.all(18),
+        onTap: () async {
+          final updated =
+              await Navigator.pushNamed(context, AppRouter.profileEdit);
+          if (updated == true) {
+            setState(() {
+              _isLoadingData = true;
+            });
+            _loadDashboardData();
+          }
+        },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Provider Header
             Row(
               children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'SEI',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.gold,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
+                const Icon(LucideIcons.alertTriangle,
+                    color: AppColors.error, size: 24),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'DOST-SEI Undergraduate Scholarship',
-                        style: GoogleFonts.playfairDisplay(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
-                          height: 1.25,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Department of Science and Technology',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Complete Your Profile',
+                    style: GoogleFonts.playfairDisplay(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primaryDark,
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-
-            // Tag Pills Row
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                _TagPill(label: 'Full tuition'),
-                _TagPill(label: 'Monthly stipend'),
-                _TagPill(label: 'STEM'),
-              ],
+            const SizedBox(height: 10),
+            Text(
+              'Fill out your location details, year level, GWA, and course under your profile to unlock and view matching scholarships you are qualified to apply for.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                height: 1.45,
+              ),
             ),
             const SizedBox(height: 14),
-
-            // Dashed Divider
-            const DashedDivider(),
-            const SizedBox(height: 12),
-
-            // Footer Details
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'DEADLINE',
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textMuted,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Jul 27, 2026',
-                      style: GoogleFonts.dmMono(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.error,
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Set Up Profile',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'COVERAGE',
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textMuted,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '₱60,000/yr',
-                      style: GoogleFonts.dmMono(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
+                const SizedBox(width: 4),
+                const Icon(LucideIcons.arrowRight,
+                    size: 14, color: AppColors.primary),
               ],
             ),
           ],
         ),
-      ),
+      );
+    }
+
+    if (_qualifiedPrograms.isEmpty) {
+      return AppCard(
+        borderLeftColor: AppColors.textMuted,
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'No Matching Scholarships',
+              style: GoogleFonts.playfairDisplay(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primaryDark,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'We couldn\'t find any scholarships matching your course, year level, GWA, or location at this moment. We will notify you when a match is found!',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Display the list of matching scholarships
+    return Column(
+      children: _qualifiedPrograms.take(3).map((program) {
+        final provider = program['provider'] as Map<String, dynamic>?;
+        final providerName = provider?['name'] ?? 'Provider';
+        final providerShort = providerName.length > 10
+            ? providerName.substring(0, 10) + '...'
+            : providerName;
+        final title = program['title'] ?? 'Scholarship';
+        final coversTuition = program['covers_tuition'] == true;
+        final coversStipend = program['covers_stipend'] == true;
+        final stipendAmt = program['stipend_amount'] != null
+            ? '₱${program['stipend_amount']}'
+            : '₱0';
+        final amountText = coversStipend
+            ? '$stipendAmt/sem'
+            : (coversTuition ? 'Tuition Covered' : 'Varies');
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: GestureDetector(
+            onTap: () => Navigator.pushNamed(
+              context,
+              AppRouter.scholarshipDetail,
+              arguments: {
+                'program': program,
+                'scholar': _scholarProfile,
+              },
+            ),
+            child: AppCard(
+              borderLeftColor: AppColors.gold,
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(
+                            providerShort.isNotEmpty
+                                ? providerShort.substring(0, providerShort.length > 3 ? 3 : providerShort.length).toUpperCase()
+                                : 'SP',
+                            style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.gold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: GoogleFonts.playfairDisplay(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                                height: 1.25,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              providerName,
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (coversTuition) _TagPill(label: 'Full tuition'),
+                      if (coversStipend) _TagPill(label: 'Stipend'),
+                      _TagPill(
+                          label: program['scholarship_type']
+                                  ?.toString()
+                                  .toUpperCase() ??
+                              'MERIT'),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const DashedDivider(),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'AVAILABILITY',
+                            style: GoogleFonts.inter(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textMuted,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            program['availability_scope']
+                                    ?.toString()
+                                    .toUpperCase() ??
+                                'NATIONWIDE',
+                            style: GoogleFonts.dmMono(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'COVERAGE',
+                            style: GoogleFonts.inter(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textMuted,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            amountText,
+                            style: GoogleFonts.dmMono(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

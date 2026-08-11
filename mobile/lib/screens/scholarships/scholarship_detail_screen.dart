@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -6,59 +7,150 @@ import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/custom_button.dart';
 import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/widgets/custom_header.dart';
-
+import 'package:iskoako/utils/eligibility_helper.dart';
 
 class ScholarshipDetailScreen extends StatelessWidget {
   const ScholarshipDetailScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final program = args?['program'] as Map<String, dynamic>?;
+    final scholar = args?['scholar'] as Map<String, dynamic>?;
+
+    final provider = program?['provider'] as Map<String, dynamic>?;
+    final providerName = provider?['name'] ?? 'Provider';
+    final title = program?['title'] ?? 'Scholarship';
+    final description = program?['description'] ?? '';
+    
+    final coversTuition = program?['covers_tuition'] == true;
+    final coversStipend = program?['covers_stipend'] == true;
+    final coversAllowance = program?['covers_allowance'] == true;
+
+    final stipendAmt = program?['stipend_amount'] != null ? '₱${program?['stipend_amount']}' : '₱0';
+    final amountText = coversStipend ? stipendAmt : (coversTuition ? 'Tuition Covered' : 'Varies');
+    final periodText = coversStipend ? 'per sem' : '';
+    final budgetStr = amountText;
+    final slotsStr = program?['total_slots']?.toString() ?? 'Unlimited';
+
+    final benefitsList = <String>[];
+    if (coversTuition) benefitsList.add('Full tuition and miscellaneous fees coverage');
+    if (coversStipend) {
+      benefitsList.add('$stipendAmt monthly living stipend');
+    }
+    if (coversAllowance) {
+      final allowance = program?['allowance_amount'] != null ? '₱${program?['allowance_amount']}' : '₱0';
+      benefitsList.add('Additional book/living allowance of $allowance');
+    }
+    if (program?['other_benefits'] != null && program?['other_benefits'] is List) {
+      for (final b in (program?['other_benefits'] as List)) {
+        benefitsList.add(b.toString());
+      }
+    }
+    if (benefitsList.isEmpty) {
+      benefitsList.add('Refer to program coordinator for full benefits listing');
+    }
+
+    final eligibilityList = <String>[];
+    if (program?['citizenship_required'] != null) {
+      eligibilityList.add('${program?['citizenship_required']} citizenship required');
+    }
+    if (program?['course_eligibility'] != null && (program?['course_eligibility'] as List).isNotEmpty) {
+      eligibilityList.add('Open to: ${(program?['course_eligibility'] as List).join(', ')}');
+    }
+    if (program?['year_level_eligibility'] != null && (program?['year_level_eligibility'] as List).isNotEmpty) {
+      eligibilityList.add('Year levels: ${(program?['year_level_eligibility'] as List).join(', ')}');
+    }
+    if (program?['minimum_gwa'] != null) {
+      eligibilityList.add('Minimum GWA constraint: ${program?['minimum_gwa']}');
+    }
+    if (eligibilityList.isEmpty) {
+      eligibilityList.add('Open to all eligible students');
+    }
+
+    final cycles = program?['cycles'] as List<dynamic>?;
+    Map<String, dynamic>? activeCycle;
+    if (cycles != null && cycles.isNotEmpty) {
+      activeCycle = cycles.firstWhere(
+        (c) => c['status']?.toString().toLowerCase() == 'open',
+        orElse: () => cycles.first,
+      ) as Map<String, dynamic>?;
+    }
+
+    int daysLeft = 0;
+    String formattedEndDate = 'Open';
+    if (activeCycle != null && activeCycle['application_end_date'] != null) {
+      try {
+        final endDate = DateTime.tryParse(activeCycle['application_end_date'].toString());
+        if (endDate != null) {
+          final diff = endDate.difference(DateTime.now());
+          daysLeft = diff.inDays + 1;
+          
+          final months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+          formattedEndDate = '${months[endDate.month - 1]} ${endDate.day}, ${endDate.year}';
+        }
+      } catch (e) {
+        debugPrint('Error parsing end date: $e');
+      }
+    }
+
+    final docList = <String>[];
+    final requirements = program?['application_requirements'];
+    if (requirements != null) {
+      List<dynamic> parsedReqs = [];
+      if (requirements is List) {
+        parsedReqs = requirements;
+      } else if (requirements is String) {
+        try {
+          parsedReqs = jsonDecode(requirements);
+        } catch (e) {
+          debugPrint('Error decoding requirements: $e');
+        }
+      }
+      for (final r in parsedReqs) {
+        if (r is Map) {
+          final name = r['name']?.toString() ?? '';
+          final req = r['required'] == true ? ' (Required)' : ' (Optional)';
+          if (name.isNotEmpty) {
+            docList.add('$name$req');
+          }
+        }
+      }
+    }
+    if (docList.isEmpty) {
+      docList.add('No specific document requirements configured.');
+    }
+
     return Scaffold(
       body: Column(
         children: [
-          _buildHeader(context),
+          _buildHeader(context, title, providerName, program),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildInfoBar(),
+                  _buildInfoBar(slotsStr, budgetStr, periodText, program),
                   const SizedBox(height: 16),
-                  _buildDeadlineAlert(),
+                  _buildDeadlineAlert(daysLeft, formattedEndDate),
                   const SizedBox(height: 22),
                   _buildSection(
                     title: 'About this Scholarship',
-                    content:
-                        'The DOST-SEI Undergraduate Scholarships are awarded to deserving students who wish to pursue degree programs in basic sciences, mathematics, and engineering in accredited HEIs across the Philippines.',
+                    content: description,
                   ),
                   const SizedBox(height: 22),
                   const SectionHeading(title: 'Coverage & Benefits'),
                   const SizedBox(height: 12),
-                  _buildBulletList([
-                    '₱40,000 monthly stipend',
-                    'Full tuition and miscellaneous fees',
-                    'Book allowance ₱10,000 per year',
-                    'Thesis / dissertation grant',
-                  ]),
+                  _buildBulletList(benefitsList),
                   const SizedBox(height: 22),
                   const SectionHeading(title: 'Eligibility Requirements'),
                   const SizedBox(height: 12),
-                  _buildCheckList([
-                    'Natural-born Filipino citizen',
-                    'Top 5% of graduating class (STEM strand)',
-                    'Annual family income ≤ ₱1,500,000',
-                    'No other active government scholarship',
-                  ]),
+                  _buildCheckList(eligibilityList),
                   const SizedBox(height: 22),
                   const SectionHeading(title: 'Documents to Prepare'),
                   const SizedBox(height: 12),
-                  _buildDocList([
-                    'PSA Birth Certificate',
-                    'Form 138 / Report Card',
-                    'ITR or Certificate of Indigency',
-                    'Valid Government ID',
-                  ]),
+                  _buildDocList(docList),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -72,15 +164,94 @@ class ScholarshipDetailScreen extends StatelessWidget {
           child: CustomButton(
             text: 'Apply for this Scholarship',
             icon: LucideIcons.send,
-            onPressed: () =>
-                Navigator.pushNamed(context, AppRouter.documentUpload),
+            onPressed: () {
+              final isComplete = EligibilityHelper.isProfileComplete(scholar);
+              if (!isComplete) {
+                final missingFields = EligibilityHelper.getMissingFields(scholar);
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: Row(
+                      children: [
+                        const Icon(LucideIcons.alertTriangle, color: AppColors.error),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Profile Incomplete',
+                          style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                    content: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Before you can apply for this scholarship, you must complete your profile. The following fields are missing:',
+                            style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(height: 12),
+                          ...missingFields.map((f) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                const Icon(LucideIcons.dot, size: 16, color: AppColors.error),
+                                const SizedBox(width: 6),
+                                Text(
+                                  f,
+                                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                                ),
+                              ],
+                            ),
+                          )),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Please update your profile details to proceed.',
+                            style: GoogleFonts.inter(fontSize: 12, fontStyle: FontStyle.italic, color: AppColors.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.inter(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.pushNamed(context, AppRouter.profileEdit);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: Text(
+                          'Edit Profile',
+                          style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                Navigator.pushNamed(context, AppRouter.documentUpload);
+              }
+            },
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, String title, String providerName, Map<String, dynamic>? program) {
+    final typeLabel = program?['scholarship_type']?.toString().toUpperCase() ?? 'MERIT-BASED';
+    final providerShort = providerName.length > 20 ? providerName.substring(0, 20) + '...' : providerName;
+
     return CustomHeader(
       height: 240,
       child: Column(
@@ -128,18 +299,18 @@ class ScholarshipDetailScreen extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     StatusChip(
-                      label: 'Government · DOST',
+                      label: providerShort,
                       type: StatusType.approved,
                     ),
                     StatusChip(
-                      label: 'Merit-based',
+                      label: typeLabel,
                       type: StatusType.info,
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'DOST-SEI Undergraduate Scholarship',
+                  title,
                   style: GoogleFonts.playfairDisplay(
                     color: Colors.white,
                     fontSize: 20,
@@ -151,7 +322,7 @@ class ScholarshipDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Department of Science & Technology',
+                  providerName,
                   style: GoogleFonts.inter(
                     color: Colors.white.withAlpha(160),
                     fontSize: 12,
@@ -165,51 +336,61 @@ class ScholarshipDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoBar() {
+  Widget _buildInfoBar(String slotsStr, String budgetStr, String periodText, Map<String, dynamic>? program) {
     return AppCard(
       padding: EdgeInsets.zero,
       child: IntrinsicHeight(
         child: Row(
           children: [
-            _InfoBarItem(value: '₱40k', label: 'Per Semester', isMono: true),
+            _InfoBarItem(value: budgetStr, label: periodText.isNotEmpty ? periodText : 'Total Allowance', isMono: true),
             VerticalDivider(width: 1, color: AppColors.rule),
-            _InfoBarItem(value: '4 yrs', label: 'Duration'),
+            const _InfoBarItem(value: 'Variable', label: 'Duration'),
             VerticalDivider(width: 1, color: AppColors.rule),
-            _InfoBarItem(value: '100', label: 'Slots'),
+            _InfoBarItem(value: slotsStr, label: 'Slots Available'),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDeadlineAlert() {
+  Widget _buildDeadlineAlert(int daysLeft, String formattedEndDate) {
+    final showUrgent = daysLeft > 0 && daysLeft <= 7;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.errorBg,
+        color: showUrgent ? AppColors.errorBg : AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.error.withAlpha(50)),
+        border: Border.all(color: (showUrgent ? AppColors.error : AppColors.primary).withAlpha(50)),
       ),
       child: Row(
         children: [
-          const Icon(LucideIcons.alertCircle,
-              color: AppColors.error, size: 18),
+          Icon(
+            showUrgent ? LucideIcons.alertCircle : LucideIcons.calendar,
+            color: showUrgent ? AppColors.error : AppColors.primary,
+            size: 18,
+          ),
           const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Application closes in 5 days',
+                daysLeft > 0
+                    ? 'Application closes in $daysLeft day${daysLeft > 1 ? "s" : ""}'
+                    : 'Application Open',
                 style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.error,
+                  color: showUrgent ? AppColors.error : AppColors.primaryDark,
                 ),
               ),
               Text(
-                'October 31, 2026 · 11:59 PM',
+                daysLeft > 0
+                    ? '$formattedEndDate · 11:59 PM'
+                    : 'Ongoing Cycle',
                 style: GoogleFonts.inter(
-                    fontSize: 11, color: AppColors.error.withAlpha(180)),
+                  fontSize: 11,
+                  color: (showUrgent ? AppColors.error : AppColors.textSecondary).withAlpha(180),
+                ),
               ),
             ],
           ),

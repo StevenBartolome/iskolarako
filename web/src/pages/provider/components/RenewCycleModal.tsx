@@ -82,6 +82,7 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                   required
                   value={renewEndDate}
                   onChange={(e) => setRenewEndDate(e.target.value)}
+                  min={renewStartDate}
                   className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
                 />
               </div>

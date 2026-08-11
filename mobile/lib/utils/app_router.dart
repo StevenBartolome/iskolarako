@@ -11,6 +11,8 @@ import '../screens/funds/fund_tracking_screen.dart';
 import '../screens/notifications/notification_screen.dart';
 import '../widgets/main_layout.dart';
 
+import '../screens/profile/profile_edit_screen.dart';
+
 class AppRouter {
   static const String splash = '/splash';
   static const String onboarding = '/onboarding';
@@ -24,35 +26,38 @@ class AppRouter {
   static const String documentUpload = '/document_upload';
   static const String notifications = '/notifications';
   static const String fundTracking = '/fund_tracking';
+  static const String profileEdit = '/profile_edit';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
       case splash:
-        return MaterialPageRoute(builder: (_) => const SplashScreen());
+        return MaterialPageRoute(builder: (_) => const SplashScreen(), settings: settings);
       case onboarding:
-        return MaterialPageRoute(builder: (_) => const OnboardingScreen());
+        return MaterialPageRoute(builder: (_) => const OnboardingScreen(), settings: settings);
       case applicationForm:
         return MaterialPageRoute(
-            builder: (_) => const ApplicationFormScreen());
+            builder: (_) => const ApplicationFormScreen(), settings: settings);
       case login:
-        return MaterialPageRoute(builder: (_) => const LoginScreen());
+        return MaterialPageRoute(builder: (_) => const LoginScreen(), settings: settings);
       case register:
-        return MaterialPageRoute(builder: (_) => const RegisterScreen());
+        return MaterialPageRoute(builder: (_) => const RegisterScreen(), settings: settings);
       case home:
-        return MaterialPageRoute(builder: (_) => const MainLayout());
+        return MaterialPageRoute(builder: (_) => const MainLayout(), settings: settings);
       case scholarshipDetail:
         return MaterialPageRoute(
-            builder: (_) => const ScholarshipDetailScreen());
+            builder: (_) => const ScholarshipDetailScreen(), settings: settings);
       case applicationTracker:
         return MaterialPageRoute(
-            builder: (_) => const ApplicationTrackerScreen());
+            builder: (_) => const ApplicationTrackerScreen(), settings: settings);
       case documentUpload:
         return MaterialPageRoute(
-            builder: (_) => const DocumentUploadScreen());
+            builder: (_) => const DocumentUploadScreen(), settings: settings);
       case notifications:
-        return MaterialPageRoute(builder: (_) => const NotificationScreen());
+        return MaterialPageRoute(builder: (_) => const NotificationScreen(), settings: settings);
       case fundTracking:
-        return MaterialPageRoute(builder: (_) => const FundTrackingScreen());
+        return MaterialPageRoute(builder: (_) => const FundTrackingScreen(), settings: settings);
+      case profileEdit:
+        return MaterialPageRoute(builder: (_) => const ProfileEditScreen(), settings: settings);
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
