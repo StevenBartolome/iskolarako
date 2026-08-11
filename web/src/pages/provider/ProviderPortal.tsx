@@ -61,6 +61,7 @@ interface Program {
   cycles: ApplicationCycle[];
   budgetUsed: string;
   budgetTotal: string;
+  rejectionRemarks?: string;
 }
 
 interface DisbursementTx {
@@ -303,8 +304,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     return {
       id: dbProg.id,
       provider: providerDetails?.name || 'My Provider',
-      status: dbProg.status === 'active' || dbProg.status === 'approved' || dbProg.status === 'Active' || dbProg.status === 'Approved' ? 'Active' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'Pending Review' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'Draft' : 'Closed',
-      statusType: dbProg.status === 'active' || dbProg.status === 'approved' || dbProg.status === 'Active' || dbProg.status === 'Approved' ? 'success' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'draft' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'draft' : 'closing',
+      status: dbProg.status === 'approved' || dbProg.status === 'Approved' || dbProg.status === 'active' || dbProg.status === 'Active' ? 'Approved' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'Pending Review' : dbProg.status === 'paused' ? 'Rejected' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'Draft' : 'Closed',
+      statusType: dbProg.status === 'approved' || dbProg.status === 'Approved' || dbProg.status === 'active' || dbProg.status === 'Active' ? 'success' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'draft' : dbProg.status === 'paused' ? 'closing' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'draft' : 'closing',
       title: dbProg.title,
       description: dbProg.description,
       category: dbProg.category?.name || 'Merit-Based',
@@ -334,7 +335,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         status: cyc.status === 'open' ? 'Open' : cyc.status === 'evaluating' ? 'Evaluating' : cyc.status === 'upcoming' ? 'Upcoming' : 'Closed'
       })),
       budgetUsed: '₱0',
-      budgetTotal: dbProg.budget_total ? `₱${Number(dbProg.budget_total).toLocaleString()}` : '₱0'
+      budgetTotal: dbProg.budget_total ? `₱${Number(dbProg.budget_total).toLocaleString()}` : '₱0',
+      rejectionRemarks: dbProg.rejection_remarks || undefined
     };
   };
 
@@ -397,6 +399,18 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isBigMapModalOpen, setIsBigMapModalOpen] = useState(false);
+
+  // Renew/Reopen Cycle Modal States
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
+  const [selectedProgramForRenewal, setSelectedProgramForRenewal] = useState<Program | null>(null);
+  const [renewCycleName, setRenewCycleName] = useState('');
+  const [renewStartDate, setRenewStartDate] = useState('');
+  const [renewEndDate, setRenewEndDate] = useState('');
+  const [renewSlots, setRenewSlots] = useState('');
+
+  // Delete Cycle Confirm Modal States
+  const [isDeleteCycleConfirmOpen, setIsDeleteCycleConfirmOpen] = useState(false);
+  const [cycleToDelete, setCycleToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // New program form inputs
   const [formTitle, setFormTitle] = useState('');
@@ -966,6 +980,150 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     } finally {
       setIsCloseConfirmOpen(false);
       setProgramToClose(null);
+    }
+  };
+
+  const getNextCycleName = (lastCycleName: string): string => {
+    const rangeRegex = /(\d{4})\s*-\s*(\d{4})/;
+    const singleRegex = /(\d{4})/;
+    
+    const rangeMatch = lastCycleName.match(rangeRegex);
+    if (rangeMatch) {
+      const startYear = parseInt(rangeMatch[1], 10);
+      const endYear = parseInt(rangeMatch[2], 10);
+      return lastCycleName.replace(rangeRegex, `${startYear + 1}-${endYear + 1}`);
+    }
+    
+    const singleMatch = lastCycleName.match(singleRegex);
+    if (singleMatch) {
+      const year = parseInt(singleMatch[1], 10);
+      return lastCycleName.replace(singleRegex, `${year + 1}`);
+    }
+    
+    const currentYear = new Date().getFullYear();
+    return `AY ${currentYear}-${currentYear + 1}`;
+  };
+
+  const handleOpenRenewModal = (prog: Program) => {
+    setSelectedProgramForRenewal(prog);
+    
+    // Sort cycles to find the latest one
+    const latestCycle = prog.cycles && prog.cycles.length > 0
+      ? [...prog.cycles].sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())[0]
+      : null;
+      
+    if (latestCycle) {
+      setRenewCycleName(getNextCycleName(latestCycle.name));
+    } else {
+      const currentYear = new Date().getFullYear();
+      setRenewCycleName(`AY ${currentYear}-${currentYear + 1}`);
+    }
+    
+    setRenewStartDate(new Date().toISOString().split('T')[0]);
+    setRenewEndDate(new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0]);
+    setRenewSlots(prog.totalSlots || '');
+    setIsRenewModalOpen(true);
+  };
+
+  const handleRenewProgramCycle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProgramForRenewal || !renewCycleName || !renewStartDate || !renewEndDate) {
+      showToast('Please fill in all required fields.');
+      return;
+    }
+
+    try {
+      const cycleStatus = new Date(renewStartDate) > new Date() ? 'upcoming' : 'open';
+      
+      // 1. Insert new cycle
+      const { error: cycleErr } = await supabase
+        .from('application_cycles')
+        .insert({
+          program_id: selectedProgramForRenewal.id,
+          cycle_name: renewCycleName,
+          application_start_date: renewStartDate,
+          application_end_date: renewEndDate,
+          slots_available: renewSlots ? parseInt(renewSlots, 10) : null,
+          status: cycleStatus
+        });
+
+      if (cycleErr) {
+        console.error('Error inserting renewal cycle:', cycleErr);
+        showToast('Error creating new application cycle.');
+        return;
+      }
+
+      // 2. Update program status to 'active'
+      const { error: progErr } = await supabase
+        .from('scholarship_programs')
+        .update({ status: 'active' })
+        .eq('id', selectedProgramForRenewal.id);
+
+      if (progErr) {
+        console.error('Error updating program status on renewal:', progErr);
+        showToast('Cycle added, but failed to set program status to active.');
+      } else {
+        showToast(`Successfully renewed "${selectedProgramForRenewal.title}" with cycle "${renewCycleName}"!`);
+      }
+
+      // Reload programs
+      await fetchPrograms();
+      
+      // Close modal & reset state
+      setIsRenewModalOpen(false);
+      setSelectedProgramForRenewal(null);
+      setRenewCycleName('');
+      setRenewStartDate('');
+      setRenewEndDate('');
+      setRenewSlots('');
+    } catch (err) {
+      console.error('Unexpected error during renewal:', err);
+      showToast('An unexpected error occurred.');
+    }
+  };
+
+  const handleDeleteCycle = (cycleId: string, cycleName: string) => {
+    setCycleToDelete({ id: cycleId, name: cycleName });
+    setIsDeleteCycleConfirmOpen(true);
+  };
+
+  const handleConfirmDeleteCycle = async () => {
+    if (!cycleToDelete) return;
+    const { id: cycleId, name: cycleName } = cycleToDelete;
+
+    try {
+      const { error } = await supabase
+        .from('application_cycles')
+        .delete()
+        .eq('id', cycleId);
+
+      if (error) {
+        console.error('Error deleting cycle:', error);
+        if (error.code === '23503') {
+          showToast('Cannot delete cycle because it already has applications or related records.');
+        } else {
+          showToast('Error deleting application cycle.');
+        }
+        return;
+      }
+
+      showToast(`Successfully deleted cycle "${cycleName}".`);
+      
+      if (selectedProgram) {
+        const updatedCycles = selectedProgram.cycles.filter(c => c.id !== cycleId);
+        setSelectedProgram({
+          ...selectedProgram,
+          cycles: updatedCycles
+        });
+      }
+      
+      await fetchPrograms();
+    } catch (err) {
+      console.error('Unexpected error deleting cycle:', err);
+      showToast('An unexpected error occurred.');
+    } finally {
+      setIsDeleteCycleConfirmOpen(false);
+      setCycleToDelete(null);
     }
   };
 
@@ -2324,10 +2482,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                         </span>
                         <div className="flex items-center gap-1.5">
                           <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                            prog.status === 'Active' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                            prog.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
                             prog.status === 'Pending Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
+                            prog.status === 'Rejected' ? 'bg-red-50 text-[#B34040]' :
                             prog.status === 'Draft' ? 'bg-blue-50 text-blue-600' :
-                            'bg-red-50 text-[#B34040]'
+                            'bg-gray-100 text-gray-600'
                           }`}>
                             {prog.status}
                           </span>
@@ -2365,6 +2524,13 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                       </div>
                     </div>
 
+                    {/* Rejection Banner */}
+                    {prog.status === 'Rejected' && prog.rejectionRemarks && (
+                      <div className="bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 mb-2">
+                        <span className="text-[9px] uppercase font-bold text-[#B34040] tracking-wider block mb-0.5">Rejection Remarks</span>
+                        <p className="text-[11px] text-[#B34040] leading-snug line-clamp-2">{prog.rejectionRemarks}</p>
+                      </div>
+                    )}
                     <div className="border-t border-[#D9D2C5]/50 pt-4 flex justify-between items-center text-xs">
                       <div>
                         <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
@@ -2383,7 +2549,37 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                         >
                           Edit
                         </button>
-                        {prog.status !== 'Closed' && prog.status !== 'closed' ? (
+                        <button
+                          onClick={() => handleOpenRenewModal(prog)}
+                          className="px-3 py-1.5 rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-[10px] font-bold border border-[#D9D2C5] cursor-pointer transition-all"
+                        >
+                          Renew / Add Cycle
+                        </button>
+                        {prog.status === 'Rejected' ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const { error } = await supabase
+                                  .from('scholarship_programs')
+                                  .update({ status: 'pending', rejection_remarks: null })
+                                  .eq('id', prog.id);
+                                if (error) {
+                                  console.error('Error resubmitting program:', error);
+                                  showToast('Error resubmitting program.');
+                                } else {
+                                  showToast(`"${prog.title}" has been resubmitted for review.`);
+                                  await fetchPrograms();
+                                }
+                              } catch (err) {
+                                console.error('Unexpected error resubmitting program:', err);
+                                showToast('An unexpected error occurred.');
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-[#FFF8EE] hover:bg-amber-100 text-[#C97B2E] text-[10px] font-bold border border-amber-200 cursor-pointer transition-all"
+                          >
+                            Resubmit
+                          </button>
+                        ) : prog.status !== 'Closed' && prog.status !== 'closed' ? (
                           <button
                             onClick={() => { setProgramToClose(prog); setIsCloseConfirmOpen(true); }}
                             className="px-3 py-1.5 rounded-lg bg-[#FDF2F2] hover:bg-red-100 text-[#B34040] text-[10px] font-bold border border-red-200 cursor-pointer transition-all"
@@ -2997,7 +3193,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Status</span>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${selectedProgram.status === 'Active' ? 'bg-[#EBF5EE] text-[#2D5941]' : selectedProgram.status === 'Draft' ? 'bg-[#EDE8DE] text-[#6C6C70]' : 'bg-[#FDF2F2] text-[#B34040]'}`}>{selectedProgram.status}</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                    selectedProgram.status === 'Active' || selectedProgram.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                    selectedProgram.status === 'Pending Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
+                    selectedProgram.status === 'Draft' ? 'bg-blue-50 text-blue-600' :
+                    'bg-[#FDF2F2] text-[#B34040]'
+                  }`}>{selectedProgram.status}</span>
                 </div>
                 <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Renewal Policy</span>
@@ -3053,7 +3254,15 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
               {/* Cycles */}
               <div>
-                <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Application Cycles</h4>
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider">Application Cycles</h4>
+                  <button
+                    onClick={() => { setIsViewModalOpen(false); handleOpenRenewModal(selectedProgram); }}
+                    className="px-2.5 py-1 rounded-lg bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[10px] font-bold border-0 cursor-pointer transition-all"
+                  >
+                    🔄 Renew / Add Cycle
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {selectedProgram.cycles.map(cyc => (
                     <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
@@ -3061,6 +3270,13 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                       <div className="flex items-center gap-3">
                         <span className="text-[#8E8E93]">{cyc.startDate} → {cyc.endDate}</span>
                         <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' : cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' : cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-600'}`}>{cyc.status}</span>
+                        <button
+                          onClick={() => handleDeleteCycle(cyc.id.toString(), cyc.name)}
+                          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded bg-transparent border-0 cursor-pointer transition-all text-xs leading-none"
+                          title="Delete Cycle"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -3103,6 +3319,121 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 className="flex-1 px-4 py-3 rounded-xl bg-[#B34040] hover:bg-red-700 text-white text-sm font-bold border-0 cursor-pointer transition-all"
               >Yes, Close Program</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Cycle Confirm Modal ─── */}
+      {isDeleteCycleConfirmOpen && cycleToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-[#FDF2F2] flex items-center justify-center text-[#B34040] text-2xl mx-auto">🗑️</div>
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Delete Application Cycle?</h3>
+              <p className="text-xs text-[#6C6C70] leading-relaxed">
+                Are you sure you want to delete the cycle <strong>"{cycleToDelete.name}"</strong>? This will permanently remove the cycle from the system. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => { setIsDeleteCycleConfirmOpen(false); setCycleToDelete(null); }}
+                className="flex-1 px-4 py-3 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"
+              >Cancel</button>
+              <button
+                onClick={handleConfirmDeleteCycle}
+                className="flex-1 px-4 py-3 rounded-xl bg-[#B34040] hover:bg-red-700 text-white text-sm font-bold border-0 cursor-pointer transition-all"
+              >Yes, Delete Cycle</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Renew / Add Cycle Modal ─── */}
+      {isRenewModalOpen && selectedProgramForRenewal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-[#D9D2C5]/30">
+            <div className="bg-[#1A3C2E] p-6 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold font-serif">Renew / Add Application Cycle</h3>
+                <p className="text-xs text-white/70 mt-1">For: {selectedProgramForRenewal.title}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); }}
+                className="text-white/80 hover:text-white bg-transparent border-0 cursor-pointer text-xl"
+              >&times;</button>
+            </div>
+
+            <form onSubmit={handleRenewProgramCycle} className="p-7 space-y-5">
+              <div className="space-y-4">
+                {/* Cycle Name */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Cycle Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={renewCycleName}
+                    onChange={(e) => setRenewCycleName(e.target.value)}
+                    placeholder="e.g. AY 2027-2028"
+                    className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
+                  />
+                  <p className="text-[10px] text-[#6C6C70]">Suggested automatically based on the latest cycle.</p>
+                </div>
+
+                {/* Date Inputs */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Start Date *</label>
+                    <input
+                      type="date"
+                      required
+                      value={renewStartDate}
+                      onChange={(e) => setRenewStartDate(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">End Date *</label>
+                    <input
+                      type="date"
+                      required
+                      value={renewEndDate}
+                      onChange={(e) => setRenewEndDate(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
+                    />
+                  </div>
+                </div>
+
+                {/* Slots Available */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Slots Available (Optional)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={renewSlots}
+                    onChange={(e) => setRenewSlots(e.target.value)}
+                    placeholder="Leave empty for unlimited/configured slots"
+                    className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-[#D9D2C5]/30 justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); }}
+                  className="px-5 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-sm font-bold border-0 cursor-pointer transition-all"
+                >
+                  Confirm Renewal
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

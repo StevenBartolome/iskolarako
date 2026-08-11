@@ -108,6 +108,11 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   const [rejectProviderId, setRejectProviderId] = useState<any>(null);
   const [rejectRemarks, setRejectRemarks] = useState('');
 
+  // States for scholarship rejection modal
+  const [isRejectScholarshipModalOpen, setIsRejectScholarshipModalOpen] = useState(false);
+  const [rejectScholarshipId, setRejectScholarshipId] = useState<string | number | null>(null);
+  const [rejectScholarshipRemarks, setRejectScholarshipRemarks] = useState('');
+
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -415,7 +420,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             providerName: p.provider?.name || 'Unknown Provider',
             category: p.scholarship_categories?.name || 'Uncategorized',
             amount: val || 0,
-            status: (p.status === 'active' || p.status === 'Active' || p.status === 'approved' || p.status === 'Approved' ? 'Approved' : p.status === 'closed' || p.status === 'Closed' ? 'Suspended' : 'Pending Review') as any,
+            status: (p.status === 'active' || p.status === 'Active' || p.status === 'approved' || p.status === 'Approved' ? 'Approved' : p.status === 'closed' ? 'Suspended' : p.status === 'paused' ? 'Rejected' : 'Pending Review') as any,
             dateCreated: new Date(p.created_at).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' })
           };
         });
@@ -956,32 +961,65 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   };
 
   const handleScholarshipAction = async (id: number | string, action: 'Approved' | 'Rejected' | 'Suspended') => {
-    // Determine target DB status
-    let dbStatus = 'draft';
-    if (action === 'Approved') dbStatus = 'approved';
-    else if (action === 'Suspended') dbStatus = 'closed';
-
-    try {
-      const { error } = await supabase
-        .from('scholarship_programs')
-        .update({ status: dbStatus })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      showToast(`Successfully updated scholarship status in database!`);
-      fetchRealScholarships();
-    } catch (err: any) {
-      console.error('Error updating scholarship status:', err);
-      showToast(`Database Error: ${err.message}`);
+    // For Rejected, open the remarks modal instead of acting immediately
+    if (action === 'Rejected') {
+      setRejectScholarshipId(id);
+      setRejectScholarshipRemarks('');
+      setIsRejectScholarshipModalOpen(true);
+      return;
     }
 
-    setScholarships(prev =>
-      prev.map(s => (s.id === id ? { ...s, status: action === 'Approved' ? 'Published' : action } : s))
-    );
+    // Map action to DB status value
+    let dbStatus = 'active';
+    if (action === 'Approved') dbStatus = 'active';
+    else if (action === 'Suspended') dbStatus = 'closed';
+
+    console.log(`[Admin] Updating scholarship ${id} → status: "${dbStatus}"`);
+
+    const { error } = await supabase
+      .from('scholarship_programs')
+      .update({ status: dbStatus })
+      .eq('id', id);
+
+    if (error) {
+      console.error('[Admin] DB update error:', error.code, error.message, error.details, error.hint);
+      showToast(`❌ DB Error (${error.code}): ${error.message}`);
+      return;
+    }
+
+    console.log(`[Admin] Scholarship ${id} updated to "${dbStatus}" successfully`);
+    fetchRealScholarships();
     const title = scholarships.find(s => s.id === id)?.title || 'Scholarship';
     addAuditLog(`${action.toUpperCase()} SCHOLARSHIP`, title);
-    showToast(`Scholarship "${title}" is now ${action === 'Approved' ? 'Published' : action}.`);
+    showToast(`✅ Scholarship "${title}" is now ${action}.`);
+  };
+
+  const handleConfirmRejectScholarship = async () => {
+    if (!rejectScholarshipId) return;
+    const remarks = rejectScholarshipRemarks.trim();
+    if (!remarks) {
+      showToast('Please enter rejection remarks.');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('scholarship_programs')
+      .update({ status: 'paused', rejection_remarks: remarks })
+      .eq('id', rejectScholarshipId);
+
+    if (error) {
+      console.error('[Admin] Reject error:', error.code, error.message);
+      showToast(`❌ DB Error: ${error.message}`);
+      return;
+    }
+
+    const title = scholarships.find(s => s.id === rejectScholarshipId)?.title || 'Scholarship';
+    addAuditLog('REJECTED SCHOLARSHIP', title);
+    showToast(`❌ Scholarship "${title}" has been rejected.`);
+    setIsRejectScholarshipModalOpen(false);
+    setRejectScholarshipId(null);
+    setRejectScholarshipRemarks('');
+    fetchRealScholarships();
   };
 
   const handleStudentStatus = (id: number, nextStatus: 'Active' | 'Suspended') => {
@@ -2802,6 +2840,52 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                 className="bg-[#2D5941] hover:bg-[#1A3C2E] text-white px-6 py-2.5 rounded-xl text-xs font-bold border-0 cursor-pointer shadow-sm"
               >
                 Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Scholarship Rejection Remarks Modal */}
+      {isRejectScholarshipModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                <span className="text-lg">❌</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Reject Scholarship</h3>
+                <p className="text-xs text-[#6C6C70]">Provide remarks so the provider can improve and resubmit.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wider block">Rejection Remarks *</label>
+              <textarea
+                value={rejectScholarshipRemarks}
+                onChange={(e) => setRejectScholarshipRemarks(e.target.value)}
+                rows={4}
+                placeholder="e.g. Missing eligibility criteria, incomplete benefit descriptions, unclear renewal policy..."
+                className="w-full border border-[#D9D2C5] rounded-xl px-4 py-3 text-sm text-[#1C1C1E] font-sans resize-none focus:outline-none focus:border-[#1A3C2E] bg-[#F9F5EF]"
+              />
+              <p className="text-[10px] text-[#8E8E93]">These remarks will be visible to the provider and must be addressed before resubmission.</p>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => { setIsRejectScholarshipModalOpen(false); setRejectScholarshipId(null); setRejectScholarshipRemarks(''); }}
+                className="flex-1 py-3 rounded-xl border border-[#D9D2C5] text-[#1C1C1E] text-sm font-bold hover:bg-[#F9F5EF] transition-all cursor-pointer bg-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRejectScholarship}
+                disabled={!rejectScholarshipRemarks.trim()}
+                className="flex-1 py-3 rounded-xl bg-[#B34040] hover:bg-[#8E2F2F] text-white text-sm font-bold border-0 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm Reject
               </button>
             </div>
           </div>
