@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
+import { CloseProgramConfirmModal } from './components/CloseProgramConfirmModal';
+import { DeleteCycleConfirmModal } from './components/DeleteCycleConfirmModal';
+import { RenewCycleModal } from './components/RenewCycleModal';
 
 
 interface ProviderPortalProps {
@@ -18,7 +21,7 @@ type RenewalPolicy = 'No Renewal' | 'Automatic Renewal' | 'Conditional Renewal' 
 type ScholarshipType = 'merit' | 'need_based' | 'merit_and_need' | 'grant' | 'fellowship';
 type AvailabilityScope = 'nationwide' | 'regional' | 'provincial' | 'municipality' | 'barangay' | 'specific_schools';
 
-interface ApplicationCycle {
+export interface ApplicationCycle {
   id: string | number;
   name: string;
   startDate: string;
@@ -26,13 +29,13 @@ interface ApplicationCycle {
   status: 'Open' | 'Closed' | 'Evaluating' | 'Upcoming';
 }
 
-interface ProgramRequirement {
+export interface ProgramRequirement {
   name: string;
   description: string;
   required: boolean;
 }
 
-interface Program {
+export interface Program {
   id: string | number;
   provider: string;
   status: string;
@@ -3299,144 +3302,36 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       )}
 
       {/* ─── Close Program Confirm Modal ─── */}
-      {isCloseConfirmOpen && programToClose && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 space-y-5">
-            <div className="w-14 h-14 rounded-2xl bg-[#FDF2F2] flex items-center justify-center text-[#B34040] text-2xl mx-auto">⚠️</div>
-            <div className="text-center space-y-1">
-              <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Close this Program?</h3>
-              <p className="text-xs text-[#6C6C70] leading-relaxed">
-                You are about to close <strong>"{programToClose.title}"</strong>. It will be marked as <strong>Closed</strong> and no new applications will be accepted. This can be re-opened later by editing the program.
-              </p>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => { setIsCloseConfirmOpen(false); setProgramToClose(null); }}
-                className="flex-1 px-4 py-3 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"
-              >Cancel</button>
-              <button
-                onClick={handleCloseProgram}
-                className="flex-1 px-4 py-3 rounded-xl bg-[#B34040] hover:bg-red-700 text-white text-sm font-bold border-0 cursor-pointer transition-all"
-              >Yes, Close Program</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CloseProgramConfirmModal
+        isOpen={isCloseConfirmOpen}
+        program={programToClose}
+        onClose={() => { setIsCloseConfirmOpen(false); setProgramToClose(null); }}
+        onConfirm={handleCloseProgram}
+      />
 
       {/* ─── Delete Cycle Confirm Modal ─── */}
-      {isDeleteCycleConfirmOpen && cycleToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 space-y-5">
-            <div className="w-14 h-14 rounded-2xl bg-[#FDF2F2] flex items-center justify-center text-[#B34040] text-2xl mx-auto">🗑️</div>
-            <div className="text-center space-y-1">
-              <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Delete Application Cycle?</h3>
-              <p className="text-xs text-[#6C6C70] leading-relaxed">
-                Are you sure you want to delete the cycle <strong>"{cycleToDelete.name}"</strong>? This will permanently remove the cycle from the system. This action cannot be undone.
-              </p>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => { setIsDeleteCycleConfirmOpen(false); setCycleToDelete(null); }}
-                className="flex-1 px-4 py-3 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"
-              >Cancel</button>
-              <button
-                onClick={handleConfirmDeleteCycle}
-                className="flex-1 px-4 py-3 rounded-xl bg-[#B34040] hover:bg-red-700 text-white text-sm font-bold border-0 cursor-pointer transition-all"
-              >Yes, Delete Cycle</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteCycleConfirmModal
+        isOpen={isDeleteCycleConfirmOpen}
+        cycle={cycleToDelete}
+        onClose={() => { setIsDeleteCycleConfirmOpen(false); setCycleToDelete(null); }}
+        onConfirm={handleConfirmDeleteCycle}
+      />
 
       {/* ─── Renew / Add Cycle Modal ─── */}
-      {isRenewModalOpen && selectedProgramForRenewal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-[#D9D2C5]/30">
-            <div className="bg-[#1A3C2E] p-6 text-white flex justify-between items-center">
-              <div>
-                <h3 className="text-lg font-bold font-serif">Renew / Add Application Cycle</h3>
-                <p className="text-xs text-white/70 mt-1">For: {selectedProgramForRenewal.title}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); }}
-                className="text-white/80 hover:text-white bg-transparent border-0 cursor-pointer text-xl"
-              >&times;</button>
-            </div>
-
-            <form onSubmit={handleRenewProgramCycle} className="p-7 space-y-5">
-              <div className="space-y-4">
-                {/* Cycle Name */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Cycle Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={renewCycleName}
-                    onChange={(e) => setRenewCycleName(e.target.value)}
-                    placeholder="e.g. AY 2027-2028"
-                    className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
-                  />
-                  <p className="text-[10px] text-[#6C6C70]">Suggested automatically based on the latest cycle.</p>
-                </div>
-
-                {/* Date Inputs */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Start Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={renewStartDate}
-                      onChange={(e) => setRenewStartDate(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">End Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={renewEndDate}
-                      onChange={(e) => setRenewEndDate(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
-                    />
-                  </div>
-                </div>
-
-                {/* Slots Available */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Slots Available (Optional)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={renewSlots}
-                    onChange={(e) => setRenewSlots(e.target.value)}
-                    placeholder="Leave empty for unlimited/configured slots"
-                    className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4 border-t border-[#D9D2C5]/30 justify-end">
-                <button
-                  type="button"
-                  onClick={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); }}
-                  className="px-5 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-sm font-bold border-0 cursor-pointer transition-all"
-                >
-                  Confirm Renewal
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <RenewCycleModal
+        isOpen={isRenewModalOpen}
+        program={selectedProgramForRenewal}
+        onClose={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); }}
+        onSubmit={handleRenewProgramCycle}
+        renewCycleName={renewCycleName}
+        setRenewCycleName={setRenewCycleName}
+        renewStartDate={renewStartDate}
+        setRenewStartDate={setRenewStartDate}
+        renewEndDate={renewEndDate}
+        setRenewEndDate={setRenewEndDate}
+        renewSlots={renewSlots}
+        setRenewSlots={setRenewSlots}
+      />
 
     </div>
   );

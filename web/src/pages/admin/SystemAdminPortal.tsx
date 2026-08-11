@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
+import { RejectRemarksModal } from './components/RejectRemarksModal';
+import { AdminProgramDetailsModal } from './components/AdminProgramDetailsModal';
+import { RejectScholarshipModal } from './components/RejectScholarshipModal';
 
 
 interface SystemAdminPortalProps {
@@ -2729,168 +2732,28 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       </main>
 
       {/* Reject Remarks Modal */}
-      {isRejectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-8 max-w-md w-full space-y-6 relative animate-fade-in">
-            <button
-              onClick={() => setIsRejectModalOpen(false)}
-              className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
-            >
-              ✕
-            </button>
-
-            <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">Rejection Feedback</h3>
-            <p className="text-xs text-[#6C6C70]">
-              Enter the reason or feedback for rejecting the provider's verification documents. This will be visible to the provider.
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
-                  Remarks / Feedback
-                </label>
-                <textarea
-                  value={rejectRemarks}
-                  onChange={(e) => setRejectRemarks(e.target.value)}
-                  placeholder="e.g. Document copy is blurry. Please upload a clear scan of your COR."
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm font-semibold bg-white"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsRejectModalOpen(false)}
-                  className="flex-1 bg-transparent hover:bg-slate-50 text-[#6C6C70] border border-solid border-[#D9D2C5] py-3.5 rounded-xl text-sm font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleVerifyProvider(rejectProviderId, 'Suspended', rejectRemarks)}
-                  className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white py-3.5 rounded-xl text-sm font-bold shadow-md cursor-pointer transition-all border-0"
-                >
-                  Confirm Rejection
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <RejectRemarksModal
+        isOpen={isRejectModalOpen}
+        rejectRemarks={rejectRemarks}
+        setRejectRemarks={setRejectRemarks}
+        onClose={() => setIsRejectModalOpen(false)}
+        onConfirm={() => handleVerifyProvider(rejectProviderId, 'Suspended', rejectRemarks)}
+      />
 
       {/* Scholarship View Details Modal for Admin */}
-      {selectedScholarshipDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-8 max-w-lg w-full space-y-6 relative animate-fade-in max-h-[85vh] overflow-y-auto">
-            <button
-              onClick={() => setSelectedScholarshipDetails(null)}
-              className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
-            >✕</button>
+      <AdminProgramDetailsModal
+        program={selectedScholarshipDetails}
+        onClose={() => setSelectedScholarshipDetails(null)}
+      />
 
-            <div>
-              <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">
-                {selectedScholarshipDetails.scholarship_categories?.name || 'Category'}
-              </span>
-              <h3 className="text-2xl font-bold font-serif text-[#1A3C2E] leading-tight">
-                {selectedScholarshipDetails.title}
-              </h3>
-              <p className="text-xs text-[#6C6C70] mt-1 font-medium">
-                Provided by: <strong className="text-[#1A3C2E]">{selectedScholarshipDetails.provider?.name || 'Unknown Provider'}</strong>
-              </p>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div className="bg-[#F9F5EF] rounded-2xl p-4 grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Status</span>
-                  <span className="font-bold text-[#1C1C1E] capitalize">{selectedScholarshipDetails.status}</span>
-                </div>
-                <div>
-                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Total Slots</span>
-                  <span className="font-bold text-[#1C1C1E]">{selectedScholarshipDetails.total_slots || 'Unlimited'}</span>
-                </div>
-                <div>
-                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Funding Freq</span>
-                  <span className="font-bold text-[#1C1C1E]">{selectedScholarshipDetails.funding_frequency || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Renewal Policy</span>
-                  <span className="font-bold text-[#1C1C1E]">{selectedScholarshipDetails.renewal_policy || 'N/A'}</span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Description</span>
-                <p className="text-[#6C6C70] leading-relaxed">{selectedScholarshipDetails.description}</p>
-              </div>
-
-              {selectedScholarshipDetails.course_eligibility && (
-                <div className="space-y-1.5">
-                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Course Eligibility</span>
-                  <span className="font-semibold text-[#1C1C1E]">{selectedScholarshipDetails.course_eligibility.join(', ')}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setSelectedScholarshipDetails(null)}
-                className="bg-[#2D5941] hover:bg-[#1A3C2E] text-white px-6 py-2.5 rounded-xl text-xs font-bold border-0 cursor-pointer shadow-sm"
-              >
-                Close View
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Scholarship Rejection Remarks Modal */}
-      {isRejectScholarshipModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
-                <span className="text-lg">❌</span>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Reject Scholarship</h3>
-                <p className="text-xs text-[#6C6C70]">Provide remarks so the provider can improve and resubmit.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wider block">Rejection Remarks *</label>
-              <textarea
-                value={rejectScholarshipRemarks}
-                onChange={(e) => setRejectScholarshipRemarks(e.target.value)}
-                rows={4}
-                placeholder="e.g. Missing eligibility criteria, incomplete benefit descriptions, unclear renewal policy..."
-                className="w-full border border-[#D9D2C5] rounded-xl px-4 py-3 text-sm text-[#1C1C1E] font-sans resize-none focus:outline-none focus:border-[#1A3C2E] bg-[#F9F5EF]"
-              />
-              <p className="text-[10px] text-[#8E8E93]">These remarks will be visible to the provider and must be addressed before resubmission.</p>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                type="button"
-                onClick={() => { setIsRejectScholarshipModalOpen(false); setRejectScholarshipId(null); setRejectScholarshipRemarks(''); }}
-                className="flex-1 py-3 rounded-xl border border-[#D9D2C5] text-[#1C1C1E] text-sm font-bold hover:bg-[#F9F5EF] transition-all cursor-pointer bg-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmRejectScholarship}
-                disabled={!rejectScholarshipRemarks.trim()}
-                className="flex-1 py-3 rounded-xl bg-[#B34040] hover:bg-[#8E2F2F] text-white text-sm font-bold border-0 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Confirm Reject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RejectScholarshipModal
+        isOpen={isRejectScholarshipModalOpen}
+        remarks={rejectScholarshipRemarks}
+        setRemarks={setRejectScholarshipRemarks}
+        onClose={() => { setIsRejectScholarshipModalOpen(false); setRejectScholarshipId(null); setRejectScholarshipRemarks(''); }}
+        onConfirm={handleConfirmRejectScholarship}
+      />
     </div>
   );
 };
