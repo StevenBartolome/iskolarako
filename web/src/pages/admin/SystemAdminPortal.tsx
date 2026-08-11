@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import LogoSvg from '@/assets/logo/iskolarakologo.svg';
+import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
 
 
@@ -23,7 +23,7 @@ type AdminTab =
   | 'settings';
 
 interface ProviderOrg {
-  id: number;
+  id: any;
   name: string;
   representative: string;
   email: string;
@@ -31,10 +31,11 @@ interface ProviderOrg {
   status: 'Pending' | 'Under Review' | 'Verified' | 'Active' | 'Suspended' | 'Revoked';
   documents: { name: string; url: string; verified: boolean }[];
   dateRegistered: string;
+  remarks?: string;
 }
 
 interface ScholarshipAdminView {
-  id: number;
+  id: any;
   title: string;
   providerName: string;
   category: string;
@@ -102,6 +103,11 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // States for verification rejection modal
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectProviderId, setRejectProviderId] = useState<any>(null);
+  const [rejectRemarks, setRejectRemarks] = useState('');
+
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -154,6 +160,37 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   // Modals / Details states
   const [selectedProvider, setSelectedProvider] = useState<ProviderOrg | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<StudentAdminView | null>(null);
+  const [providerPrograms, setProviderPrograms] = useState<any[]>([]);
+  const [loadingPrograms, setLoadingPrograms] = useState(false);
+
+  const [isChecklistCollapsed, setIsChecklistCollapsed] = useState(false);
+  const [isOversightCollapsed, setIsOversightCollapsed] = useState(false);
+  const [selectedScholarshipDetails, setSelectedScholarshipDetails] = useState<any | null>(null);
+  const [loadingScholarships, setLoadingScholarships] = useState(false);
+
+  useEffect(() => {
+    if (!selectedProvider) {
+      setProviderPrograms([]);
+      return;
+    }
+    const fetchPrograms = async () => {
+      setLoadingPrograms(true);
+      try {
+        const { data, error } = await supabase
+          .from('scholarship_programs')
+          .select('id, title, status, budget_total, total_slots, funding_frequency')
+          .eq('provider_id', selectedProvider.id);
+        if (!error && data) {
+          setProviderPrograms(data);
+        }
+      } catch (err) {
+        console.error('Error fetching provider programs:', err);
+      } finally {
+        setLoadingPrograms(false);
+      }
+    };
+    fetchPrograms();
+  }, [selectedProvider]);
 
   const renderSidebarBtn = (tab: AdminTab, label: string, emoji: string) => {
     const isActive = activeTab === tab;
@@ -175,61 +212,11 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     );
   };
 
-  // MOCK STATES WITH INTERACTION
-  const [providers, setProviders] = useState<ProviderOrg[]>([
-    {
-      id: 1,
-      name: 'ABC Foundation',
-      representative: 'Arianne Cruz',
-      email: 'contact@abcfoundation.org',
-      type: 'NGO',
-      status: 'Pending',
-      dateRegistered: 'Aug 09, 2026',
-      documents: [
-        { name: 'SEC Registration.pdf', url: '#', verified: false },
-        { name: 'BIR Certificate.pdf', url: '#', verified: false },
-        { name: 'Representative ID.pdf', url: '#', verified: false }
-      ]
-    },
-    {
-      id: 2,
-      name: 'Department of Science and Technology',
-      representative: 'Dr. Renato Solidum',
-      email: 'sei@dost.gov.ph',
-      type: 'Government',
-      status: 'Verified',
-      dateRegistered: 'Jun 10, 2025',
-      documents: [
-        { name: 'Government Charter.pdf', url: '#', verified: true },
-        { name: 'DOST Authorization.pdf', url: '#', verified: true }
-      ]
-    },
-    {
-      id: 3,
-      name: 'Megaworld Foundation',
-      representative: 'Jose Mari Lim',
-      email: 'grants@megaworld.com',
-      type: 'Private',
-      status: 'Under Review',
-      dateRegistered: 'Aug 05, 2026',
-      documents: [
-        { name: 'SEC Registration.pdf', url: '#', verified: true },
-        { name: 'Articles of Incorporation.pdf', url: '#', verified: false }
-      ]
-    },
-    {
-      id: 4,
-      name: 'Starlight Grants Inc.',
-      representative: 'Mark Robles',
-      email: 'support@starlightgrants.xyz',
-      type: 'Private',
-      status: 'Suspended',
-      dateRegistered: 'Feb 14, 2026',
-      documents: [
-        { name: 'SEC Registration.pdf', url: '#', verified: true }
-      ]
-    }
-  ]);
+
+
+  // Registered providers loaded from Supabase
+  const [providers, setProviders] = useState<ProviderOrg[]>([]);
+  const [providerRequirementsMap, setProviderRequirementsMap] = useState<Record<string, RequirementItem[]>>({});
 
   const [scholarships, setScholarships] = useState<ScholarshipAdminView[]>([
     { id: 101, title: 'DOST Merit Scholarship 2026', providerName: 'Department of Science and Technology', category: 'STEM', amount: 40000, status: 'Published', dateCreated: 'Aug 01, 2026' },
@@ -293,6 +280,240 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       fetchCategories();
     }
   }, [activeTab]);
+
+  const fetchRealProviders = async () => {
+    try {
+      // 1. Fetch requirements configs
+      const { data: configData, error: configError } = await supabase
+        .from('provider_requirements_config')
+        .select('provider_type, required_fields');
+      
+      const reqsMap: Record<string, RequirementItem[]> = {};
+      if (!configError && configData) {
+        configData.forEach(c => {
+          reqsMap[c.provider_type] = c.required_fields as RequirementItem[];
+        });
+      }
+      // Populate defaults if missing
+      const fallbackPublic = [
+        { name: 'Government Charter or Mandate', description: 'Copy of the official establishing act/mandate', required: true },
+        { name: 'Representative ID', description: 'Valid government ID of the focal person', required: true }
+      ];
+      const fallbackPrivate = [
+        { name: 'SEC Registration Certificate', description: 'SEC Certificate of Registration', required: true },
+        { name: 'BIR Form 2303', description: 'Certificate of Registration with BIR', required: true },
+        { name: 'Business Permit', description: 'Current year Mayor\'s Business Permit', required: true }
+      ];
+      const fallbackNgo = [
+        { name: 'SEC or DTI Registration Certificate', description: 'Official corporate registration copy', required: true },
+        { name: 'BIR Certificate / Tax Exemption', description: 'Tax exemption certificate if applicable', required: false }
+      ];
+
+      if (!reqsMap.public) reqsMap.public = fallbackPublic;
+      if (!reqsMap.private) reqsMap.private = fallbackPrivate;
+      if (!reqsMap.ngo) reqsMap.ngo = fallbackNgo;
+
+      setProviderRequirementsMap(reqsMap);
+
+      // 2. Fetch providers
+      const { data, error } = await supabase
+        .from('provider')
+        .select(`
+          id,
+          name,
+          provider_type,
+          verification_status,
+          requirements_submitted,
+          created_at,
+          users (
+            first_name,
+            last_name,
+            email
+          )
+        `);
+
+      if (error) throw error;
+      if (!data) return;
+
+      const formatted: ProviderOrg[] = data.map((p: any) => {
+        const rep = p.users?.[0] || {};
+        const repName = rep.first_name && rep.last_name ? `${rep.first_name} ${rep.last_name}` : 'No Representative';
+        const repEmail = rep.email || 'N/A';
+        const remarks = p.requirements_submitted?._remarks || '';
+
+        // Parse documents from jsonb requirements_submitted (ignoring _remarks key)
+        const docs = p.requirements_submitted
+          ? Object.entries(p.requirements_submitted)
+              .filter(([name]) => !name.startsWith('_'))
+              .map(([name, url]) => ({
+                name,
+                url: url as string,
+                verified: p.verification_status === 'verified'
+              }))
+          : [];
+
+        let uiStatus: ProviderOrg['status'] = 'Pending';
+        if (p.verification_status === 'verified') uiStatus = 'Verified';
+        else if (p.verification_status === 'under_review') uiStatus = 'Under Review';
+        else if (p.verification_status === 'rejected') uiStatus = 'Suspended';
+
+        return {
+          id: p.id,
+          name: p.name,
+          representative: repName,
+          email: repEmail,
+          type: (p.provider_type === 'public' ? 'Government' : p.provider_type === 'private' ? 'Private' : 'NGO') as ProviderOrg['type'],
+          status: uiStatus,
+          documents: docs,
+          dateRegistered: new Date(p.created_at).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' }),
+          remarks: remarks
+        };
+      });
+
+      setProviders(formatted);
+    } catch (err) {
+      console.error('Error fetching real providers:', err);
+    }
+  };
+
+  const fetchRealScholarships = async () => {
+    setLoadingScholarships(true);
+    try {
+      const { data, error } = await supabase
+        .from('scholarship_programs')
+        .select(`
+          id,
+          title,
+          covers_tuition,
+          covers_stipend,
+          stipend_amount,
+          covers_allowance,
+          allowance_amount,
+          status,
+          created_at,
+          category_id,
+          scholarship_categories (
+            name
+          ),
+          provider (
+            name
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) {
+        const formatted: ScholarshipAdminView[] = data.map((p: any) => {
+          let val = 0;
+          if (p.covers_tuition) val += 15000; // estimated/average representation for semantic sorting/display
+          if (p.covers_stipend && p.stipend_amount) val += Number(p.stipend_amount) * 5; // monthly * 5 months/sem
+          if (p.covers_allowance && p.allowance_amount) val += Number(p.allowance_amount);
+
+          return {
+            id: p.id,
+            title: p.title,
+            providerName: p.provider?.name || 'Unknown Provider',
+            category: p.scholarship_categories?.name || 'Uncategorized',
+            amount: val || 0,
+            status: (p.status === 'active' || p.status === 'Active' || p.status === 'approved' || p.status === 'Approved' ? 'Approved' : p.status === 'closed' || p.status === 'Closed' ? 'Suspended' : 'Pending Review') as any,
+            dateCreated: new Date(p.created_at).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' })
+          };
+        });
+        setScholarships(formatted);
+      }
+    } catch (err) {
+      console.error('Error fetching real scholarships:', err);
+    } finally {
+      setLoadingScholarships(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'scholarships') {
+      fetchRealScholarships();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'providers') {
+      fetchRealProviders();
+    }
+  }, [activeTab]);
+
+  // Subscribe to realtime database updates for the provider and requirements config tables
+  useEffect(() => {
+    if (activeTab !== 'providers') return;
+
+    const channel = supabase
+      .channel('admin-providers-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'provider'
+        },
+        () => {
+          fetchRealProviders();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'provider_requirements_config'
+        },
+        () => {
+          fetchRealProviders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeTab]);
+
+  // Subscribe to realtime database updates for scholarship categories in settings tab
+  useEffect(() => {
+    if (activeTab !== 'settings') return;
+
+    const channel = supabase
+      .channel('admin-categories-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scholarship_categories'
+        },
+        () => {
+          fetchCategories();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeTab]);
+
+  // Keep selectedProvider synchronized in real-time when the providers list changes
+  useEffect(() => {
+    if (selectedProvider && providers.length > 0) {
+      const updated = providers.find(p => p.id === selectedProvider.id);
+      if (updated) {
+        if (
+          updated.status !== selectedProvider.status ||
+          JSON.stringify(updated.documents) !== JSON.stringify(selectedProvider.documents) ||
+          updated.remarks !== selectedProvider.remarks
+        ) {
+          setSelectedProvider(updated);
+        }
+      }
+    }
+  }, [providers, selectedProvider]);
 
   // Category Multi-Add and Editing States
   const [showAddCategoryForm, setShowAddCategoryForm] = useState(false);
@@ -462,6 +683,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   };
 
   const handleRemoveRequirement = async (index: number) => {
+    const deletedItemName = reqItems[index]?.name;
     const updated = reqItems.filter((_, idx) => idx !== index);
     setReqItems(updated);
     if (editingReqIndex === index) {
@@ -481,8 +703,34 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
         });
 
       if (error) throw error;
-      showToast('Requirement removed and saved.');
-      addAuditLog('REMOVED REQUIREMENT', `Provider Type: ${selectedProviderType}`);
+
+      // Clean up uploaded documents for affected providers
+      if (deletedItemName) {
+        const { data: affectedProviders } = await supabase
+          .from('provider')
+          .select('id, requirements_submitted')
+          .eq('provider_type', selectedProviderType);
+
+        if (affectedProviders) {
+          for (const prov of affectedProviders) {
+            if (prov.requirements_submitted && prov.requirements_submitted[deletedItemName]) {
+              const newReqs = { ...prov.requirements_submitted };
+              delete newReqs[deletedItemName];
+
+              await supabase
+                .from('provider')
+                .update({
+                  requirements_submitted: newReqs,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', prov.id);
+            }
+          }
+        }
+      }
+
+      showToast('Requirement removed and database cleaned up.');
+      addAuditLog('REMOVED REQUIREMENT & CLEANED UP SUBMISSIONS', `Provider Type: ${selectedProviderType}, Requirement: ${deletedItemName}`);
     } catch (err: any) {
       console.error('Error saving after removal:', err);
       showToast(`Failed to save: ${err.message || 'database error'}`);
@@ -631,11 +879,65 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   };
 
   // HANDLERS
-  const handleVerifyProvider = (id: number, nextStatus: ProviderOrg['status']) => {
+  const handleVerifyProvider = async (id: any, nextStatus: ProviderOrg['status'], customRemarks?: string) => {
+    let remarks = '';
+    if (nextStatus === 'Suspended') {
+      if (customRemarks === undefined) {
+        setRejectProviderId(id);
+        setRejectRemarks('');
+        setIsRejectModalOpen(true);
+        return;
+      }
+      remarks = customRemarks;
+    }
+
+    // Determine DB status
+    let dbStatus = 'pending';
+    if (nextStatus === 'Verified') dbStatus = 'verified';
+    else if (nextStatus === 'Under Review') dbStatus = 'under_review';
+    else if (nextStatus === 'Suspended') dbStatus = 'rejected';
+
+    const isUuid = typeof id === 'string';
+
+    if (isUuid) {
+      try {
+        const { data: currentProv } = await supabase
+          .from('provider')
+          .select('requirements_submitted')
+          .eq('id', id)
+          .single();
+
+        const updatedReqs = {
+          ...(currentProv?.requirements_submitted || {}),
+          _remarks: remarks || undefined
+        };
+
+        const { error } = await supabase
+          .from('provider')
+          .update({
+            verification_status: dbStatus,
+            requirements_submitted: updatedReqs,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', id);
+
+        if (error) throw error;
+        showToast(`Successfully updated provider in database!`);
+      } catch (err: any) {
+        console.error('Error updating provider verification status:', err);
+        showToast(`Database Error: ${err.message}`);
+        return;
+      }
+    }
+
     setProviders(prev =>
       prev.map(p => {
         if (p.id === id) {
-          const updated = { ...p, status: nextStatus };
+          const updated = { 
+            ...p, 
+            status: nextStatus,
+            documents: p.documents.map(d => ({ ...d, verified: nextStatus === 'Verified' }))
+          };
           if (selectedProvider && selectedProvider.id === id) {
             setSelectedProvider(updated);
           }
@@ -647,9 +949,33 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     const providerName = providers.find(p => p.id === id)?.name || 'Unknown';
     addAuditLog(`UPDATED PROVIDER STATUS: ${nextStatus}`, providerName);
     showToast(`Provider "${providerName}" status updated to ${nextStatus}.`);
+
+    if (nextStatus === 'Suspended') {
+      setIsRejectModalOpen(false);
+    }
   };
 
-  const handleScholarshipAction = (id: number, action: 'Approved' | 'Rejected' | 'Suspended') => {
+  const handleScholarshipAction = async (id: number | string, action: 'Approved' | 'Rejected' | 'Suspended') => {
+    // Determine target DB status
+    let dbStatus = 'draft';
+    if (action === 'Approved') dbStatus = 'approved';
+    else if (action === 'Suspended') dbStatus = 'closed';
+
+    try {
+      const { error } = await supabase
+        .from('scholarship_programs')
+        .update({ status: dbStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      showToast(`Successfully updated scholarship status in database!`);
+      fetchRealScholarships();
+    } catch (err: any) {
+      console.error('Error updating scholarship status:', err);
+      showToast(`Database Error: ${err.message}`);
+    }
+
     setScholarships(prev =>
       prev.map(s => (s.id === id ? { ...s, status: action === 'Approved' ? 'Published' : action } : s))
     );
@@ -739,7 +1065,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
 
 
   return (
-    <div className="min-h-screen bg-[#F9F5EF] flex font-sans relative">
+    <div className="h-screen bg-[#F9F5EF] flex font-sans overflow-hidden relative">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#1A3C2E] text-[#F9F5EF] border border-[#2D5941] px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">
@@ -751,12 +1077,12 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       )}
 
       {/* Sidebar Navigation */}
-      <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 ${isCollapsed ? 'w-20' : 'w-64'}`}>
-        <div className="p-4 overflow-y-auto">
+      <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 overflow-hidden ${isCollapsed ? 'w-20' : 'w-64'}`}>
+        <div className="p-4 overflow-y-auto overflow-x-hidden flex-1">
           {/* Sidebar Header */}
           <div className={`flex items-center justify-between mb-8 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
             <div className="flex items-center gap-3">
-              <img src={LogoSvg} alt="IskolarAko Logo" className="w-10 h-10 object-contain shrink-0" />
+              <img src={LogoGoldSvg} alt="IskolarAko Logo" className="w-12 h-12 object-contain shrink-0" />
               {!isCollapsed && (
                 <div>
                   <h2 className="text-lg font-bold font-serif leading-none tracking-tight">IskolarAko</h2>
@@ -797,7 +1123,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
               {(!isCollapsed && collapsedGroups.operations) ? null : (
                 <div className="space-y-1 animate-fade-in">
                   {renderSidebarBtn('dashboard', 'Dashboard', '📊')}
-                  {renderSidebarBtn('providers', 'Provider Verification', '🏢')}
+                  {renderSidebarBtn('providers', 'Provider Management', '🏢')}
                   {renderSidebarBtn('scholarships', 'Scholarships', '🎓')}
                   {renderSidebarBtn('students', 'Student Management', '👨‍🎓')}
                 </div>
@@ -912,7 +1238,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-extrabold text-[#1A3C2E] font-serif capitalize">
-              {activeTab === 'logs' ? 'System Audit Logs' : activeTab === 'funds' ? 'Fund Release Monitoring' : activeTab === 'providers' ? 'Provider Verification & Verification Pipeline' : activeTab}
+              {activeTab === 'logs' ? 'System Audit Logs' : activeTab === 'funds' ? 'Fund Release Monitoring' : activeTab === 'providers' ? 'Provider Management' : activeTab}
             </h1>
             <p className="text-xs text-[#6C6C70] mt-1">
               System Administration, trust moderation, and oversight metrics.
@@ -989,7 +1315,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
               </div>
 
               <div className="bg-white p-6 rounded-2xl border border-[#D9D2C5] shadow-sm">
-                <h3 className="text-sm font-bold text-[#1A3C2E] uppercase border-b border-[#D9D2C5] pb-3 mb-4">Provider Verifications Panel</h3>
+                <h3 className="text-sm font-bold text-[#1A3C2E] uppercase border-b border-[#D9D2C5] pb-3 mb-4">Provider Management Panel</h3>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setActiveTab('providers')}
@@ -1124,22 +1450,147 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                         </div>
                       </div>
 
-                      <div>
-                        <h5 className="text-xs font-bold text-[#1C1C1E] uppercase mb-2">Submitted Verification Documents</h5>
-                        <div className="space-y-2">
-                          {selectedProvider.documents.map((doc, idx) => (
-                            <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-lg border border-[#D9D2C5]/50 text-xs">
-                              <span className="font-medium text-[#1C1C1E]">{doc.name}</span>
+                      {(() => {
+                        const typeKey = selectedProvider.type === 'Government' ? 'public' : selectedProvider.type === 'Private' ? 'private' : 'ngo';
+                        const reqs = providerRequirementsMap[typeKey] || [];
+                        return (
+                          <div className="space-y-4">
+                            <div className="border-t border-[#D9D2C5] pt-4">
                               <button
                                 type="button"
-                                onClick={() => showToast(`Simulating viewing of document: ${doc.name}`)}
-                                className="text-[#2D5941] font-bold hover:underline cursor-pointer"
+                                onClick={() => setIsChecklistCollapsed(!isChecklistCollapsed)}
+                                className="w-full flex justify-between items-center text-xs font-bold text-[#1C1C1E] uppercase cursor-pointer border-0 bg-transparent mb-2"
                               >
-                                View File
+                                <span>Requirements Checklist</span>
+                                <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${isChecklistCollapsed ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
                               </button>
+                              
+                              {!isChecklistCollapsed && (
+                                <div className="space-y-2 mt-2">
+                                  {reqs.map((req, idx) => {
+                                    const submittedDoc = selectedProvider.documents.find(d => d.name === req.name);
+                                    const isPassed = !!submittedDoc;
+
+                                    return (
+                                      <div key={idx} className="p-3.5 bg-white rounded-xl border border-[#D9D2C5]/50 text-xs flex flex-col gap-1.5 shadow-sm">
+                                        <div className="flex justify-between items-start">
+                                          <div>
+                                            <span className="font-bold text-[#1A3C2E]">{req.name}</span>
+                                            {req.required && (
+                                              <span className="ml-1.5 text-[8px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQ</span>
+                                            )}
+                                          </div>
+                                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-sans ${
+                                            isPassed ? 'bg-[#EBF5EE] text-[#2D5941]' : 'bg-amber-50 text-[#C97B2E]'
+                                          }`}>
+                                            {isPassed ? 'Passed' : 'Not Yet'}
+                                          </span>
+                                        </div>
+                                        <p className="text-[10px] text-[#6C6C70] font-sans leading-normal">{req.description}</p>
+                                        
+                                        {isPassed && submittedDoc && (
+                                          <div className="flex justify-end pt-1.5 border-t border-dashed border-[#D9D2C5]/40 mt-1">
+                                            {submittedDoc.url && submittedDoc.url !== '#' ? (
+                                              <a
+                                                href={submittedDoc.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[10px] font-bold text-[#2D5941] hover:underline flex items-center gap-0.5"
+                                              >
+                                                Preview Submitted Document &rarr;
+                                              </a>
+                                            ) : (
+                                              <span className="text-[10px] text-gray-400 italic font-sans">Mock Document Attached</span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
-                          ))}
+                          </div>
+                        );
+                      })()}
+
+                      {selectedProvider.remarks && (
+                        <div className="bg-red-50/50 border border-red-200/40 text-red-900 rounded-xl p-4 text-xs font-sans space-y-1">
+                          <strong>Active Rejection Remarks:</strong>
+                          <p className="leading-relaxed">{selectedProvider.remarks}</p>
                         </div>
+                      )}
+
+                      {/* Provider's Scholarship Programs Oversight Section */}
+                      <div className="space-y-3 pt-4 border-t border-[#D9D2C5]">
+                        <button
+                          type="button"
+                          onClick={() => setIsOversightCollapsed(!isOversightCollapsed)}
+                          className="w-full flex justify-between items-center text-xs font-bold text-[#1C1C1E] uppercase cursor-pointer border-0 bg-transparent mb-2"
+                        >
+                          <span>Scholarship Programs Oversight</span>
+                          <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${isOversightCollapsed ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        
+                        {!isOversightCollapsed && (
+                          <>
+                            {loadingPrograms ? (
+                              <div className="text-xs text-[#6C6C70] italic">Loading programs...</div>
+                            ) : providerPrograms.length === 0 ? (
+                              <div className="text-xs text-[#6C6C70] italic bg-white p-3 rounded-xl border border-[#D9D2C5]/50">No scholarship programs configured yet.</div>
+                            ) : (
+                              <div className="space-y-2 max-h-48 overflow-y-auto pr-1 mt-2">
+                                {providerPrograms.map((prog) => (
+                                  <div key={prog.id} className="p-3 bg-white rounded-xl border border-[#D9D2C5]/50 text-xs flex justify-between items-center shadow-sm">
+                                    <div className="space-y-0.5">
+                                      <div className="font-bold text-[#1A3C2E] truncate max-w-[130px]" title={prog.title}>{prog.title}</div>
+                                      <div className="text-[10px] text-[#6C6C70]">Slots: {prog.total_slots || 'Unlimited'} • {prog.funding_frequency}</div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
+                                        prog.status === 'Active' || prog.status === 'active' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                                        prog.status === 'Closed' || prog.status === 'closed' ? 'bg-red-50 text-[#B34040]' :
+                                        'bg-[#EDE8DE] text-[#6C6C70]'
+                                      }`}>
+                                        {prog.status}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            const { data: fullProg } = await supabase
+                                              .from('scholarship_programs')
+                                              .select(`
+                                                *,
+                                                provider ( name ),
+                                                scholarship_categories ( name )
+                                              `)
+                                              .eq('id', prog.id)
+                                              .single();
+
+                                            if (fullProg) {
+                                              setSelectedScholarshipDetails(fullProg);
+                                              setActiveTab('scholarships');
+                                            }
+                                          } catch (e) {
+                                            console.error(e);
+                                          }
+                                        }}
+                                        className="bg-[#2D5941] text-white hover:bg-[#1A3C2E] px-2 py-1 rounded text-[9px] font-bold cursor-pointer border-0"
+                                      >
+                                        View
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
 
                       <div className="flex flex-col gap-2 pt-4 border-t border-[#D9D2C5]">
@@ -1147,34 +1598,25 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                           <button
                             type="button"
                             onClick={() => handleVerifyProvider(selectedProvider.id, 'Verified')}
-                            className="flex-1 bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold py-2 rounded-xl cursor-pointer border-0"
+                            className="flex-1 bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
                           >
                             Approve
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleVerifyProvider(selectedProvider.id, 'Under Review')}
-                            className="flex-1 bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1C1C1E] text-xs font-bold py-2 rounded-xl cursor-pointer border-0"
-                          >
-                            Under Review
-                          </button>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
                             onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
-                            className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2 rounded-xl cursor-pointer border-0"
+                            className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
                           >
-                            Suspend
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleVerifyProvider(selectedProvider.id, 'Revoked')}
-                            className="flex-1 bg-gray-600 hover:bg-gray-800 text-white text-xs font-bold py-2 rounded-xl cursor-pointer border-0"
-                          >
-                            Revoke
+                            Reject
                           </button>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => handleVerifyProvider(selectedProvider.id, 'Under Review')}
+                          className="w-full bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1C1C1E] text-xs font-bold py-2 rounded-xl cursor-pointer border-0 transition-all text-center"
+                        >
+                          Mark as Under Review
+                        </button>
                       </div>
                     </div>
                   ) : (
@@ -1213,7 +1655,20 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                   </tr>
                 </thead>
                 <tbody>
-                  {scholarships.map(s => (
+                  {loadingScholarships ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-xs text-[#6C6C70] italic">
+                        Loading scholarships governance list...
+                      </td>
+                    </tr>
+                  ) : scholarships.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-xs text-[#6C6C70] italic">
+                        No scholarships found in database.
+                      </td>
+                    </tr>
+                  ) : (
+                    scholarships.map(s => (
                     <tr key={s.id} className="border-b border-[#D9D2C5]/50 hover:bg-[#F9F5EF]/50">
                       <td className="py-4 font-bold text-[#1C1C1E]">{s.title}</td>
                       <td>{s.providerName}</td>
@@ -1231,6 +1686,30 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                       <td>{s.dateCreated}</td>
                       <td className="text-right">
                         <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const { data: fullProg } = await supabase
+                                  .from('scholarship_programs')
+                                  .select(`
+                                    *,
+                                    provider ( name ),
+                                    scholarship_categories ( name )
+                                  `)
+                                  .eq('id', s.id)
+                                  .single();
+                                if (fullProg) {
+                                  setSelectedScholarshipDetails(fullProg);
+                                }
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            }}
+                            className="bg-[#EDE8DE] text-[#1A3C2E] hover:bg-[#D9D2C5] px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer border-0"
+                          >
+                            View
+                          </button>
                           {s.status === 'Pending Review' && (
                             <>
                               <button
@@ -1258,10 +1737,20 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                               Suspend
                             </button>
                           )}
+                          {s.status === 'Suspended' && (
+                            <button
+                              type="button"
+                              onClick={() => handleScholarshipAction(s.id, 'Approved')}
+                              className="bg-[#EBF5EE] text-[#2D5941] border border-solid border-[#2D5941]/30 px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer hover:bg-green-100"
+                            >
+                              Unsuspend / Publish
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )))
+                }
                 </tbody>
               </table>
             </div>
@@ -2200,6 +2689,124 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
           </div>
         )}
       </main>
+
+      {/* Reject Remarks Modal */}
+      {isRejectModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-8 max-w-md w-full space-y-6 relative animate-fade-in">
+            <button
+              onClick={() => setIsRejectModalOpen(false)}
+              className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
+            >
+              ✕
+            </button>
+
+            <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">Rejection Feedback</h3>
+            <p className="text-xs text-[#6C6C70]">
+              Enter the reason or feedback for rejecting the provider's verification documents. This will be visible to the provider.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                  Remarks / Feedback
+                </label>
+                <textarea
+                  value={rejectRemarks}
+                  onChange={(e) => setRejectRemarks(e.target.value)}
+                  placeholder="e.g. Document copy is blurry. Please upload a clear scan of your COR."
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm font-semibold bg-white"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRejectModalOpen(false)}
+                  className="flex-1 bg-transparent hover:bg-slate-50 text-[#6C6C70] border border-solid border-[#D9D2C5] py-3.5 rounded-xl text-sm font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleVerifyProvider(rejectProviderId, 'Suspended', rejectRemarks)}
+                  className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white py-3.5 rounded-xl text-sm font-bold shadow-md cursor-pointer transition-all border-0"
+                >
+                  Confirm Rejection
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scholarship View Details Modal for Admin */}
+      {selectedScholarshipDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-8 max-w-lg w-full space-y-6 relative animate-fade-in max-h-[85vh] overflow-y-auto">
+            <button
+              onClick={() => setSelectedScholarshipDetails(null)}
+              className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
+            >✕</button>
+
+            <div>
+              <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">
+                {selectedScholarshipDetails.scholarship_categories?.name || 'Category'}
+              </span>
+              <h3 className="text-2xl font-bold font-serif text-[#1A3C2E] leading-tight">
+                {selectedScholarshipDetails.title}
+              </h3>
+              <p className="text-xs text-[#6C6C70] mt-1 font-medium">
+                Provided by: <strong className="text-[#1A3C2E]">{selectedScholarshipDetails.provider?.name || 'Unknown Provider'}</strong>
+              </p>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="bg-[#F9F5EF] rounded-2xl p-4 grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Status</span>
+                  <span className="font-bold text-[#1C1C1E] capitalize">{selectedScholarshipDetails.status}</span>
+                </div>
+                <div>
+                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Total Slots</span>
+                  <span className="font-bold text-[#1C1C1E]">{selectedScholarshipDetails.total_slots || 'Unlimited'}</span>
+                </div>
+                <div>
+                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Funding Freq</span>
+                  <span className="font-bold text-[#1C1C1E]">{selectedScholarshipDetails.funding_frequency || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Renewal Policy</span>
+                  <span className="font-bold text-[#1C1C1E]">{selectedScholarshipDetails.renewal_policy || 'N/A'}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Description</span>
+                <p className="text-[#6C6C70] leading-relaxed">{selectedScholarshipDetails.description}</p>
+              </div>
+
+              {selectedScholarshipDetails.course_eligibility && (
+                <div className="space-y-1.5">
+                  <span className="text-[#8E8E93] font-bold uppercase tracking-wider text-[9px] block">Course Eligibility</span>
+                  <span className="font-semibold text-[#1C1C1E]">{selectedScholarshipDetails.course_eligibility.join(', ')}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedScholarshipDetails(null)}
+                className="bg-[#2D5941] hover:bg-[#1A3C2E] text-white px-6 py-2.5 rounded-xl text-xs font-bold border-0 cursor-pointer shadow-sm"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

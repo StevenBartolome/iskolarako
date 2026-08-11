@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
-import LogoSvg from '@/assets/logo/iskolarakologo.svg';
+import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
 
 
@@ -9,30 +9,55 @@ interface ProviderPortalProps {
   showWelcome?: boolean;
 }
 
-type TabType = 'dashboard' | 'applicants' | 'programs' | 'disbursements' | 'announcements' | 'reports';
+type TabType = 'dashboard' | 'applicants' | 'programs' | 'disbursements' | 'announcements' | 'reports' | 'verification';
 type AnnType = 'Examination Schedule' | 'Release of Funds' | 'General Notice' | 'Requirements Update';
 type ApplicantStatus = 'Pending' | 'Under Review' | 'Approved' | 'Rejected' | 'For Exam';
 
 type FundingFreq = 'Per Semester' | 'Once a Year' | 'One-time';
 type RenewalPolicy = 'No Renewal' | 'Automatic Renewal' | 'Conditional Renewal' | 'Annual Reapplication' | 'Semester Renewal';
+type ScholarshipType = 'merit' | 'need_based' | 'merit_and_need' | 'grant' | 'fellowship';
+type AvailabilityScope = 'nationwide' | 'regional' | 'provincial' | 'municipality' | 'barangay' | 'specific_schools';
 
 interface ApplicationCycle {
-  id: number;
-  name: string; // e.g. "AY 2026-2027"
+  id: string | number;
+  name: string;
   startDate: string;
   endDate: string;
-  status: 'Open' | 'Closed' | 'Evaluating';
+  status: 'Open' | 'Closed' | 'Evaluating' | 'Upcoming';
+}
+
+interface ProgramRequirement {
+  name: string;
+  description: string;
+  required: boolean;
 }
 
 interface Program {
-  id: number;
+  id: string | number;
   provider: string;
   status: string;
   statusType: 'success' | 'draft' | 'closing';
   title: string;
   description: string;
+  category: string;
+  scholarshipType: ScholarshipType;
+  coverstuition: boolean;
+  coversStipend: boolean;
+  stipendAmount: string;
+  coversAllowance: boolean;
+  allowanceAmount: string;
+  otherBenefits: string[];
+  courseEligibility: string[];
+  yearLevelEligibility: number[];
+  minimumGwa: string;
+  availabilityScope: AvailabilityScope;
+  availableRegions: string[];
+  availableSchools: string;
+  totalSlots: string;
+  applicationRequirements: ProgramRequirement[];
   renewalPolicy: RenewalPolicy;
   fundingFrequency: FundingFreq;
+  renewalGwa: string;
   cycles: ApplicationCycle[];
   budgetUsed: string;
   budgetTotal: string;
@@ -70,6 +95,58 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     providerName: string;
   } | null>(null);
 
+  // Provider verification states loaded dynamically from Supabase
+  const [providerDetails, setProviderDetails] = useState<{
+    id: string;
+    name: string;
+    providerType: string;
+    verificationStatus: 'pending' | 'under_review' | 'verified' | 'rejected';
+    requirementsSubmitted: Record<string, string>;
+  } | null>(null);
+
+  // Requirements checklist configuration for this provider type
+  const [requiredDocs, setRequiredDocs] = useState<{ name: string; description: string; required: boolean }[]>([]);
+  const [isLoadingProvider, setIsLoadingProvider] = useState(true);
+
+  // Uploading and submission indicators
+  const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+  const [submittingVerification, setSubmittingVerification] = useState(false);
+
+  const fetchRequirementsConfig = async (providerType: string) => {
+    try {
+      const { data: configData } = await supabase
+        .from('provider_requirements_config')
+        .select('required_fields')
+        .eq('provider_type', providerType)
+        .maybeSingle();
+
+      if (configData && configData.required_fields && Array.isArray(configData.required_fields)) {
+        setRequiredDocs(configData.required_fields);
+      } else {
+        // Fallback templates based on type if configuration doesn't exist yet
+        if (providerType === 'public') {
+          setRequiredDocs([
+            { name: 'Government Charter or Mandate', description: 'Copy of the official establishing act/mandate', required: true },
+            { name: 'Representative ID', description: 'Valid government ID of the focal person', required: true }
+          ]);
+        } else if (providerType === 'private') {
+          setRequiredDocs([
+            { name: 'SEC Registration Certificate', description: 'SEC Certificate of Registration', required: true },
+            { name: 'BIR Form 2303', description: 'Certificate of Registration with BIR', required: true },
+            { name: 'Business Permit', description: 'Current year Mayor\'s Business Permit', required: true }
+          ]);
+        } else {
+          setRequiredDocs([
+            { name: 'SEC or DTI Registration Certificate', description: 'Official corporate registration copy', required: true },
+            { name: 'BIR Certificate / Tax Exemption', description: 'Tax exemption certificate if applicable', required: false }
+          ]);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching requirements config:', err);
+    }
+  };
+
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -85,16 +162,27 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
         if (userErr || !userData) return;
 
-        // Fetch provider name if exists
+        // Fetch provider name and verification details if exists
         let provName = 'Public Provider';
         if (userData.provider_id) {
-          const { data: provData } = await supabase
+          const { data: provData, error: provErr } = await supabase
             .from('provider')
-            .select('name')
+            .select('id, name, provider_type, verification_status, requirements_submitted')
             .eq('id', userData.provider_id)
             .single();
-          if (provData) {
+
+          if (!provErr && provData) {
             provName = provData.name;
+            setProviderDetails({
+              id: provData.id,
+              name: provData.name,
+              providerType: provData.provider_type,
+              verificationStatus: provData.verification_status as any,
+              requirementsSubmitted: provData.requirements_submitted || {}
+            });
+
+            // Fetch required documents configuration
+            await fetchRequirementsConfig(provData.provider_type);
           }
         }
 
@@ -112,12 +200,177 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         }
       } catch (err) {
         console.error('Error fetching provider profile:', err);
+      } finally {
+        setIsLoadingProvider(false);
       }
     };
 
-
     fetchProfile();
   }, [showWelcome]);
+
+  // Subscribe to real-time updates for the current provider
+  useEffect(() => {
+    if (!providerDetails?.id) return;
+
+    const channel = supabase
+      .channel('provider-realtime-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'provider'
+        },
+        (payload: any) => {
+          const updated = payload.new;
+          if (updated && updated.id === providerDetails.id) {
+            setProviderDetails(prev => {
+              if (!prev) return null;
+              // Only update if things actually changed
+              if (
+                prev.verificationStatus === updated.verification_status &&
+                JSON.stringify(prev.requirementsSubmitted) === JSON.stringify(updated.requirements_submitted || {})
+              ) {
+                return prev;
+              }
+              return {
+                ...prev,
+                verificationStatus: updated.verification_status,
+                requirementsSubmitted: updated.requirements_submitted || {}
+              };
+            });
+            showToast('Verification status updated in real-time!');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [providerDetails?.id]);
+
+  // Subscribe to real-time updates for requirements configurations
+  useEffect(() => {
+    if (!providerDetails?.providerType) return;
+
+    const channel = supabase
+      .channel('provider-requirements-config-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'provider_requirements_config'
+        },
+        (payload: any) => {
+          const updated = payload.new;
+          if (updated && updated.provider_type === providerDetails.providerType) {
+            if (updated.required_fields && Array.isArray(updated.required_fields)) {
+              setRequiredDocs(updated.required_fields);
+              showToast('Required documents updated in real-time!');
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [providerDetails?.providerType]);
+
+  // Categories Lookup & Real Database Fetching for Programs
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('scholarship_categories')
+          .select('id, name');
+        if (!error && data) {
+          setCategories(data);
+        }
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+      }
+    };
+    fetchCategories();
+  }, []);
+
+  const mapDbToProgram = (dbProg: any): Program => {
+    return {
+      id: dbProg.id,
+      provider: providerDetails?.name || 'My Provider',
+      status: dbProg.status === 'active' || dbProg.status === 'approved' || dbProg.status === 'Active' || dbProg.status === 'Approved' ? 'Active' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'Pending Review' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'Draft' : 'Closed',
+      statusType: dbProg.status === 'active' || dbProg.status === 'approved' || dbProg.status === 'Active' || dbProg.status === 'Approved' ? 'success' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'draft' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'draft' : 'closing',
+      title: dbProg.title,
+      description: dbProg.description,
+      category: dbProg.category?.name || 'Merit-Based',
+      scholarshipType: dbProg.scholarship_type,
+      coverstuition: dbProg.covers_tuition,
+      coversStipend: dbProg.covers_stipend,
+      stipendAmount: dbProg.stipend_amount ? String(dbProg.stipend_amount) : '',
+      coversAllowance: dbProg.covers_allowance,
+      allowanceAmount: dbProg.allowance_amount ? String(dbProg.allowance_amount) : '',
+      otherBenefits: dbProg.other_benefits || [],
+      courseEligibility: dbProg.course_eligibility || [],
+      yearLevelEligibility: dbProg.year_level_eligibility || [],
+      minimumGwa: dbProg.minimum_gwa ? String(dbProg.minimum_gwa) : '',
+      availabilityScope: dbProg.availability_scope,
+      availableRegions: dbProg.available_regions || [],
+      availableSchools: dbProg.available_schools ? dbProg.available_schools.join(', ') : '',
+      totalSlots: dbProg.total_slots ? String(dbProg.total_slots) : '',
+      applicationRequirements: dbProg.application_requirements || [],
+      renewalPolicy: dbProg.renewal_policy,
+      fundingFrequency: dbProg.funding_frequency,
+      renewalGwa: dbProg.renewal_gwa_requirement ? String(dbProg.renewal_gwa_requirement) : '',
+      cycles: (dbProg.cycles || []).map((cyc: any) => ({
+        id: cyc.id,
+        name: cyc.cycle_name,
+        startDate: cyc.application_start_date,
+        endDate: cyc.application_end_date,
+        status: cyc.status === 'open' ? 'Open' : cyc.status === 'evaluating' ? 'Evaluating' : cyc.status === 'upcoming' ? 'Upcoming' : 'Closed'
+      })),
+      budgetUsed: '₱0',
+      budgetTotal: dbProg.budget_total ? `₱${Number(dbProg.budget_total).toLocaleString()}` : '₱0'
+    };
+  };
+
+  const fetchPrograms = async () => {
+    if (!providerDetails?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('scholarship_programs')
+        .select(`
+          *,
+          category:scholarship_categories (
+            name
+          ),
+          cycles:application_cycles (
+            *
+          )
+        `)
+        .eq('provider_id', providerDetails.id);
+
+      if (error) {
+        console.error('Error fetching programs:', error);
+        return;
+      }
+
+      if (data) {
+        const mapped = data.map(mapDbToProgram);
+        setProgramsList(mapped);
+      }
+    } catch (err) {
+      console.error('Error fetching programs:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPrograms();
+  }, [providerDetails?.id, categories]);
 
   // Search & filter states
 
@@ -148,10 +401,126 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   // New program form inputs
   const [formTitle, setFormTitle] = useState('');
   const [formDesc, setFormDesc] = useState('');
-  const [formProvider, setFormProvider] = useState('SEI');
+
+
   const [formFundingFreq, setFormFundingFreq] = useState<FundingFreq>('Per Semester');
   const [formRenewalPolicy, setFormRenewalPolicy] = useState<RenewalPolicy>('Conditional Renewal');
   const [formCycleName, setFormCycleName] = useState('AY 2026-2027');
+  // Extended program form fields
+  const [formCategory, setFormCategory] = useState('Merit-Based');
+  const [formScholarshipType, setFormScholarshipType] = useState<ScholarshipType>('merit');
+  const [formCoverstuition, setFormCoverstuition] = useState(false);
+  const [formCoversStipend, setFormCoversStipend] = useState(false);
+  const [formStipendAmount, setFormStipendAmount] = useState('');
+  const [formCoversAllowance, setFormCoversAllowance] = useState(false);
+  const [formAllowanceAmount, setFormAllowanceAmount] = useState('');
+  const [formOtherBenefits, setFormOtherBenefits] = useState('');
+  const [formCourseEligibility, setFormCourseEligibility] = useState<string[]>([]);
+  const [formCourseInput, setFormCourseInput] = useState('');
+  const [formYearLevelEligibility, setFormYearLevelEligibility] = useState<number[]>([]);
+  const [formMinGwa, setFormMinGwa] = useState('');
+  const [formAvailabilityScope, setFormAvailabilityScope] = useState<AvailabilityScope>('nationwide');
+  const [formAvailableRegions, setFormAvailableRegions] = useState('');
+  const [formAvailableSchools, setFormAvailableSchools] = useState('');
+  const [formTotalSlots, setFormTotalSlots] = useState('');
+  const [formBudgetTotal, setFormBudgetTotal] = useState('');
+  const [formRenewalGwa, setFormRenewalGwa] = useState('');
+  const [formCycleStartDate, setFormCycleStartDate] = useState('');
+  const [formCycleEndDate, setFormCycleEndDate] = useState('');
+  const [formRequirements, setFormRequirements] = useState<ProgramRequirement[]>([
+    { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
+    { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
+  ]);
+  const [formReqName, setFormReqName] = useState('');
+  const [formReqDesc, setFormReqDesc] = useState('');
+  const [formReqRequired, setFormReqRequired] = useState(true);
+  const [formModalStep, setFormModalStep] = useState(1);
+
+  // PSGC Geographic Data States & Fetch Effects
+  const [psgcRegions, setPsgcRegions] = useState<{ code: string; name: string }[]>([]);
+  const [psgcProvinces, setPsgcProvinces] = useState<{ code: string; name: string }[]>([]);
+  const [psgcMunicipalities, setPsgcMunicipalities] = useState<{ code: string; name: string }[]>([]);
+  const [psgcBarangays, setPsgcBarangays] = useState<{ code: string; name: string }[]>([]);
+  const [selectedRegionCode, setSelectedRegionCode] = useState('');
+  const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
+  const [selectedMunicipalityCode, setSelectedMunicipalityCode] = useState('');
+  const [selectedBarangayCode, setSelectedBarangayCode] = useState('');
+
+  useEffect(() => {
+    const fetchRegions = async () => {
+      try {
+        const res = await fetch('https://psgc.gitlab.io/api/regions/');
+        if (res.ok) {
+          const data = await res.json();
+          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
+          setPsgcRegions(data);
+        }
+      } catch (err) {
+        console.error('Error fetching PSGC regions:', err);
+      }
+    };
+    fetchRegions();
+  }, []);
+
+  useEffect(() => {
+    const fetchProvinces = async () => {
+      if (!selectedRegionCode) {
+        setPsgcProvinces([]);
+        return;
+      }
+      try {
+        const res = await fetch(`https://psgc.gitlab.io/api/regions/${selectedRegionCode}/provinces/`);
+        if (res.ok) {
+          const data = await res.json();
+          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
+          setPsgcProvinces(data);
+        }
+      } catch (err) {
+        console.error('Error fetching PSGC provinces:', err);
+      }
+    };
+    fetchProvinces();
+  }, [selectedRegionCode]);
+
+  useEffect(() => {
+    const fetchMunicipalities = async () => {
+      if (!selectedProvinceCode) {
+        setPsgcMunicipalities([]);
+        return;
+      }
+      try {
+        const res = await fetch(`https://psgc.gitlab.io/api/provinces/${selectedProvinceCode}/cities-municipalities/`);
+        if (res.ok) {
+          const data = await res.json();
+          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
+          setPsgcMunicipalities(data);
+        }
+      } catch (err) {
+        console.error('Error fetching PSGC municipalities:', err);
+      }
+    };
+    fetchMunicipalities();
+  }, [selectedProvinceCode]);
+
+  useEffect(() => {
+    const fetchBarangays = async () => {
+      if (!selectedMunicipalityCode) {
+        setPsgcBarangays([]);
+        return;
+      }
+      try {
+        const res = await fetch(`https://psgc.gitlab.io/api/cities-municipalities/${selectedMunicipalityCode}/barangays/`);
+        if (res.ok) {
+          const data = await res.json();
+          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
+          setPsgcBarangays(data);
+        }
+      } catch (err) {
+        console.error('Error fetching PSGC barangays:', err);
+      }
+    };
+    fetchBarangays();
+  }, [selectedMunicipalityCode]);
 
   // New payout form inputs
   const [selectedPayoutProgram, setSelectedPayoutProgram] = useState('DOST-SEI Undergraduate Scholarship');
@@ -281,71 +650,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     showToast(`Successfully broadcasted: "${newAnnTitle}"`);
   };
 
-  // Programs Mock State (Standardized to the new architecture)
-  const [programsList, setProgramsList] = useState<Program[]>([
-    {
-      id: 1,
-      provider: 'SEI',
-      status: 'Active',
-      statusType: 'success',
-      title: 'DOST-SEI Undergraduate Scholarship',
-      description: 'Full tuition • Monthly stipend • STEM only',
-      renewalPolicy: 'Conditional Renewal',
-      fundingFrequency: 'Per Semester',
-      cycles: [
-        { id: 101, name: '2026 Intake', startDate: '2026-06-01', endDate: '2026-07-31', status: 'Evaluating' },
-        { id: 102, name: '2025 Intake', startDate: '2025-06-01', endDate: '2025-07-31', status: 'Closed' }
-      ],
-      budgetUsed: '₱2.1M',
-      budgetTotal: '₱2.6M'
-    },
-    {
-      id: 2,
-      provider: 'CHED',
-      status: 'Active',
-      statusType: 'success',
-      title: 'Tulong Dunong Financial Assistance',
-      description: 'Need-based • One-time grant',
-      renewalPolicy: 'No Renewal',
-      fundingFrequency: 'One-time',
-      cycles: [
-        { id: 201, name: 'AY 2026-2027', startDate: '2026-05-15', endDate: '2026-08-15', status: 'Open' },
-        { id: 202, name: 'AY 2025-2026', startDate: '2025-05-15', endDate: '2025-08-15', status: 'Closed' }
-      ],
-      budgetUsed: '₱3.1M',
-      budgetTotal: '₱4.5M'
-    },
-    {
-      id: 3,
-      provider: 'SEI',
-      status: 'Draft',
-      statusType: 'draft',
-      title: 'DOST-SEI Graduate Fellowship',
-      description: 'Full tuition • Research allowance • MS/PhD',
-      renewalPolicy: 'Semester Renewal',
-      fundingFrequency: 'Per Semester',
-      cycles: [
-        { id: 301, name: 'AY 2026-2027 Cycle', startDate: '2026-09-01', endDate: '2026-10-31', status: 'Open' }
-      ],
-      budgetUsed: '₱0',
-      budgetTotal: '₱1.8M'
-    },
-    {
-      id: 4,
-      provider: 'SEI',
-      status: 'Active',
-      statusType: 'success',
-      title: 'DOST-SEI Merit Renewal 2026',
-      description: 'Renewal grant for existing scholars',
-      renewalPolicy: 'Conditional Renewal',
-      fundingFrequency: 'Once a Year',
-      cycles: [
-        { id: 401, name: 'AY 2026-2027', startDate: '2026-06-15', endDate: '2026-07-24', status: 'Closed' }
-      ],
-      budgetUsed: '₱3.9M',
-      budgetTotal: '₱4.0M'
-    }
-  ]);
+  // Programs State (Loaded dynamically from database)
+  const [programsList, setProgramsList] = useState<Program[]>([]);
+
 
   // Interactive Applicants Mock State (Students in an active application cycle)
   const [applicantsList, setApplicantsList] = useState([
@@ -429,30 +736,240 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
-  const handleCreateProgram = (e: React.FormEvent) => {
+  const handleCreateProgram = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTitle || !formDesc) return;
-    const newProg: Program = {
-      id: Date.now(),
-      provider: formProvider,
-      status: 'Draft',
-      statusType: 'draft',
-      title: formTitle,
-      description: formDesc,
-      renewalPolicy: formRenewalPolicy,
-      fundingFrequency: formFundingFreq,
-      cycles: [
-        { id: Date.now() + 1, name: formCycleName, startDate: '2026-09-01', endDate: '2026-12-31', status: 'Open' }
-      ],
-      budgetUsed: '₱0',
-      budgetTotal: '₱1.8M'
-    };
-    setProgramsList([...programsList, newProg]);
-    setIsCreateModalOpen(false);
-    setFormTitle('');
-    setFormDesc('');
-    showToast(`Created program: "${formTitle}" with cycle "${formCycleName}"!`);
+    if (!formTitle || !formDesc || !providerDetails?.id) {
+      showToast("Cannot create program: Provider details missing.");
+      return;
+    }
+
+    const matchedCat = categories.find(c => c.name === formCategory);
+    const categoryId = matchedCat ? matchedCat.id : null;
+
+    try {
+      // 1. Insert into scholarship_programs
+      const { data: progData, error: progErr } = await supabase
+        .from('scholarship_programs')
+        .insert({
+          provider_id: providerDetails.id,
+          title: formTitle,
+          description: formDesc,
+          category_id: categoryId,
+          scholarship_type: formScholarshipType,
+          covers_tuition: formCoverstuition,
+          covers_stipend: formCoversStipend,
+          stipend_amount: formStipendAmount ? parseFloat(formStipendAmount) : null,
+          covers_allowance: formCoversAllowance,
+          allowance_amount: formAllowanceAmount ? parseFloat(formAllowanceAmount) : null,
+          other_benefits: formOtherBenefits ? formOtherBenefits.split(',').map(s => s.trim()).filter(Boolean) : [],
+          course_eligibility: formCourseEligibility.length > 0 ? formCourseEligibility : ['All Courses'],
+          year_level_eligibility: formYearLevelEligibility,
+          minimum_gwa: formMinGwa ? parseFloat(formMinGwa) : null,
+          availability_scope: formAvailabilityScope,
+          available_regions: formAvailableRegions ? formAvailableRegions.split(',').map(s => s.trim()) : [],
+          available_provinces: formAvailabilityScope === 'provincial' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
+          available_schools: formAvailabilityScope === 'specific_schools' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
+          application_requirements: formRequirements,
+          total_slots: formTotalSlots ? parseInt(formTotalSlots, 10) : null,
+          budget_total: formBudgetTotal ? parseFloat(formBudgetTotal) : null,
+          funding_frequency: formFundingFreq,
+          renewal_policy: formRenewalPolicy,
+          renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (progErr || !progData) {
+        console.error('Error inserting program:', progErr);
+        showToast('Error creating scholarship program.');
+        return;
+      }
+
+      // 2. Insert initial application cycle
+      const cycleStatus = formCycleStartDate && new Date(formCycleStartDate) > new Date() ? 'upcoming' : 'open';
+      const { error: cycleErr } = await supabase
+        .from('application_cycles')
+        .insert({
+          program_id: progData.id,
+          cycle_name: formCycleName,
+          application_start_date: formCycleStartDate || new Date().toISOString().split('T')[0],
+          application_end_date: formCycleEndDate || new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
+          status: cycleStatus
+        });
+
+      if (cycleErr) {
+        console.error('Error inserting application cycle:', cycleErr);
+        showToast('Program created, but error creating cycle.');
+      } else {
+        showToast(`Created program: "${formTitle}" with cycle "${formCycleName}"!`);
+      }
+
+      // Reload programs from DB
+      await fetchPrograms();
+
+      // Reset Form State
+      setIsCreateModalOpen(false);
+      setFormTitle('');
+      setFormDesc('');
+      setFormCategory('Merit-Based');
+      setFormScholarshipType('merit');
+      setFormCoverstuition(false);
+      setFormCoversStipend(false);
+      setFormStipendAmount('');
+      setFormCoversAllowance(false);
+      setFormAllowanceAmount('');
+      setFormOtherBenefits('');
+      setFormCourseEligibility([]);
+      setFormCourseInput('');
+      setFormYearLevelEligibility([]);
+      setFormMinGwa('');
+      setFormAvailabilityScope('nationwide');
+      setFormAvailableRegions('');
+      setFormAvailableSchools('');
+      setFormTotalSlots('');
+      setFormBudgetTotal('');
+      setFormRenewalGwa('');
+      setFormCycleName('AY 2026-2027');
+      setFormCycleStartDate('');
+      setFormCycleEndDate('');
+      setFormRequirements([
+        { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
+        { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
+      ]);
+      setFormModalStep(1);
+
+    } catch (err) {
+      console.error('Failed to create program:', err);
+      showToast('An unexpected error occurred.');
+    }
   };
+
+  // ── Program Action State ──────────────────────────────────────────────
+  const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
+  const [programToClose, setProgramToClose] = useState<Program | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  const handleViewDetails = (prog: Program) => {
+    setSelectedProgram(prog);
+    setIsViewModalOpen(true);
+  };
+
+  const handleEditProgram = (prog: Program) => {
+    // Pre-fill all form fields from the selected program
+    setFormTitle(prog.title);
+    setFormDesc(prog.description);
+    setFormCategory(prog.category);
+    setFormScholarshipType(prog.scholarshipType);
+    setFormCoverstuition(prog.coverstuition);
+    setFormCoversStipend(prog.coversStipend);
+    setFormStipendAmount(prog.stipendAmount);
+    setFormCoversAllowance(prog.coversAllowance);
+    setFormAllowanceAmount(prog.allowanceAmount);
+    setFormOtherBenefits(prog.otherBenefits.join(', '));
+    setFormCourseEligibility(prog.courseEligibility);
+    setFormYearLevelEligibility(prog.yearLevelEligibility);
+    setFormMinGwa(prog.minimumGwa);
+    setFormAvailabilityScope(prog.availabilityScope);
+    setFormAvailableRegions(prog.availableRegions.join(', '));
+    setFormAvailableSchools(prog.availableSchools);
+    setFormTotalSlots(prog.totalSlots);
+    setFormBudgetTotal(prog.budgetTotal.replace(/[₱,]/g, '').replace('M', '000000'));
+    setFormRenewalPolicy(prog.renewalPolicy);
+    setFormFundingFreq(prog.fundingFrequency);
+    setFormRenewalGwa(prog.renewalGwa);
+    setFormRequirements(prog.applicationRequirements);
+    setFormCycleName(prog.cycles[0]?.name || 'AY 2026-2027');
+    setFormCycleStartDate(prog.cycles[0]?.startDate || '');
+    setFormCycleEndDate(prog.cycles[0]?.endDate || '');
+    setFormModalStep(1);
+    setSelectedProgram(prog);
+    setIsEditMode(true);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleUpdateProgram = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProgram || !formTitle || !formDesc) return;
+
+    const matchedCat = categories.find(c => c.name === formCategory);
+    const categoryId = matchedCat ? matchedCat.id : null;
+
+    try {
+      const { error } = await supabase
+        .from('scholarship_programs')
+        .update({
+          title: formTitle,
+          description: formDesc,
+          category_id: categoryId,
+          scholarship_type: formScholarshipType,
+          covers_tuition: formCoverstuition,
+          covers_stipend: formCoversStipend,
+          stipend_amount: formStipendAmount ? parseFloat(formStipendAmount) : null,
+          covers_allowance: formCoversAllowance,
+          allowance_amount: formAllowanceAmount ? parseFloat(formAllowanceAmount) : null,
+          other_benefits: formOtherBenefits ? formOtherBenefits.split(',').map(s => s.trim()).filter(Boolean) : [],
+          course_eligibility: formCourseEligibility.length > 0 ? formCourseEligibility : ['All Courses'],
+          year_level_eligibility: formYearLevelEligibility,
+          minimum_gwa: formMinGwa ? parseFloat(formMinGwa) : null,
+          availability_scope: formAvailabilityScope,
+          available_regions: formAvailableRegions ? formAvailableRegions.split(',').map(s => s.trim()) : [],
+          available_schools: formAvailabilityScope === 'specific_schools' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
+          application_requirements: formRequirements,
+          total_slots: formTotalSlots ? parseInt(formTotalSlots, 10) : null,
+          budget_total: formBudgetTotal ? parseFloat(formBudgetTotal) : null,
+          funding_frequency: formFundingFreq,
+          renewal_policy: formRenewalPolicy,
+          renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
+        })
+        .eq('id', selectedProgram.id);
+
+      if (error) {
+        console.error('Error updating program:', error);
+        showToast('Error updating scholarship program.');
+        return;
+      }
+
+      showToast(`"${formTitle}" updated successfully!`);
+      await fetchPrograms();
+
+      setIsCreateModalOpen(false);
+      setIsEditMode(false);
+      setSelectedProgram(null);
+      setFormModalStep(1);
+    } catch (err) {
+      console.error('Failed to update program:', err);
+      showToast('An unexpected error occurred.');
+    }
+  };
+
+  const handleCloseProgram = async () => {
+    if (!programToClose) return;
+    try {
+      const { error } = await supabase
+        .from('scholarship_programs')
+        .update({ status: 'closed' })
+        .eq('id', programToClose.id);
+
+      if (error) {
+        console.error('Error closing program:', error);
+        showToast('Error closing program.');
+      } else {
+        showToast(`"${programToClose.title}" has been closed.`);
+        await fetchPrograms();
+      }
+    } catch (err) {
+      console.error('Unexpected error closing program:', err);
+      showToast('An unexpected error occurred.');
+    } finally {
+      setIsCloseConfirmOpen(false);
+      setProgramToClose(null);
+    }
+  };
+
+
 
   const filteredApplicants = applicantsList.filter(app => {
     const matchesSearch = app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -468,13 +985,134 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     return matchesSearch;
   });
 
+  const handleUploadDocument = async (fieldName: string, file: File) => {
+    if (!providerDetails) return;
+    setUploadingDoc(fieldName);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${providerDetails.id}/${fieldName.replace(/\s+/g, '_')}_${Date.now()}.${fileExt}`;
+      
+      const { error } = await supabase.storage
+        .from('provider-documents')
+        .upload(filePath, file, { upsert: true });
+
+      let publicUrl = '';
+      if (error) {
+        console.warn('Storage upload error, using local mock URL:', error);
+        publicUrl = `https://mock.storage.iskolarako.org/provider-documents/${filePath}`;
+      } else {
+        const { data: urlData } = supabase.storage
+          .from('provider-documents')
+          .getPublicUrl(filePath);
+        publicUrl = urlData?.publicUrl || `https://mock.storage.iskolarako.org/provider-documents/${filePath}`;
+      }
+
+      // Update local state with the uploaded document URL
+      const updatedReqs = {
+        ...providerDetails.requirementsSubmitted,
+        [fieldName]: publicUrl
+      };
+
+      setProviderDetails(prev => prev ? {
+        ...prev,
+        requirementsSubmitted: updatedReqs
+      } : null);
+
+      showToast(`Successfully uploaded ${fieldName}!`);
+    } catch (err: any) {
+      console.error('Error uploading document:', err);
+      showToast(`Upload failed: ${err.message}`);
+    } finally {
+      setUploadingDoc(null);
+    }
+  };
+
+  const handleSubmitVerification = async () => {
+    if (!providerDetails) return;
+
+    // Check if all required fields are filled
+    const missingFields = requiredDocs
+      .filter(d => d.required)
+      .filter(d => !providerDetails.requirementsSubmitted[d.name]);
+
+    if (missingFields.length > 0) {
+      showToast(`Missing required documents: ${missingFields.map(f => f.name).join(', ')}`);
+      return;
+    }
+
+    setSubmittingVerification(true);
+    try {
+      const updatedReqs = { ...providerDetails.requirementsSubmitted };
+      delete updatedReqs._remarks;
+
+      const { error } = await supabase
+        .from('provider')
+        .update({
+          requirements_submitted: updatedReqs,
+          verification_status: 'under_review',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', providerDetails.id);
+
+      if (error) throw error;
+
+      setProviderDetails(prev => prev ? {
+        ...prev,
+        requirementsSubmitted: updatedReqs,
+        verificationStatus: 'under_review'
+      } : null);
+
+      showToast('Verification request submitted successfully!');
+    } catch (err: any) {
+      console.error('Error submitting verification:', err);
+      showToast(`Submission failed: ${err.message}`);
+    } finally {
+      setSubmittingVerification(false);
+    }
+  };
+
+  const handleUnsubmitVerification = async () => {
+    if (!providerDetails) return;
+
+    if (providerDetails.verificationStatus !== 'under_review' && providerDetails.verificationStatus !== 'rejected') {
+      return;
+    }
+
+    setSubmittingVerification(true);
+    try {
+      const { error } = await supabase
+        .from('provider')
+        .update({
+          verification_status: 'pending',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', providerDetails.id);
+
+      if (error) throw error;
+
+      setProviderDetails(prev => prev ? {
+        ...prev,
+        verificationStatus: 'pending'
+      } : null);
+
+      showToast('Successfully unsubmitted verification request. You can now modify your documents.');
+    } catch (err: any) {
+      console.error('Error unsubmitting verification:', err);
+      showToast(`Failed to unsubmit: ${err.message}`);
+    } finally {
+      setSubmittingVerification(false);
+    }
+  };
+
   const renderSidebarItem = (tab: TabType, label: string, icon: React.ReactNode) => {
     const isActive = activeTab === tab;
+    const showWarningDot = tab === 'verification' && providerDetails && providerDetails.verificationStatus !== 'verified';
+
     return (
       <button
         onClick={() => setActiveTab(tab)}
         title={label}
-        className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer border-0 ${isCollapsed ? 'justify-center p-2.5' : 'gap-3.5 px-4 py-3'
+        className={`w-full flex items-center rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer border-0 relative ${isCollapsed ? 'justify-center p-2.5' : 'gap-3.5 px-4 py-3'
           } ${isActive
             ? 'bg-white/10 text-white font-semibold shadow-sm'
             : 'text-[#9BA89F] hover:bg-white/5 hover:text-white bg-transparent'
@@ -482,12 +1120,29 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       >
         {icon}
         {!isCollapsed && <span>{label}</span>}
+        {showWarningDot && (
+          <span className={`absolute ${isCollapsed ? 'top-1.5 right-1.5' : 'top-3.5 right-4'} w-2 h-2 rounded-full bg-[#E8A838] border border-[#1A3C2E]`} />
+        )}
       </button>
     );
   };
 
+  if (isLoadingProvider) {
+    return (
+      <div className="min-h-screen bg-[#F9F5EF] flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <svg className="animate-spin h-10 w-10 text-[#2D5941]" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span className="text-sm font-semibold text-[#1A3C2E]">Loading provider portal...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#F9F5EF] flex font-sans relative">
+    <div className="h-screen bg-[#F9F5EF] flex font-sans overflow-hidden relative">
 
       {/* Toast Alert */}
       {toastMessage && (
@@ -501,81 +1156,567 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       {/* Program Creation Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-8 max-w-lg w-full space-y-6 relative animate-fade-in">
-            <button onClick={() => setIsCreateModalOpen(false)} className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer">✕</button>
-            <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">Configure Permanent Program</h3>
-            <p className="text-xs text-[#6C6C70]">Design program-wide renewal policies and register the first Application Cycle.</p>
-            <form onSubmit={handleCreateProgram} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1">Provider Partner</label>
-                  <select
-                    value={formProvider}
-                    onChange={(e) => setFormProvider(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer"
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm px-4 py-6 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl w-full max-w-3xl relative animate-fade-in my-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-white rounded-t-3xl z-10 px-8 pt-7 pb-5 border-b border-[#D9D2C5]/50">
+              <button
+                type="button"
+                onClick={() => { setIsCreateModalOpen(false); setFormModalStep(1); setIsEditMode(false); setSelectedProgram(null); }}
+                className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
+              >✕</button>
+              <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">
+                {isEditMode ? 'Edit Scholarship Program' : 'Create Scholarship Program'}
+              </h3>
+              <p className="text-xs text-[#6C6C70] mt-1">
+                {isEditMode
+                  ? 'Update program details below. Changes are saved immediately to the database.'
+                  : 'Fill in all program details. You can manage cycles and update requirements after creation.'}
+              </p>
+              {/* Step indicator */}
+              <div className="flex gap-2 mt-4">
+                {['Basic Info', 'Benefits & Eligibility', 'Requirements', 'Application Cycle'].map((step, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setFormModalStep(i + 1)}
+                    className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg transition-all cursor-pointer border-0 ${
+                      formModalStep === i + 1
+                        ? 'bg-[#1A3C2E] text-white'
+                        : 'bg-[#F9F5EF] text-[#6C6C70] hover:bg-[#EDE8DE]'
+                    }`}
                   >
-                    <option value="SEI">DOST-SEI</option>
-                    <option value="CHED">CHED</option>
-                    <option value="NGO">NGO Partner</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1">Program Title</label>
-                  <input
-                    type="text" required placeholder="e.g. Merit Scholarship Program"
-                    value={formTitle} onChange={(e) => setFormTitle(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                  />
-                </div>
+                    {i + 1}. {step}
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1">Description / Benefits</label>
-                <input
-                  type="text" required placeholder="Full tuition • Monthly stipend"
-                  value={formDesc} onChange={(e) => setFormDesc(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                />
+            </div>
+
+            <form onSubmit={isEditMode ? handleUpdateProgram : handleCreateProgram}>
+              <div className="px-8 py-6 space-y-5">
+
+                {/* ─── STEP 1: Basic Info ─── */}
+                {formModalStep === 1 && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Program Title *</label>
+                        <input
+                          type="text" required placeholder="e.g. DOST-SEI Undergraduate Scholarship"
+                          value={formTitle} onChange={(e) => setFormTitle(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Scholarship Category *</label>
+                        <select
+                          value={formCategory} onChange={(e) => setFormCategory(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                        >
+                          <option>Merit-Based</option>
+                          <option>Need-Based</option>
+                          <option>Merit and Need</option>
+                          <option>STEM</option>
+                          <option>Graduate / Fellowship</option>
+                          <option>Vocational / TVET</option>
+                          <option>Indigenous Peoples</option>
+                          <option>Persons with Disability</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Scholarship Type *</label>
+                        <select
+                          value={formScholarshipType} onChange={(e) => setFormScholarshipType(e.target.value as ScholarshipType)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                        >
+                          <option value="merit">Merit-Based</option>
+                          <option value="need_based">Need-Based</option>
+                          <option value="merit_and_need">Merit and Need</option>
+                          <option value="grant">Grant</option>
+                          <option value="fellowship">Fellowship / Graduate</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Funding Frequency *</label>
+                        <select
+                          value={formFundingFreq} onChange={(e) => setFormFundingFreq(e.target.value as FundingFreq)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                        >
+                          <option value="Per Semester">Per Semester</option>
+                          <option value="Once a Year">Once a Year</option>
+                          <option value="One-time">One-time Grant</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Program Description *</label>
+                      <textarea
+                        required rows={3} placeholder="Describe the scholarship, its goals, and who it supports..."
+                        value={formDesc} onChange={(e) => setFormDesc(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm resize-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Renewal Policy</label>
+                        <select
+                          value={formRenewalPolicy} onChange={(e) => setFormRenewalPolicy(e.target.value as RenewalPolicy)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                        >
+                          <option value="No Renewal">No Renewal</option>
+                          <option value="Automatic Renewal">Automatic Renewal</option>
+                          <option value="Conditional Renewal">Conditional Renewal</option>
+                          <option value="Annual Reapplication">Annual Reapplication</option>
+                          <option value="Semester Renewal">Semester Renewal</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Renewal Min. GWA</label>
+                        <input
+                          type="number" step="0.01" min="1" max="5" placeholder="e.g. 1.75"
+                          value={formRenewalGwa} onChange={(e) => setFormRenewalGwa(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Total Slots</label>
+                        <input
+                          type="number" min="1" placeholder="Leave blank for unlimited"
+                          value={formTotalSlots} onChange={(e) => setFormTotalSlots(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Total Budget (₱)</label>
+                        <input
+                          type="number" min="0" placeholder="e.g. 5000000"
+                          value={formBudgetTotal} onChange={(e) => setFormBudgetTotal(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── STEP 2: Benefits & Eligibility ─── */}
+                {formModalStep === 2 && (
+                  <div className="space-y-5">
+                    {/* Benefits */}
+                    <div>
+                      <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-3">Coverage / Benefits</h4>
+                      <div className="space-y-3">
+                        <label className="flex items-center gap-3 p-3 rounded-xl border border-[#D9D2C5] cursor-pointer hover:bg-[#F9F5EF]">
+                          <input type="checkbox" checked={formCoverstuition} onChange={(e) => setFormCoverstuition(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
+                          <span className="text-sm font-semibold text-[#1C1C1E]">Full Tuition Coverage</span>
+                        </label>
+                        <div className="p-3 rounded-xl border border-[#D9D2C5] space-y-2">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" checked={formCoversStipend} onChange={(e) => setFormCoversStipend(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
+                            <span className="text-sm font-semibold text-[#1C1C1E]">Monthly Stipend</span>
+                          </label>
+                          {formCoversStipend && (
+                            <input
+                              type="number" min="0" placeholder="Monthly amount in ₱ e.g. 7000"
+                              value={formStipendAmount} onChange={(e) => setFormStipendAmount(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border border-[#D9D2C5] text-xs font-semibold focus:outline-none"
+                            />
+                          )}
+                        </div>
+                        <div className="p-3 rounded-xl border border-[#D9D2C5] space-y-2">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" checked={formCoversAllowance} onChange={(e) => setFormCoversAllowance(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
+                            <span className="text-sm font-semibold text-[#1C1C1E]">Living / Book Allowance</span>
+                          </label>
+                          {formCoversAllowance && (
+                            <input
+                              type="number" min="0" placeholder="Allowance amount in ₱ e.g. 3000"
+                              value={formAllowanceAmount} onChange={(e) => setFormAllowanceAmount(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border border-[#D9D2C5] text-xs font-semibold focus:outline-none"
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Other Benefits (comma-separated)</label>
+                          <input
+                            type="text" placeholder="e.g. Research grant, Laptop allowance, Housing subsidy"
+                            value={formOtherBenefits} onChange={(e) => setFormOtherBenefits(e.target.value)}
+                            className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-[#D9D2C5]/50 pt-5">
+                      <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-3">Eligibility Criteria</h4>
+                      <div className="space-y-4">
+                        {/* Course Eligibility */}
+                        <div>
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Courses (leave empty for all)</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text" placeholder="e.g. BSCS, BSECE, BSME"
+                              value={formCourseInput} onChange={(e) => setFormCourseInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if ((e.key === 'Enter' || e.key === ',') && formCourseInput.trim()) {
+                                  e.preventDefault();
+                                  setFormCourseEligibility(prev => [...prev, formCourseInput.trim()]);
+                                  setFormCourseInput('');
+                                }
+                              }}
+                              className="flex-1 px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (formCourseInput.trim()) {
+                                  setFormCourseEligibility(prev => [...prev, formCourseInput.trim()]);
+                                  setFormCourseInput('');
+                                }
+                              }}
+                              className="px-4 py-2.5 bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] rounded-xl text-xs font-bold border-0 cursor-pointer"
+                            >+ Add</button>
+                          </div>
+                          {formCourseEligibility.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {formCourseEligibility.map((c, i) => (
+                                <span key={i} className="flex items-center gap-1.5 text-xs font-bold bg-[#EBF5EE] text-[#2D5941] px-2.5 py-1 rounded-lg">
+                                  {c}
+                                  <button type="button" onClick={() => setFormCourseEligibility(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600 font-bold border-0 bg-transparent cursor-pointer leading-none">×</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Year Level */}
+                        <div>
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Year Levels (check all that apply)</label>
+                          <div className="flex gap-3">
+                            {[1, 2, 3, 4, 5].map(yr => (
+                              <label key={yr} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={formYearLevelEligibility.includes(yr)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setFormYearLevelEligibility(prev => [...prev, yr].sort());
+                                    else setFormYearLevelEligibility(prev => prev.filter(y => y !== yr));
+                                  }}
+                                  className="w-4 h-4 text-[#2D5941] rounded cursor-pointer"
+                                />
+                                Year {yr}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* GWA */}
+                        <div>
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Minimum GWA Required</label>
+                          <input
+                            type="number" step="0.01" min="1" max="5" placeholder="e.g. 1.75 (blank = no minimum)"
+                            value={formMinGwa} onChange={(e) => setFormMinGwa(e.target.value)}
+                            className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                          />
+                        </div>
+
+                        {/* Availability */}
+                        <div>
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Geographic Availability</label>
+                          <select
+                            value={formAvailabilityScope}
+                            onChange={(e) => {
+                              setFormAvailabilityScope(e.target.value as AvailabilityScope);
+                              setSelectedRegionCode('');
+                              setSelectedProvinceCode('');
+                              setSelectedMunicipalityCode('');
+                              setSelectedBarangayCode('');
+                              setFormAvailableRegions('');
+                              setFormAvailableSchools('');
+                            }}
+                            className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                          >
+                            <option value="nationwide">Nationwide (All regions)</option>
+                            <option value="regional">Regional (Specific region only)</option>
+                            <option value="provincial">Provincial (Specific province only)</option>
+                            <option value="municipality">Town / Municipality (Specific town only)</option>
+                            <option value="barangay">Barangay (Specific barangay only)</option>
+                            <option value="specific_schools">Specific Schools Only</option>
+                          </select>
+                        </div>
+
+                        {/* Region Selector */}
+                        {(formAvailabilityScope === 'regional' || formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
+                          <div>
+                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Region *</label>
+                            <select
+                              value={selectedRegionCode}
+                              onChange={(e) => {
+                                const code = e.target.value;
+                                setSelectedRegionCode(code);
+                                const regionObj = psgcRegions.find(r => r.code === code);
+                                setFormAvailableRegions(regionObj ? regionObj.name : '');
+                                setSelectedProvinceCode('');
+                                setSelectedMunicipalityCode('');
+                                setSelectedBarangayCode('');
+                              }}
+                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                            >
+                              <option value="">-- Choose Region --</option>
+                              {psgcRegions.map(r => (
+                                <option key={r.code} value={r.code}>{r.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Province Selector */}
+                        {(formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
+                          <div>
+                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Province *</label>
+                            <select
+                              value={selectedProvinceCode}
+                              disabled={!selectedRegionCode}
+                              onChange={(e) => {
+                                const code = e.target.value;
+                                setSelectedProvinceCode(code);
+                                const provObj = psgcProvinces.find(p => p.code === code);
+                                setFormAvailableSchools(provObj ? provObj.name : '');
+                                setSelectedMunicipalityCode('');
+                                setSelectedBarangayCode('');
+                              }}
+                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
+                            >
+                              <option value="">-- Choose Province --</option>
+                              {psgcProvinces.map(p => (
+                                <option key={p.code} value={p.code}>{p.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Town/Municipality Selector */}
+                        {(formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
+                          <div>
+                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Town / Municipality *</label>
+                            <select
+                              value={selectedMunicipalityCode}
+                              disabled={!selectedProvinceCode}
+                              onChange={(e) => {
+                                const code = e.target.value;
+                                setSelectedMunicipalityCode(code);
+                                const munObj = psgcMunicipalities.find(m => m.code === code);
+                                setFormAvailableSchools(munObj ? munObj.name : '');
+                                setSelectedBarangayCode('');
+                              }}
+                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
+                            >
+                              <option value="">-- Choose Town/Municipality --</option>
+                              {psgcMunicipalities.map(m => (
+                                <option key={m.code} value={m.code}>{m.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Barangay Selector */}
+                        {formAvailabilityScope === 'barangay' && (
+                          <div>
+                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Barangay *</label>
+                            <select
+                              value={selectedBarangayCode}
+                              disabled={!selectedMunicipalityCode}
+                              onChange={(e) => {
+                                const code = e.target.value;
+                                setSelectedBarangayCode(code);
+                                const brgyObj = psgcBarangays.find(b => b.code === code);
+                                setFormAvailableSchools(brgyObj ? brgyObj.name : '');
+                              }}
+                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
+                            >
+                              <option value="">-- Choose Barangay --</option>
+                              {psgcBarangays.map(b => (
+                                <option key={b.code} value={b.code}>{b.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {formAvailabilityScope === 'specific_schools' && (
+                          <div>
+                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Schools (comma-separated) *</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. UP Diliman, DLSU Manila, Ateneo"
+                              value={formAvailableSchools} onChange={(e) => setFormAvailableSchools(e.target.value)}
+                              className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── STEP 3: Application Requirements ─── */}
+                {formModalStep === 3 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-[#1C1C1E]">Document Requirements</h4>
+                        <p className="text-xs text-[#6C6C70] mt-0.5">Add the documents scholars must submit when applying.</p>
+                      </div>
+                    </div>
+
+                    {/* Existing requirements */}
+                    <div className="space-y-2">
+                      {formRequirements.map((req, idx) => (
+                        <div key={idx} className="flex items-start gap-3 p-3.5 rounded-xl border border-[#D9D2C5]/70 bg-[#F9F5EF]/50">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-[#1C1C1E]">{req.name}</span>
+                              {req.required
+                                ? <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQUIRED</span>
+                                : <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">OPTIONAL</span>
+                              }
+                            </div>
+                            <p className="text-xs text-[#6C6C70] mt-0.5">{req.description}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setFormRequirements(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-red-400 hover:text-red-600 font-bold text-base border-0 bg-transparent cursor-pointer shrink-0"
+                          >×</button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Add new requirement */}
+                    <div className="p-4 rounded-2xl border border-dashed border-[#2D5941]/30 bg-[#EBF5EE]/30 space-y-3">
+                      <h5 className="text-xs font-bold text-[#2D5941] uppercase tracking-wide">+ Add New Requirement</h5>
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="text" placeholder="Requirement name"
+                          value={formReqName} onChange={(e) => setFormReqName(e.target.value)}
+                          className="px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold"
+                        />
+                        <input
+                          type="text" placeholder="Short description"
+                          value={formReqDesc} onChange={(e) => setFormReqDesc(e.target.value)}
+                          className="px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                          <input
+                            type="checkbox" checked={formReqRequired} onChange={(e) => setFormReqRequired(e.target.checked)}
+                            className="w-4 h-4 text-[#2D5941] rounded cursor-pointer"
+                          />
+                          Mark as Required
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!formReqName.trim()) return;
+                            setFormRequirements(prev => [...prev, { name: formReqName.trim(), description: formReqDesc.trim(), required: formReqRequired }]);
+                            setFormReqName('');
+                            setFormReqDesc('');
+                            setFormReqRequired(true);
+                          }}
+                          className="px-4 py-2 bg-[#2D5941] hover:bg-[#1A3C2E] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all"
+                        >Add Requirement</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── STEP 4: Application Cycle ─── */}
+                {formModalStep === 4 && (
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-[#1C1C1E]">Initial Application Cycle</h4>
+                      <p className="text-xs text-[#6C6C70] mt-0.5">Set the first cycle's name and application window. You can add more cycles after creation.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Cycle Name *</label>
+                      <input
+                        type="text" required placeholder="e.g. AY 2026-2027"
+                        value={formCycleName} onChange={(e) => setFormCycleName(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Application Start Date *</label>
+                        <input
+                          type="date" required
+                          value={formCycleStartDate} onChange={(e) => setFormCycleStartDate(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Application End Date *</label>
+                        <input
+                          type="date" required
+                          value={formCycleEndDate} onChange={(e) => setFormCycleEndDate(e.target.value)}
+                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Preview summary */}
+                    <div className="bg-[#F9F5EF] rounded-2xl border border-[#D9D2C5]/50 p-5 space-y-3">
+                      <h5 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wider">Program Summary</h5>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                        <div><span className="text-[#6C6C70]">Title: </span><span className="font-semibold text-[#1C1C1E]">{formTitle || '—'}</span></div>
+                        <div><span className="text-[#6C6C70]">Category: </span><span className="font-semibold text-[#1C1C1E]">{formCategory}</span></div>
+                        <div><span className="text-[#6C6C70]">Type: </span><span className="font-semibold text-[#1C1C1E] capitalize">{formScholarshipType.replace('_', ' ')}</span></div>
+                        <div><span className="text-[#6C6C70]">Funding: </span><span className="font-semibold text-[#1C1C1E]">{formFundingFreq}</span></div>
+                        <div><span className="text-[#6C6C70]">Renewal: </span><span className="font-semibold text-[#1C1C1E]">{formRenewalPolicy}</span></div>
+                        <div><span className="text-[#6C6C70]">Availability: </span><span className="font-semibold text-[#1C1C1E] capitalize">{formAvailabilityScope}</span></div>
+                        <div><span className="text-[#6C6C70]">Slots: </span><span className="font-semibold text-[#1C1C1E]">{formTotalSlots || 'Unlimited'}</span></div>
+                        <div><span className="text-[#6C6C70]">Budget: </span><span className="font-semibold text-[#1C1C1E]">{formBudgetTotal ? `₱${Number(formBudgetTotal).toLocaleString()}` : '—'}</span></div>
+                        <div><span className="text-[#6C6C70]">Min GWA: </span><span className="font-semibold text-[#1C1C1E]">{formMinGwa || 'None'}</span></div>
+                        <div><span className="text-[#6C6C70]">Requirements: </span><span className="font-semibold text-[#1C1C1E]">{formRequirements.length} docs</span></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1">Initial Application Cycle</label>
-                  <input
-                    type="text" required placeholder="e.g. AY 2026-2027"
-                    value={formCycleName} onChange={(e) => setFormCycleName(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1">Funding Frequency</label>
-                  <select
-                    value={formFundingFreq} onChange={(e) => setFormFundingFreq(e.target.value as FundingFreq)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer"
-                  >
-                    <option value="Per Semester">Per Semester</option>
-                    <option value="Once a Year">Once a Year</option>
-                    <option value="One-time">One-time Grant</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1">Scholar Renewal Policy</label>
-                <select
-                  value={formRenewalPolicy} onChange={(e) => setFormRenewalPolicy(e.target.value as RenewalPolicy)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer"
+              {/* Modal Footer */}
+              <div className="px-8 pb-7 flex gap-3 justify-between border-t border-[#D9D2C5]/40 pt-5">
+                <button
+                  type="button"
+                  onClick={() => setFormModalStep(s => Math.max(1, s - 1))}
+                  disabled={formModalStep === 1}
+                  className="px-6 py-2.5 rounded-xl border border-solid border-[#D9D2C5] text-[#6C6C70] text-xs font-bold cursor-pointer bg-transparent hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <option value="No Renewal">No Renewal (One-time Financial Help)</option>
-                  <option value="Automatic Renewal">Automatic Renewal (Continuing award)</option>
-                  <option value="Conditional Renewal">Conditional Renewal (Maintains requirements/GWA)</option>
-                  <option value="Annual Reapplication">Annual Reapplication (Must apply every cycle)</option>
-                  <option value="Semester Renewal">Semester Renewal (Verify semestral grades)</option>
-                </select>
+                  ← Back
+                </button>
+                {formModalStep < 4 ? (
+                  <button
+                    type="button"
+                    onClick={() => setFormModalStep(s => Math.min(4, s + 1))}
+                    className="px-8 py-2.5 bg-[#2D5941] hover:bg-[#1A3C2E] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all"
+                  >
+                    Next →
+                  </button>
+                ) : (
+                  <button type="submit" className="px-8 py-2.5 bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all shadow-md">
+                    {isEditMode ? '✏️ Update Scholarship Program' : '🎓 Create Scholarship Program'}
+                  </button>
+                )}
               </div>
-
-              <button type="submit" className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] text-white py-3 rounded-xl text-sm font-bold shadow-md cursor-pointer">Create Program Lifecycle</button>
             </form>
           </div>
         </div>
@@ -717,12 +1858,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         </div>
       )}
 
-      <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 ${isCollapsed ? 'w-20' : 'w-72'}`}>
-        <div className="p-4 overflow-y-auto">
+      <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 overflow-hidden ${isCollapsed ? 'w-20' : 'w-72'}`}>
+        <div className="p-4 overflow-y-auto overflow-x-hidden flex-1">
           {/* Sidebar Header */}
           <div className={`flex items-center justify-between mb-8 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
             <div className="flex items-center gap-3">
-              <img src={LogoSvg} alt="IskolarAko Logo" className="w-10 h-10 object-contain shrink-0" />
+              <img src={LogoGoldSvg} alt="IskolarAko Logo" className="w-12 h-12 object-contain shrink-0" />
               {!isCollapsed && (
                 <div>
                   <h1 className="text-xl font-bold font-serif text-[#E8A838] tracking-wide leading-none">ISKOLARAKO</h1>
@@ -765,6 +1906,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   {renderSidebarItem('dashboard', 'Dashboard', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>)}
                   {renderSidebarItem('applicants', 'Applicants & Scholars', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>)}
                   {renderSidebarItem('programs', 'Programs', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>)}
+                  {renderSidebarItem('verification', 'Verification Org', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>)}
                 </div>
               )}
             </div>
@@ -811,6 +1953,19 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   <p className="text-xs text-[#9BA89F] truncate">
                     {profile ? profile.providerName : 'Loading...'}
                   </p>
+                  {providerDetails && (
+                    <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 font-sans ${
+                      providerDetails.verificationStatus === 'verified'
+                        ? 'bg-[#EBF5EE]/25 text-[#E8A838]'
+                        : providerDetails.verificationStatus === 'under_review'
+                          ? 'bg-[#FFF8EE]/20 text-[#C97B2E]'
+                          : providerDetails.verificationStatus === 'rejected'
+                            ? 'bg-red-500/20 text-red-300'
+                            : 'bg-white/10 text-white/60'
+                    }`}>
+                      ● {providerDetails.verificationStatus.replace('_', ' ').toUpperCase()}
+                    </span>
+                  )}
                 </div>
               </div>
               <button
@@ -1102,72 +2257,170 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 <p className="text-sm text-[#6C6C70] mt-1 font-medium">Permanent scholarship schemas, active application cycles, and renewal rules</p>
               </div>
               <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="flex items-center gap-2 bg-[#E8A838] hover:bg-[#cfa532] text-[#1A3C2E] px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer border border-[#1A3C2E]/10"
+                onClick={() => {
+                  if (providerDetails?.verificationStatus !== 'verified') {
+                    showToast('Create locked: Your organization is not verified. Please submit documents in the Verification Org tab.');
+                  } else {
+                    setIsCreateModalOpen(true);
+                  }
+                }}
+                disabled={providerDetails?.verificationStatus !== 'verified'}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all border border-[#1A3C2E]/10 ${
+                  providerDetails?.verificationStatus === 'verified'
+                    ? 'bg-[#E8A838] hover:bg-[#cfa532] text-[#1A3C2E] cursor-pointer'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed border-gray-400'
+                }`}
               >
-                <span>+</span> New program
+                <span>{providerDetails?.verificationStatus === 'verified' ? '+' : '🔒'}</span> New program
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {programsList.map((prog) => (
-                <div
-                  key={prog.id}
-                  className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-7 shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-[340px] animate-fade-in"
-                >
-                  <div className="space-y-3.5">
-                    <div className="flex justify-between items-center">
-                      <span className="px-3.5 py-1.5 rounded-xl bg-[#1A3C2E] text-white text-xs font-bold tracking-wider">
-                        {prog.provider}
-                      </span>
-                      <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5]">
-                        ⚙️ Policy: {prog.renewalPolicy}
-                      </span>
+            {providerDetails && providerDetails.verificationStatus !== 'verified' && (
+              <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 rounded-2xl p-5 flex items-start gap-4 shadow-sm animate-fade-in">
+                <div className="bg-[#C97B2E]/10 p-2.5 rounded-xl text-[#C97B2E] shrink-0">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0-6h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.3-2.67-1.3-3.44 0L2.18 16c-.77 1.3.2 3 1.73 3z" />
+                  </svg>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-[#1A3C2E] text-sm">Scholarship Creation Locked</h4>
+                  <p className="text-xs text-[#6C6C70] leading-relaxed">
+                    Your organization is currently not verified (Status: <strong className="capitalize">{providerDetails.verificationStatus.replace('_', ' ')}</strong>). 
+                    You must upload and submit your organization credentials under the <strong>Verification Org</strong> tab. Once approved by the administrator, you will be allowed to post scholarships.
+                  </p>
+                  <button 
+                    onClick={() => setActiveTab('verification')}
+                    className="text-xs font-bold text-[#2D5941] hover:text-[#1A3C2E] underline mt-1.5 cursor-pointer block bg-transparent border-0 p-0 text-left font-sans"
+                  >
+                    Go to Verification Org &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {programsList.length === 0 ? (
+              <div className="bg-[#F9F5EF]/60 rounded-3xl border border-dashed border-[#D9D2C5] p-12 text-center space-y-4">
+                <div className="w-16 h-16 bg-[#EDE8DE] rounded-full flex items-center justify-center mx-auto text-[#2D5941] text-2xl">
+                  🎓
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-[#1A3C2E] font-serif text-lg">No Scholarship Programs Yet</h4>
+                  <p className="text-xs text-[#6C6C70] max-w-sm mx-auto">
+                    You haven't configured any programs yet. Click the <strong>New program</strong> button above to launch your first scholarship and cycle!
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {programsList.map((prog) => (
+                  <div
+                    key={prog.id}
+                    className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-7 shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-[340px] animate-fade-in"
+                  >
+                    <div className="space-y-3.5">
+                      <div className="flex justify-between items-center">
+                        <span className="px-3.5 py-1.5 rounded-xl bg-[#1A3C2E] text-white text-xs font-bold tracking-wider">
+                          {prog.provider}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                            prog.status === 'Active' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                            prog.status === 'Pending Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
+                            prog.status === 'Draft' ? 'bg-blue-50 text-blue-600' :
+                            'bg-red-50 text-[#B34040]'
+                          }`}>
+                            {prog.status}
+                          </span>
+                          <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5]">
+                            ⚙️ Policy: {prog.renewalPolicy}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="text-xl font-bold text-[#1A3C2E] font-serif leading-snug truncate">
+                          {prog.title}
+                        </h3>
+                        <p className="text-xs text-[#6C6C70] mt-0.5 font-medium line-clamp-1">
+                          {prog.description}
+                        </p>
+                      </div>
+
+                      {/* Application Cycles checklist sub-layout */}
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wide block">Registered Cycles</span>
+                        <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
+                          {prog.cycles.map((cyc) => (
+                            <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
+                              <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                                cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-gray-200 text-gray-600'
+                                }`}>
+                                {cyc.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
 
-                    <div>
-                      <h3 className="text-xl font-bold text-[#1A3C2E] font-serif leading-snug truncate">
-                        {prog.title}
-                      </h3>
-                      <p className="text-xs text-[#6C6C70] mt-0.5 font-medium line-clamp-1">
-                        {prog.description}
-                      </p>
-                    </div>
-
-                    {/* Application Cycles checklist sub-layout */}
-                    <div className="space-y-1.5 pt-1">
-                      <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wide block">Registered Cycles</span>
-                      <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                        {prog.cycles.map((cyc) => (
-                          <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
-                            <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                              cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
-                                'bg-gray-200 text-gray-600'
-                              }`}>
-                              {cyc.status}
-                            </span>
-                          </div>
-                        ))}
+                    <div className="border-t border-[#D9D2C5]/50 pt-4 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
+                        <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleViewDetails(prog)}
+                          className="px-3 py-1.5 rounded-lg bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[10px] font-bold border-0 cursor-pointer transition-all"
+                        >
+                          View Details
+                        </button>
+                        <button
+                          onClick={() => handleEditProgram(prog)}
+                          className="px-3 py-1.5 rounded-lg bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[10px] font-bold border-0 cursor-pointer transition-all"
+                        >
+                          Edit
+                        </button>
+                        {prog.status !== 'Closed' && prog.status !== 'closed' ? (
+                          <button
+                            onClick={() => { setProgramToClose(prog); setIsCloseConfirmOpen(true); }}
+                            className="px-3 py-1.5 rounded-lg bg-[#FDF2F2] hover:bg-red-100 text-[#B34040] text-[10px] font-bold border border-red-200 cursor-pointer transition-all"
+                          >
+                            Close
+                          </button>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const { error } = await supabase
+                                  .from('scholarship_programs')
+                                  .update({ status: 'active' })
+                                  .eq('id', prog.id);
+                                if (error) {
+                                  console.error('Error re-opening program:', error);
+                                  showToast('Error re-opening program.');
+                                } else {
+                                  showToast(`"${prog.title}" has been re-opened.`);
+                                  await fetchPrograms();
+                                }
+                              } catch (err) {
+                                console.error('Unexpected error re-opening program:', err);
+                                showToast('An unexpected error occurred.');
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-[#EBF5EE] hover:bg-green-100 text-[#2D5941] text-[10px] font-bold border border-green-200 cursor-pointer transition-all"
+                          >
+                            Re-open
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
-
-                  <div className="border-t border-[#D9D2C5]/50 pt-4 flex justify-between items-center text-xs">
-                    <div>
-                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
-                      <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Fund Utilization</span>
-                      <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">
-                        {prog.budgetUsed} <span className="text-[#8E8E93]">/ {prog.budgetTotal}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1483,7 +2736,376 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           </div>
         )}
 
+        {/* ==================== 7. VERIFICATION TAB ==================== */}
+        {activeTab === 'verification' && (
+          <div className="space-y-8 animate-fade-in">
+            <div>
+              <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Organization Verification</h2>
+              <p className="text-sm text-[#6C6C70] mt-1 font-medium">Manage and submit organizational documentation required to post scholarship programs.</p>
+            </div>
+
+            {/* Status Banner */}
+            {providerDetails && (
+              <div className={`p-6 rounded-3xl border shadow-sm flex items-start gap-4 ${
+                providerDetails.verificationStatus === 'verified'
+                  ? 'bg-[#EBF5EE] border-[#2D5941]/30 text-[#1A3C2E]'
+                  : providerDetails.verificationStatus === 'under_review'
+                    ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#1A3C2E]'
+                    : providerDetails.verificationStatus === 'rejected'
+                      ? 'bg-red-50 border-red-200 text-red-900'
+                      : 'bg-white border-[#D9D2C5]/60 text-[#1C1C1E]'
+              }`}>
+                <div className={`p-3 rounded-2xl shrink-0 ${
+                  providerDetails.verificationStatus === 'verified'
+                    ? 'bg-[#2D5941]/10 text-[#2D5941]'
+                    : providerDetails.verificationStatus === 'under_review'
+                      ? 'bg-[#C97B2E]/10 text-[#C97B2E]'
+                      : providerDetails.verificationStatus === 'rejected'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-[#EDE8DE] text-[#6C6C70]'
+                }`}>
+                  {providerDetails.verificationStatus === 'verified' ? (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  ) : providerDetails.verificationStatus === 'under_review' ? (
+                    <svg className="w-6 h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : providerDetails.verificationStatus === 'rejected' ? (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M9 16h6m2 4H7a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v12a2 2 0 01-2 2z" />
+                    </svg>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold">
+                    {providerDetails.verificationStatus === 'verified' && 'Verified Provider Partner'}
+                    {providerDetails.verificationStatus === 'under_review' && 'Documents Under Review'}
+                    {providerDetails.verificationStatus === 'rejected' && 'Verification Rejected'}
+                    {providerDetails.verificationStatus === 'pending' && 'Verification Incomplete'}
+                  </h3>
+                  <p className="text-xs opacity-90 leading-relaxed max-w-2xl font-sans">
+                    {providerDetails.verificationStatus === 'verified' && 'Your credentials have been successfully reviewed and verified by our system administrators. You are cleared to publish new scholarship programs and manage applications.'}
+                    {providerDetails.verificationStatus === 'under_review' && 'Your documents are being reviewed by the operations team. The evaluation process usually takes 1-2 business days. You will be notified when your status is updated.'}
+                    {providerDetails.verificationStatus === 'rejected' && 'Your submitted documents did not meet our verification guidelines. Please review the comments below, re-upload the corrected files, and submit a new request.'}
+                    {providerDetails.verificationStatus === 'pending' && 'To enable full access to cycle management and student matches, please upload and submit the credentials required for your provider type.'}
+                  </p>
+
+                  {providerDetails.verificationStatus === 'rejected' && providerDetails.requirementsSubmitted['_remarks'] && (
+                    <div className="mt-3 p-3 bg-red-100/50 border border-red-200/50 rounded-xl text-red-900 text-xs">
+                      <strong>Remarks: </strong> {providerDetails.requirementsSubmitted['_remarks']}
+                    </div>
+                  )}
+
+                  {(providerDetails.verificationStatus === 'under_review' || providerDetails.verificationStatus === 'rejected') && profile?.role === 'provider' && (
+                    <button
+                      type="button"
+                      onClick={handleUnsubmitVerification}
+                      disabled={submittingVerification}
+                      className="mt-3 bg-white/20 hover:bg-white/30 text-current border border-solid border-current px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer font-sans"
+                    >
+                      {submittingVerification ? 'Processing...' : 'Unsubmit & Edit Documents'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Checklist & Form */}
+            <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-8 shadow-sm space-y-6">
+              <div className="border-b border-[#D9D2C5]/40 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Required Documents Checklist</h3>
+                  <p className="text-xs text-[#6C6C70] mt-0.5 font-sans">Requirements for <span className="uppercase font-bold text-[#2D5941]">{providerDetails?.providerType || 'public'}</span> providers:</p>
+                </div>
+                {profile?.role === 'provider-member' && (
+                  <span className="px-3.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold font-sans flex items-center gap-1.5 shrink-0">
+                    🔒 Read-only (Member View)
+                  </span>
+                )}
+              </div>
+
+              {profile?.role === 'provider-member' && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-slate-600 text-xs font-sans">
+                  You are viewing this panel as a <strong>Provider Member</strong>. Only the primary <strong>Provider Admin</strong> role is authorized to upload, update, or submit organizational verification requirements.
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {requiredDocs.map((doc, idx) => {
+                  const isUploaded = !!providerDetails?.requirementsSubmitted[doc.name];
+                  const docUrl = providerDetails?.requirementsSubmitted[doc.name];
+                  const isUnderReviewOrVerified = providerDetails?.verificationStatus === 'under_review' || providerDetails?.verificationStatus === 'verified';
+                  const isReadOnly = isUnderReviewOrVerified || profile?.role === 'provider-member';
+
+                  return (
+                    <div 
+                      key={idx}
+                      className="p-5 rounded-2xl border border-[#D9D2C5]/50 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:bg-slate-50/50"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-[#1C1C1E]">{doc.name}</h4>
+                          {doc.required ? (
+                            <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQUIRED</span>
+                          ) : (
+                            <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">OPTIONAL</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-[#6C6C70] font-sans">{doc.description}</p>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        {isUploaded ? (
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center gap-1 text-xs text-[#2D5941] font-bold font-sans">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Uploaded
+                            </span>
+                            <a 
+                              href={docUrl} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="text-xs font-bold text-[#C97B2E] hover:underline"
+                            >
+                              View File
+                            </a>
+                            {!isReadOnly && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!providerDetails) return;
+                                  const updatedReqs = { ...providerDetails.requirementsSubmitted };
+                                  delete updatedReqs[doc.name];
+                                  
+                                  // Update local state
+                                  setProviderDetails({
+                                    ...providerDetails,
+                                    requirementsSubmitted: updatedReqs
+                                  });
+
+                                  // Update Supabase database immediately
+                                  try {
+                                    const { error } = await supabase
+                                      .from('provider')
+                                      .update({
+                                        requirements_submitted: updatedReqs,
+                                        updated_at: new Date().toISOString()
+                                      })
+                                      .eq('id', providerDetails.id);
+                                    if (error) throw error;
+                                    showToast(`Unsubmitted document: ${doc.name}`);
+                                  } catch (err: any) {
+                                    console.error('Error unsubmitting document:', err);
+                                    showToast(`Failed to update database: ${err.message}`);
+                                  }
+                                }}
+                                className="text-xs text-red-500 hover:text-red-700 cursor-pointer bg-transparent border-0 font-sans"
+                              >
+                                Unsubmit File
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div>
+                            {isReadOnly ? (
+                              <span className="text-xs text-gray-400 italic font-sans">Not Provided</span>
+                            ) : (
+                              <div>
+                                <label className="relative flex items-center justify-center bg-[#EBF5EE] hover:bg-[#d5ebd9] text-[#2D5941] px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer border border-[#2D5941]/10">
+                                  {uploadingDoc === doc.name ? (
+                                    <span className="flex items-center gap-1">
+                                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                      </svg>
+                                      Uploading...
+                                    </span>
+                                  ) : (
+                                    <span>Choose & Upload File</span>
+                                  )}
+                                  <input
+                                    type="file"
+                                    disabled={uploadingDoc !== null}
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) handleUploadDocument(doc.name, file);
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Submit Action */}
+              {providerDetails && providerDetails.verificationStatus !== 'verified' && providerDetails.verificationStatus !== 'under_review' && profile?.role === 'provider' && (
+                <div className="border-t border-[#D9D2C5]/40 pt-6 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSubmitVerification}
+                    disabled={submittingVerification || uploadingDoc !== null}
+                    className={`px-8 py-3.5 rounded-xl font-bold text-sm shadow-md transition-all border border-[#1A3C2E]/10 cursor-pointer ${
+                      submittingVerification || uploadingDoc !== null
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400'
+                        : 'bg-[#2D5941] hover:bg-[#1A3C2E] text-white'
+                    }`}
+                  >
+                    {submittingVerification ? 'Submitting Request...' : 'Submit Verification Request'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </main>
+
+      {/* ─── View Details Modal ─── */}
+      {isViewModalOpen && selectedProgram && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex justify-between items-start p-7 border-b border-[#D9D2C5]/50">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-widest block mb-1">{selectedProgram.category}</span>
+                <h2 className="text-2xl font-bold text-[#1A3C2E] font-serif leading-tight">{selectedProgram.title}</h2>
+                <p className="text-xs text-[#6C6C70] mt-1">{selectedProgram.description}</p>
+              </div>
+              <button
+                onClick={() => setIsViewModalOpen(false)}
+                className="w-9 h-9 rounded-full bg-[#EDE8DE] hover:bg-[#D9D2C5] flex items-center justify-center text-[#1A3C2E] font-bold text-lg border-0 cursor-pointer shrink-0 ml-4 transition-all"
+              >×</button>
+            </div>
+
+            <div className="p-7 space-y-6">
+              {/* Status & Policy */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                  <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Status</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${selectedProgram.status === 'Active' ? 'bg-[#EBF5EE] text-[#2D5941]' : selectedProgram.status === 'Draft' ? 'bg-[#EDE8DE] text-[#6C6C70]' : 'bg-[#FDF2F2] text-[#B34040]'}`}>{selectedProgram.status}</span>
+                </div>
+                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                  <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Renewal Policy</span>
+                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.renewalPolicy}</span>
+                </div>
+                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                  <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Funding</span>
+                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.fundingFrequency}</span>
+                </div>
+              </div>
+
+              {/* Benefits */}
+              <div>
+                <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Benefits</h4>
+                <div className="flex flex-wrap gap-2">
+                  {selectedProgram.coverstuition && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Full Tuition</span>}
+                  {selectedProgram.coversStipend && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Stipend ₱{Number(selectedProgram.stipendAmount).toLocaleString()}/mo</span>}
+                  {selectedProgram.coversAllowance && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Allowance ₱{Number(selectedProgram.allowanceAmount).toLocaleString()}</span>}
+                  {selectedProgram.otherBenefits.map((b, i) => <span key={i} className="bg-[#EDE8DE] text-[#6C6C70] text-xs font-semibold px-3 py-1 rounded-full">{b}</span>)}
+                </div>
+              </div>
+
+              {/* Eligibility */}
+              <div>
+                <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Eligibility</h4>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div><span className="text-[#8E8E93] font-semibold">Courses: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.courseEligibility.join(', ') || 'All'}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Year Levels: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.yearLevelEligibility.length > 0 ? selectedProgram.yearLevelEligibility.map(y => `Year ${y}`).join(', ') : 'All'}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Min GWA: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.minimumGwa || 'None'}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Availability: </span><span className="font-bold text-[#1C1C1E] capitalize">{selectedProgram.availabilityScope}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Total Slots: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.totalSlots || 'Unlimited'}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Budget: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.budgetTotal}</span></div>
+                </div>
+              </div>
+
+              {/* Requirements */}
+              {selectedProgram.applicationRequirements.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Document Requirements</h4>
+                  <div className="space-y-2">
+                    {selectedProgram.applicationRequirements.map((req, i) => (
+                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-[#D9D2C5]/50 bg-[#F9F5EF]/50 text-xs">
+                        <div className="flex-1">
+                          <span className="font-bold text-[#1C1C1E]">{req.name}</span>
+                          {req.description && <span className="text-[#6C6C70] ml-2">— {req.description}</span>}
+                        </div>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${req.required ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-slate-100 text-slate-500'}`}>{req.required ? 'REQUIRED' : 'OPTIONAL'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cycles */}
+              <div>
+                <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Application Cycles</h4>
+                <div className="space-y-2">
+                  {selectedProgram.cycles.map(cyc => (
+                    <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
+                      <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[#8E8E93]">{cyc.startDate} → {cyc.endDate}</span>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' : cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' : cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-600'}`}>{cyc.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-7 border-t border-[#D9D2C5]/50 flex justify-end gap-3">
+              <button
+                onClick={() => setIsViewModalOpen(false)}
+                className="px-5 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"
+              >Close</button>
+              <button
+                onClick={() => { setIsViewModalOpen(false); handleEditProgram(selectedProgram); }}
+                className="px-5 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-sm font-bold border-0 cursor-pointer transition-all"
+              >Edit Program</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Close Program Confirm Modal ─── */}
+      {isCloseConfirmOpen && programToClose && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-[#FDF2F2] flex items-center justify-center text-[#B34040] text-2xl mx-auto">⚠️</div>
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Close this Program?</h3>
+              <p className="text-xs text-[#6C6C70] leading-relaxed">
+                You are about to close <strong>"{programToClose.title}"</strong>. It will be marked as <strong>Closed</strong> and no new applications will be accepted. This can be re-opened later by editing the program.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => { setIsCloseConfirmOpen(false); setProgramToClose(null); }}
+                className="flex-1 px-4 py-3 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"
+              >Cancel</button>
+              <button
+                onClick={handleCloseProgram}
+                className="flex-1 px-4 py-3 rounded-xl bg-[#B34040] hover:bg-red-700 text-white text-sm font-bold border-0 cursor-pointer transition-all"
+              >Yes, Close Program</button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
