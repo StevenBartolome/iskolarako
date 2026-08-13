@@ -9,8 +9,45 @@ import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/widgets/custom_header.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
 
-class ScholarshipDetailScreen extends StatelessWidget {
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class ScholarshipDetailScreen extends StatefulWidget {
   const ScholarshipDetailScreen({super.key});
+
+  @override
+  State<ScholarshipDetailScreen> createState() => _ScholarshipDetailScreenState();
+}
+
+class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
+  bool _isCheckingApp = false;
+  Map<String, dynamic>? _existingApp;
+  bool _hasCheckedApp = false;
+
+  Future<void> _checkExistingApplication(String scholarId, String cycleId) async {
+    if (_hasCheckedApp) return;
+    setState(() => _isCheckingApp = true);
+    try {
+      final res = await Supabase.instance.client
+          .from('scholarship_applications')
+          .select()
+          .eq('scholar_id', scholarId)
+          .eq('cycle_id', cycleId)
+          .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _existingApp = res;
+          _hasCheckedApp = true;
+          _isCheckingApp = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error checking existing application: $e');
+      if (mounted) {
+        setState(() => _isCheckingApp = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +114,13 @@ class ScholarshipDetailScreen extends StatelessWidget {
       ) as Map<String, dynamic>?;
     }
 
+    final scholarId = scholar?['id']?.toString();
+    final cycleId = activeCycle?['id']?.toString();
+
+    if (scholarId != null && cycleId != null && !_hasCheckedApp && !_isCheckingApp) {
+      _checkExistingApplication(scholarId, cycleId);
+    }
+
     int daysLeft = 0;
     String formattedEndDate = 'Open';
     if (activeCycle != null && activeCycle['application_end_date'] != null) {
@@ -121,6 +165,11 @@ class ScholarshipDetailScreen extends StatelessWidget {
       docList.add('No specific document requirements configured.');
     }
 
+    final hasApplied = _existingApp != null;
+    final buttonText = hasApplied
+        ? 'View Application Tracker (${_existingApp!['status']?.toString().toUpperCase()})'
+        : 'Apply for this Scholarship';
+
     return Scaffold(
       body: Column(
         children: [
@@ -162,9 +211,14 @@ class ScholarshipDetailScreen extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
           child: CustomButton(
-            text: 'Apply for this Scholarship',
-            icon: LucideIcons.send,
+            text: buttonText,
+            icon: hasApplied ? LucideIcons.clipboardList : LucideIcons.send,
             onPressed: () {
+              if (hasApplied) {
+                Navigator.pushNamed(context, AppRouter.applicationTracker);
+                return;
+              }
+
               final isComplete = EligibilityHelper.isProfileComplete(scholar);
               if (!isComplete) {
                 final missingFields = EligibilityHelper.getMissingFields(scholar);
@@ -239,7 +293,15 @@ class ScholarshipDetailScreen extends StatelessWidget {
                   ),
                 );
               } else {
-                Navigator.pushNamed(context, AppRouter.documentUpload);
+                Navigator.pushNamed(
+                  context,
+                  AppRouter.documentUpload,
+                  arguments: {
+                    'program': program,
+                    'scholar': scholar,
+                    'cycle': activeCycle,
+                  },
+                );
               }
             },
           ),

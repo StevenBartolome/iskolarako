@@ -29,6 +29,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _scholarProfile;
   List<dynamic> _allPrograms = [];
   List<dynamic> _qualifiedPrograms = [];
+  List<dynamic> _recentActivities = [];
   bool _isProfileComplete = false;
   bool _isLoadingData = true;
 
@@ -53,6 +54,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
             .select('*, provider:provider_id(*), cycles:application_cycles(*)')
             .eq('status', 'active');
 
+        final List<String> scholarIds = [user.id];
+        if (scholarData != null && scholarData['id'] != null) {
+          scholarIds.add(scholarData['id'].toString());
+        }
+
+        List<dynamic> activities = [];
+        try {
+          activities = await Supabase.instance.client
+              .from('scholarship_applications')
+              .select('''
+                *,
+                cycle:application_cycles (
+                  *,
+                  program:scholarship_programs (
+                    *,
+                    provider:provider (*)
+                  )
+                )
+              ''')
+              .filter('scholar_id', 'in', scholarIds)
+              .order('created_at', ascending: false)
+              .limit(5);
+        } catch (actErr) {
+          debugPrint('Note loading recent activities: $actErr');
+        }
+
         if (mounted) {
           setState(() {
             _scholarProfile = scholarData;
@@ -62,6 +89,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 : 'SCHOLAR';
 
             _allPrograms = programsData;
+            _recentActivities = activities;
+
             if (_isProfileComplete && scholarData != null) {
               _qualifiedPrograms = _allPrograms
                   .where((p) => EligibilityHelper.isQualified(scholarData, p))
@@ -886,33 +915,111 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ─── 9. Recent Activity List ────────────────────────────────────────────────
   Widget _buildRecentActivity(BuildContext context) {
+    if (_recentActivities.isEmpty) {
+      return AppCard(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'No Recent Activity',
+              style: GoogleFonts.playfairDisplay(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryDark,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Your submitted scholarship applications and status updates will appear here live.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final children = <Widget>[];
+    for (int i = 0; i < _recentActivities.length; i++) {
+      final act = _recentActivities[i];
+      final cycle = act['cycle'] as Map<String, dynamic>?;
+      final program = cycle?['program'] as Map<String, dynamic>?;
+
+      final title = program?['title'] ?? 'Scholarship Program';
+      final dbStatus = act['status']?.toString().toLowerCase() ?? 'pending';
+
+      String statusTitle = 'Application Submitted';
+      IconData icon = LucideIcons.send;
+      Color iconColor = AppColors.primary;
+      StatusType statusType = StatusType.pending;
+
+      if (dbStatus == 'pending') {
+        statusTitle = 'Application Submitted';
+        icon = LucideIcons.send;
+        iconColor = AppColors.primary;
+        statusType = StatusType.pending;
+      } else if (dbStatus == 'under_review') {
+        statusTitle = 'Under Review';
+        icon = LucideIcons.hourglass;
+        iconColor = AppColors.amber;
+        statusType = StatusType.pending;
+      } else if (dbStatus == 'for_exam') {
+        statusTitle = 'For Exam / Evaluation';
+        icon = LucideIcons.fileCheck2;
+        iconColor = AppColors.amber;
+        statusType = StatusType.pending;
+      } else if (dbStatus == 'approved') {
+        statusTitle = 'Application Approved';
+        icon = LucideIcons.checkCircle2;
+        iconColor = AppColors.primary;
+        statusType = StatusType.approved;
+      } else if (dbStatus == 'rejected') {
+        statusTitle = 'Application Unsuccessful';
+        icon = LucideIcons.xCircle;
+        iconColor = AppColors.error;
+        statusType = StatusType.rejected;
+      } else if (dbStatus == 'withdrawn') {
+        statusTitle = 'Application Withdrawn';
+        icon = LucideIcons.xCircle;
+        iconColor = AppColors.textMuted;
+        statusType = StatusType.rejected;
+      }
+
+      final rawDate = act['created_at'] != null ? DateTime.tryParse(act['created_at'].toString()) : DateTime.now();
+      final diff = DateTime.now().difference(rawDate ?? DateTime.now());
+      String timeAgo = 'Just now';
+      if (diff.inDays > 0) {
+        timeAgo = '${diff.inDays}d ago';
+      } else if (diff.inHours > 0) {
+        timeAgo = '${diff.inHours}h ago';
+      } else if (diff.inMinutes > 0) {
+        timeAgo = '${diff.inMinutes}m ago';
+      }
+
+      if (i > 0) {
+        children.add(Divider(height: 1, color: AppColors.rule));
+      }
+
+      children.add(
+        _ActivityTile(
+          icon: icon,
+          iconColor: iconColor,
+          title: statusTitle,
+          subtitle: title,
+          time: timeAgo,
+          statusType: statusType,
+          onTap: () => Navigator.pushNamed(context, AppRouter.applicationTracker),
+        ),
+      );
+    }
+
     return AppCard(
       padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          _ActivityTile(
-            icon: LucideIcons.checkCircle2,
-            iconColor: AppColors.primary,
-            title: 'Application Approved',
-            subtitle: 'CHED Merit Scholarship',
-            time: '2d ago',
-            statusType: StatusType.approved,
-            onTap: () =>
-                Navigator.pushNamed(context, AppRouter.applicationTracker),
-          ),
-          Divider(height: 1, color: AppColors.rule),
-          _ActivityTile(
-            icon: LucideIcons.hourglass,
-            iconColor: AppColors.amber,
-            title: 'Under Review',
-            subtitle: 'City Government Grant',
-            time: '5d ago',
-            statusType: StatusType.pending,
-            onTap: () =>
-                Navigator.pushNamed(context, AppRouter.applicationTracker),
-          ),
-        ],
-      ),
+      child: Column(children: children),
     );
   }
 }

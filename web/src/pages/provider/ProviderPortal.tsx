@@ -5,6 +5,8 @@ import { supabase } from '@/services/supabaseClient';
 import { CloseProgramConfirmModal } from './components/CloseProgramConfirmModal';
 import { DeleteCycleConfirmModal } from './components/DeleteCycleConfirmModal';
 import { RenewCycleModal } from './components/RenewCycleModal';
+import { ReviewApplicationModal } from './components/ReviewApplicationModal';
+import type { ApplicationDetail, SubmittedDocItem } from './components/ReviewApplicationModal';
 
 const parseLocalMidnight = (dateStr: string) => {
   if (!dateStr) return new Date();
@@ -91,13 +93,14 @@ interface DisbursementTx {
 }
 
 interface ScholarAward {
-  id: number;
+  id: string | number;
   scholarName: string;
   programTitle: string;
   cycleJoined: string;
   status: 'Maintaining' | 'Awaiting Grades' | 'Requirements Warning' | 'Graduated' | 'Suspended';
   gwa: string;
   dateAwarded: string;
+  appDetail?: ApplicationDetail;
 }
 
 export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWelcome }) => {
@@ -683,47 +686,397 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [programsList, setProgramsList] = useState<Program[]>([]);
 
 
-  // Interactive Applicants Mock State (Students in an active application cycle)
-  const [applicantsList, setApplicantsList] = useState([
-    { id: 2, name: 'Juan Dela Cruz', program: 'DOST-SEI Undergraduate', cycle: '2026 Intake', school: 'Ateneo de Manila University', grade: '1.40', status: 'Under Review' as ApplicantStatus, date: 'Aug 08, 2026' },
-    { id: 3, name: 'Ethan Gomez', program: 'Tulong Dunong Assistance', cycle: 'AY 2026-2027', school: 'De La Salle University', grade: '1.75', status: 'Pending' as ApplicantStatus, date: 'Aug 06, 2026' },
-    { id: 5, name: 'Angelo Reyes', program: 'DOST-SEI Graduate Fellowship', cycle: 'AY 2026-2027 Cycle', school: 'Mapua University', grade: '1.10', status: 'For Exam' as ApplicantStatus, date: 'Aug 09, 2026' },
-    { id: 6, name: 'Sofia Lopez', program: 'Tulong Dunong Assistance', cycle: 'AY 2026-2027', school: 'Polytechnic University of the Philippines', grade: '1.90', status: 'Rejected' as ApplicantStatus, date: 'Aug 03, 2026' }
+  // Review Application Modal states
+  const [selectedAppForReview, setSelectedAppForReview] = useState<ApplicationDetail | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  const fetchApplicantsAndScholars = async () => {
+    console.log('[Provider Portal Debug]: Fetching scholarship_applications with joined scholar, user, cycle & program tables...');
+    try {
+      const { data, error } = await supabase
+        .from('scholarship_applications')
+        .select(`
+          *,
+          scholar:scholar (
+            *,
+            user:users (
+              id,
+              email,
+              first_name,
+              last_name
+            )
+          ),
+          cycle:application_cycles (
+            *,
+            program:scholarship_programs (*)
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[Provider Portal Query Error - scholarship_applications]:', error);
+        if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
+          console.error('[Provider RLS Permission Warning]: RLS Policy blocking access to "scholarship_applications" table.');
+        }
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const providerApps = data.filter((app: any) => {
+          if (!providerDetails?.id) return true;
+          return app.cycle?.program?.provider_id === providerDetails.id;
+        });
+
+        console.log(`[Provider Portal Debug]: Total DB applications: ${data.length}, Filtered for current provider (${providerDetails?.name || 'All'}): ${providerApps.length}`);
+
+        if (providerApps.length > 0) {
+          // Fetch scholar_documents for the scholars in these applications
+          const scholarIds = providerApps.map((a: any) => a.scholar_id).filter(Boolean);
+          let scholarDocsMap: Record<string, SubmittedDocItem[]> = {};
+          if (scholarIds.length > 0) {
+            try {
+              const { data: docsData, error: docsErr } = await supabase
+                .from('scholar_documents')
+                .select('*')
+                .in('scholar_id', scholarIds);
+
+              if (docsErr) {
+                console.error('[Provider Scholar Documents Error]:', docsErr);
+                if (docsErr.code === '42501' || docsErr.message?.includes('permission') || docsErr.message?.includes('policy')) {
+                  console.error('[Provider RLS Permission Warning]: RLS Policy blocking access to "scholar_documents" table.');
+                }
+              } else if (docsData) {
+                console.log(`[Provider Scholar Documents Debug]: Loaded ${docsData.length} records from scholar_documents table.`);
+                docsData.forEach((d: any) => {
+                  if (!scholarDocsMap[d.scholar_id]) {
+                    scholarDocsMap[d.scholar_id] = [];
+                  }
+                  scholarDocsMap[d.scholar_id].push({
+                    id: d.id,
+                    name: d.document_name,
+                    filename: d.document_name,
+                    document_url: d.document_url,
+                    url: d.document_url,
+                    status: d.verification_status === 'verified' ? 'Verified' : d.verification_status === 'rejected' ? 'Flagged' : 'Pending',
+                    remarks: d.remarks || '',
+                    submitted_at: d.created_at ? new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently'
+                  });
+                });
+              }
+            } catch (dErr) {
+              console.warn('[Provider Scholar Documents Exception]:', dErr);
+            }
+          }
+
+          const formatYearLevel = (yl: any) => {
+            if (yl === null || yl === undefined || yl === '') return '1st Year';
+            const num = Number(yl);
+            if (!isNaN(num)) {
+              if (num === 1) return '1st Year';
+              if (num === 2) return '2nd Year';
+              if (num === 3) return '3rd Year';
+              if (num === 4) return '4th Year';
+              if (num === 5) return '5th Year';
+              return `${num}th Year`;
+            }
+            return String(yl);
+          };
+
+          const mappedApplicants: ApplicationDetail[] = providerApps.map((app: any) => {
+            const scholar = app.scholar || {};
+            const user = scholar.user || {};
+            const cycle = app.cycle || {};
+            const prog = cycle.program || {};
+
+            console.log('[Provider Join Debug]: app.scholar =', JSON.stringify(app.scholar));
+            console.log('[Provider Join Debug]: scholar.user =', JSON.stringify((app.scholar || {}).user));
+            console.log('[Provider Join Debug]: app.cycle =', JSON.stringify(app.cycle));
+
+            const scholarName = [
+              scholar.first_name || user.first_name,
+              scholar.middle_name,
+              scholar.last_name || user.last_name,
+              scholar.suffix
+            ].filter(Boolean).join(' ').trim() || app.applicant_name || user.email || 'Applicant Student';
+
+            const email = user.email || scholar.email || app.email || 'N/A';
+            const phone = scholar.phone || app.phone || 'N/A';
+            const school = scholar.school || scholar.institution || 'Unspecified University';
+            const course = scholar.course || scholar.degree || 'Undergraduate Degree';
+            const yearLevel = formatYearLevel(scholar.year_level);
+            const gpa = scholar.gpa != null ? String(scholar.gpa) : (scholar.gwa != null ? String(scholar.gwa) : '1.50');
+            const citizenship = scholar.citizenship || 'Filipino';
+            const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
+            const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+
+            const dbStatus = (app.status || 'pending').toLowerCase();
+            let status: ApplicantStatus = 'Pending';
+            if (dbStatus === 'under_review') status = 'Under Review';
+            else if (dbStatus === 'for_exam') status = 'For Exam';
+            else if (dbStatus === 'approved') status = 'Approved';
+            else if (dbStatus === 'rejected') status = 'Rejected';
+
+            const createdDate = app.created_at ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently';
+
+            let docs: SubmittedDocItem[] = [];
+            if (app.submitted_documents) {
+              if (Array.isArray(app.submitted_documents)) {
+                docs = [...app.submitted_documents];
+              } else if (app.submitted_documents.documents && Array.isArray(app.submitted_documents.documents)) {
+                docs = [...app.submitted_documents.documents];
+              }
+            }
+
+            if (scholarDocsMap[scholar.id]) {
+              const existingNames = new Set(docs.map(d => d.name));
+              scholarDocsMap[scholar.id].forEach(sd => {
+                if (!existingNames.has(sd.name)) {
+                  docs.push(sd);
+                }
+              });
+            }
+
+            return {
+              id: app.id,
+              scholarId: scholar.id,
+              name: scholarName,
+              email: email,
+              phone: phone,
+              program: prog.title || 'Scholarship Program',
+              cycle: cycle.cycle_name || 'Active Cycle',
+              school: school,
+              course: course,
+              yearLevel: yearLevel,
+              grade: gpa,
+              citizenship: citizenship,
+              address: address,
+              status: status,
+              date: createdDate,
+              submittedDocuments: docs,
+              remarks: app.remarks || '',
+              rawApplication: app
+            };
+          });
+
+          setApplicantsList(mappedApplicants);
+
+          const approvedApps = providerApps.filter((app: any) => (app.status || '').toLowerCase() === 'approved');
+          const mappedScholars: ScholarAward[] = approvedApps.map((app: any) => {
+            const scholar = app.scholar || {};
+            const user = scholar.user || {};
+            const cycle = app.cycle || {};
+            const prog = cycle.program || {};
+
+            const scholarName = [
+              scholar.first_name || user.first_name,
+              scholar.middle_name,
+              scholar.last_name || user.last_name,
+              scholar.suffix
+            ].filter(Boolean).join(' ').trim() || 'Awarded Scholar';
+
+            const awardedDate = app.updated_at ? new Date(app.updated_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently';
+
+            const email = user.email || scholar.email || 'N/A';
+            const phone = scholar.phone || 'N/A';
+            const school = scholar.school || scholar.institution || 'Unspecified University';
+            const course = scholar.course || scholar.degree || 'Undergraduate Degree';
+            const yearLevel = formatYearLevel(scholar.year_level);
+            const gpa = scholar.gpa != null ? String(scholar.gpa) : (scholar.gwa != null ? String(scholar.gwa) : '1.50');
+            const citizenship = scholar.citizenship || 'Filipino';
+            const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
+            const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+
+            let docs: SubmittedDocItem[] = [];
+            if (app.submitted_documents) {
+              if (Array.isArray(app.submitted_documents)) {
+                docs = [...app.submitted_documents];
+              } else if (app.submitted_documents.documents && Array.isArray(app.submitted_documents.documents)) {
+                docs = [...app.submitted_documents.documents];
+              }
+            }
+
+            if (scholarDocsMap[scholar.id]) {
+              const existingNames = new Set(docs.map(d => d.name));
+              scholarDocsMap[scholar.id].forEach(sd => {
+                if (!existingNames.has(sd.name)) {
+                  docs.push(sd);
+                }
+              });
+            }
+
+            const appDetail: ApplicationDetail = {
+              id: app.id,
+              scholarId: scholar.id,
+              name: scholarName,
+              email: email,
+              phone: phone,
+              program: prog.title || 'Scholarship Program',
+              cycle: cycle.cycle_name || 'Active Cycle',
+              school: school,
+              course: course,
+              yearLevel: yearLevel,
+              grade: gpa,
+              citizenship: citizenship,
+              address: address,
+              status: 'Approved',
+              date: awardedDate,
+              submittedDocuments: docs,
+              remarks: app.remarks || '',
+              rawApplication: app
+            };
+
+            return {
+              id: app.id,
+              scholarName: scholarName,
+              programTitle: prog.title || 'Scholarship Program',
+              cycleJoined: cycle.cycle_name || 'Active Cycle',
+              status: 'Maintaining',
+              gwa: gpa,
+              dateAwarded: awardedDate,
+              appDetail: appDetail
+            };
+          });
+
+          if (mappedScholars.length > 0) {
+            setScholarsList(mappedScholars);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching applicants:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchApplicantsAndScholars();
+  }, [providerDetails?.id, activeTab]);
+
+  // Interactive Applicants State (Students in an active application cycle)
+  const [applicantsList, setApplicantsList] = useState<ApplicationDetail[]>([
+    {
+      id: 'app-01',
+      name: 'Juan Dela Cruz',
+      email: 'juan.delacruz@up.edu.ph',
+      phone: '+63 917 123 4567',
+      program: 'DOST-SEI Undergraduate',
+      cycle: '2026 Intake',
+      school: 'Ateneo de Manila University',
+      course: 'BS Computer Science',
+      yearLevel: '3rd Year',
+      grade: '1.40',
+      status: 'Under Review',
+      date: 'Aug 08, 2026',
+      submittedDocuments: [
+        { name: 'Official Transcript of Records (TOR)', filename: 'TOR_GWA_1.40.pdf', filesize: '1.4 MB', status: 'Verified', submitted_at: 'Aug 08, 2026' },
+        { name: 'Certificate of Good Moral Character', filename: 'Good_Moral_ADMU.pdf', filesize: '820 KB', status: 'Verified', submitted_at: 'Aug 08, 2026' }
+      ]
+    },
+    {
+      id: 'app-02',
+      name: 'Ethan Gomez',
+      email: 'ethan.gomez@dlsu.edu.ph',
+      phone: '+63 918 987 6543',
+      program: 'Tulong Dunong Assistance',
+      cycle: 'AY 2026-2027',
+      school: 'De La Salle University',
+      course: 'BS Industrial Engineering',
+      yearLevel: '2nd Year',
+      grade: '1.75',
+      status: 'Pending',
+      date: 'Aug 06, 2026',
+      submittedDocuments: [
+        { name: 'Official Transcript of Records (TOR)', filename: 'DLSU_Grade_Slip.pdf', filesize: '1.1 MB', status: 'Pending', submitted_at: 'Aug 06, 2026' },
+        { name: 'Income Tax Return / Proof of Income', filename: 'ITR_Family_2025.pdf', filesize: '950 KB', status: 'Pending', submitted_at: 'Aug 06, 2026' }
+      ]
+    }
   ]);
 
   // Active Scholars (Awarded students under requirements monitoring)
   const [scholarsList, setScholarsList] = useState<ScholarAward[]>([
-    { id: 10, scholarName: 'Maria Santos', programTitle: 'DOST-SEI Undergraduate', cycleJoined: '2025 Intake', status: 'Maintaining', gwa: '1.25', dateAwarded: 'Aug 07, 2025' },
-    { id: 11, scholarName: 'Princess Diaz', programTitle: 'DOST-SEI Merit Renewal', cycleJoined: 'AY 2026-2027', status: 'Maintaining', gwa: '1.30', dateAwarded: 'Aug 05, 2026' },
-    { id: 12, scholarName: 'Jessica Alva', programTitle: 'DOST-SEI Undergraduate', cycleJoined: '2025 Intake', status: 'Awaiting Grades', gwa: '1.65', dateAwarded: 'Sep 10, 2025' },
-    { id: 13, scholarName: 'Marcus Vian', programTitle: 'DOST-SEI Graduate Fellowship', cycleJoined: 'AY 2025-2026', status: 'Requirements Warning', gwa: '2.10', dateAwarded: 'Oct 02, 2025' }
+    {
+      id: 'sch-01',
+      scholarName: 'Maria Santos',
+      programTitle: 'DOST-SEI Undergraduate',
+      cycleJoined: '2025 Intake',
+      status: 'Maintaining',
+      gwa: '1.25',
+      dateAwarded: 'Aug 07, 2025',
+      appDetail: {
+        id: 'sch-01',
+        name: 'Maria Santos',
+        email: 'maria.santos@up.edu.ph',
+        phone: '+63 919 555 1234',
+        program: 'DOST-SEI Undergraduate',
+        cycle: '2025 Intake',
+        school: 'University of the Philippines',
+        course: 'BS Chemical Engineering',
+        yearLevel: '3rd Year',
+        grade: '1.25',
+        status: 'Approved',
+        date: 'Aug 07, 2025',
+        submittedDocuments: [
+          { name: 'Official Transcript of Records (TOR)', filename: 'UP_TOR_GWA125.pdf', filesize: '1.6 MB', status: 'Verified', submitted_at: 'Aug 07, 2025' }
+        ]
+      }
+    }
   ]);
 
-  // Handle applicant status update
-  const handleUpdateStatus = (id: number, nextStatus: ApplicantStatus) => {
-    const applicant = applicantsList.find(a => a.id === id);
-    if (!applicant) return;
+  // Handle applicant status and document decision updates
+  const handleUpdateStatus = async (
+    id: number | string,
+    nextStatus: ApplicantStatus,
+    remarks?: string,
+    updatedDocs?: SubmittedDocItem[]
+  ) => {
+    let dbStatus = 'pending';
+    if (nextStatus === 'Under Review') dbStatus = 'under_review';
+    else if (nextStatus === 'For Exam') dbStatus = 'for_exam';
+    else if (nextStatus === 'Approved') dbStatus = 'approved';
+    else if (nextStatus === 'Rejected') dbStatus = 'rejected';
 
-    if (nextStatus === 'Approved') {
-      // Transition from applicant to awarded scholar
+    try {
+      const updatePayload: any = {
+        status: dbStatus,
+        updated_at: new Date().toISOString(),
+      };
+      if (remarks !== undefined) {
+        updatePayload.remarks = remarks;
+      }
+      if (updatedDocs !== undefined) {
+        updatePayload.submitted_documents = { documents: updatedDocs };
+      }
+
+      await supabase
+        .from('scholarship_applications')
+        .update(updatePayload)
+        .eq('id', id);
+    } catch (e) {
+      console.error('Error updating application status in Supabase:', e);
+    }
+
+    const applicant = applicantsList.find(a => a.id === id);
+
+    if (nextStatus === 'Approved' && applicant) {
       const newScholar: ScholarAward = {
-        id: Date.now(),
+        id: applicant.id,
         scholarName: applicant.name,
         programTitle: applicant.program,
         cycleJoined: applicant.cycle,
         status: 'Maintaining',
         gwa: applicant.grade,
-        dateAwarded: 'Today'
+        dateAwarded: 'Today',
+        appDetail: { ...applicant, status: 'Approved' }
       };
-      setScholarsList([...scholarsList, newScholar]);
-      setApplicantsList(prev => prev.filter(app => app.id !== id));
-      showToast(`Approved ${applicant.name}! Transitioned them into Active Scholars monitoring.`);
-    } else {
-      // Just change status within application
+      setScholarsList(prev => [newScholar, ...prev]);
       setApplicantsList(prev =>
-        prev.map(app => (app.id === id ? { ...app, status: nextStatus } : app))
+        prev.map(a => (a.id === id ? { ...a, status: 'Approved', remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
       );
-      showToast(`Updated ${applicant.name}'s status to: ${nextStatus}`);
+      showToast(`Approved ${applicant.name}! Issued Scholar Award.`);
+    } else {
+      setApplicantsList(prev =>
+        prev.map(a => (a.id === id ? { ...a, status: nextStatus, remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
+      );
+      showToast(`Application updated to ${nextStatus}`);
     }
   };
 
@@ -2398,7 +2751,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                           </div>
                           <div>
                             <span className="block font-bold text-[#1C1C1E]">{app.name}</span>
-                            <span className="text-[10px] text-[#8E8E93]">{app.date}</span>
+                            <span className="text-[10px] text-[#8E8E93]">{app.school} • {app.course} ({app.yearLevel}) • Applied {app.date}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-[#1C1C1E]">{app.program}</td>
@@ -2415,17 +2768,29 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                           </span>
                         </td>
                         <td className="px-6 py-4 text-center">
-                          <select
-                            value={app.status}
-                            onChange={(e) => handleUpdateStatus(app.id, e.target.value as ApplicantStatus)}
-                            className="bg-white border border-[#D9D2C5] rounded-xl px-2 py-1.5 text-xs font-semibold focus:outline-none cursor-pointer"
-                          >
-                            <option value="Pending">Pending</option>
-                            <option value="Under Review">Under Review</option>
-                            <option value="For Exam">For Exam</option>
-                            <option value="Approved">Approve & Issue Award</option>
-                            <option value="Rejected">Rejected</option>
-                          </select>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedAppForReview(app);
+                                setIsReviewModalOpen(true);
+                              }}
+                              className="bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm cursor-pointer border-0 flex items-center gap-1 transition-all"
+                            >
+                              👁️ View Application
+                            </button>
+                            <select
+                              value={app.status}
+                              onChange={(e) => handleUpdateStatus(app.id, e.target.value as ApplicantStatus)}
+                              className="bg-white border border-[#D9D2C5] rounded-xl px-2 py-1.5 text-xs font-semibold focus:outline-none cursor-pointer"
+                            >
+                              <option value="Pending">Pending</option>
+                              <option value="Under Review">Under Review</option>
+                              <option value="For Exam">For Exam</option>
+                              <option value="Approved">Approve & Issue Award</option>
+                              <option value="Rejected">Rejected</option>
+                            </select>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2443,7 +2808,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                       <th className="px-6 py-4">Intake Cycle</th>
                       <th className="px-6 py-4 text-center">Latest GWA</th>
                       <th className="px-6 py-4">Monitoring Status</th>
-                      <th className="px-6 py-4 text-right">Award Date</th>
+                      <th className="px-6 py-4 text-center">Award Date</th>
+                      <th className="px-6 py-4 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
@@ -2467,7 +2833,21 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                             {sch.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right text-xs text-[#8E8E93]">{sch.dateAwarded}</td>
+                        <td className="px-6 py-4 text-center text-xs text-[#8E8E93]">{sch.dateAwarded}</td>
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sch.appDetail) {
+                                setSelectedAppForReview(sch.appDetail);
+                                setIsReviewModalOpen(true);
+                              }
+                            }}
+                            className="bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm cursor-pointer border-0 flex items-center gap-1 mx-auto transition-all"
+                          >
+                            👁️ View Application
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -3399,6 +3779,17 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         setRenewEndDate={setRenewEndDate}
         renewSlots={renewSlots}
         setRenewSlots={setRenewSlots}
+      />
+
+      {/* ─── Review Application Modal ─── */}
+      <ReviewApplicationModal
+        isOpen={isReviewModalOpen}
+        application={selectedAppForReview}
+        onClose={() => {
+          setIsReviewModalOpen(false);
+          setSelectedAppForReview(null);
+        }}
+        onUpdateStatus={handleUpdateStatus}
       />
 
     </div>

@@ -48,11 +48,14 @@ interface ScholarshipAdminView {
 }
 
 interface StudentAdminView {
-  id: number;
+  id: number | string;
   name: string;
   email: string;
   school: string;
+  course: string;
+  yearLevel: string;
   gpa: string;
+  citizenship: string;
   verificationStatus: 'Verified' | 'Pending' | 'Flagged';
   accountStatus: 'Active' | 'Suspended';
 }
@@ -233,12 +236,172 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     { id: 104, title: 'Starlight Dreamer Grant', providerName: 'Starlight Grants Inc.', category: 'Arts', amount: 15000, status: 'Suspended', dateCreated: 'Feb 20, 2026' }
   ]);
 
-  const [students, setStudents] = useState<StudentAdminView[]>([
-    { id: 201, name: 'Juan Dela Cruz', email: 'juan.delacruz@up.edu.ph', school: 'University of the Philippines', gpa: '1.25', verificationStatus: 'Verified', accountStatus: 'Active' },
-    { id: 202, name: 'Maria Santos', email: 'maria.santos@dlsu.edu.ph', school: 'De La Salle University', gpa: '1.40', verificationStatus: 'Verified', accountStatus: 'Active' },
-    { id: 203, name: 'Ethan Gomez', email: 'ethan.gomez@ust.edu.ph', school: 'University of Santo Tomas', gpa: '1.85', verificationStatus: 'Pending', accountStatus: 'Active' },
-    { id: 204, name: 'Angelo Reyes', email: 'angelo.reyes@mapua.edu.ph', school: 'Mapua University', gpa: '2.10', verificationStatus: 'Flagged', accountStatus: 'Suspended' }
-  ]);
+  const [students, setStudents] = useState<StudentAdminView[]>([]);
+  const [loadingScholars, setLoadingScholars] = useState(false);
+
+  const fetchStudentsAndScholars = async () => {
+    setLoadingScholars(true);
+    console.log('[Admin Scholar Management Debug]: Querying scholar & users tables from Supabase...');
+    try {
+      // 1. Query scholar table
+      const { data: scholarRows, error: scholarErr } = await supabase
+        .from('scholar')
+        .select('*');
+
+      if (scholarErr) {
+        console.error('[Admin Scholar Fetch Error - scholar table]:', scholarErr);
+        if (scholarErr.code === '42501' || scholarErr.message?.includes('permission') || scholarErr.message?.includes('policy')) {
+          console.error('[Admin Scholar RLS Permission Warning]: RLS Policy blocking access to "scholar" table.');
+        }
+      }
+
+      // 2. Query users table with role = 'scholar'
+      const { data: userScholars, error: userErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'scholar');
+
+      if (userErr) {
+        console.error('[Admin Scholar Fetch Error - users table]:', userErr);
+        if (userErr.code === '42501' || userErr.message?.includes('permission') || userErr.message?.includes('policy')) {
+          console.error('[Admin Users RLS Permission Warning]: RLS Policy blocking access to "users" table.');
+        }
+      }
+
+      console.log(`[Admin Scholar Management Debug]: Found ${scholarRows?.length || 0} rows in scholar table, ${userScholars?.length || 0} in users table.`);
+
+      if (scholarErr && userErr) {
+        console.error('Error fetching scholars for system admin:', scholarErr || userErr);
+        return;
+      }
+
+      let combinedMap: Map<string, StudentAdminView> = new Map();
+
+      // Process scholar table records first
+      if (scholarRows && scholarRows.length > 0) {
+        const userIds = scholarRows.map((s: any) => s.user_id).filter(Boolean);
+        let userEmailMap: Record<string, string> = {};
+
+        if (userIds.length > 0) {
+          try {
+            const { data: userRows, error: uErr } = await supabase
+              .from('users')
+              .select('id, email, first_name, last_name')
+              .in('id', userIds);
+
+            if (uErr) {
+              console.error('[Admin User Emails Error]:', uErr);
+            } else if (userRows) {
+              userRows.forEach((u: any) => {
+                userEmailMap[u.id] = u.email;
+              });
+            }
+          } catch (uErr) {
+            console.warn('[Admin User Emails Exception]:', uErr);
+          }
+        }
+
+        const formatYearLevel = (yl: any) => {
+          if (yl === null || yl === undefined || yl === '') return '1st Year';
+          const num = Number(yl);
+          if (!isNaN(num)) {
+            if (num === 1) return '1st Year';
+            if (num === 2) return '2nd Year';
+            if (num === 3) return '3rd Year';
+            if (num === 4) return '4th Year';
+            if (num === 5) return '5th Year';
+            return `${num}th Year`;
+          }
+          return String(yl);
+        };
+
+        scholarRows.forEach((s: any) => {
+          const fullName = [s.first_name, s.middle_name, s.last_name, s.suffix]
+            .filter(Boolean)
+            .join(' ')
+            .trim() || 'Scholar Student';
+
+          const email = userEmailMap[s.user_id] || s.email || 'scholar@iskolarako.app';
+          const school = s.school || s.institution || 'Unspecified University';
+          const course = s.course || 'Undergraduate Degree';
+          const yearLevel = formatYearLevel(s.year_level);
+          const gpa = s.gpa != null ? String(s.gpa) : (s.gwa != null ? String(s.gwa) : 'N/A');
+          const citizenship = s.citizenship || 'Filipino';
+
+          const rawVer = (s.verification_status || 'verified').toLowerCase();
+          let verStatus: 'Verified' | 'Pending' | 'Flagged' = 'Verified';
+          if (rawVer === 'pending' || rawVer === 'under_review') verStatus = 'Pending';
+          else if (rawVer === 'flagged' || rawVer === 'rejected') verStatus = 'Flagged';
+
+          const key = s.user_id || String(s.id);
+          combinedMap.set(key, {
+            id: s.id,
+            name: fullName,
+            email: email,
+            school: school,
+            course: course,
+            yearLevel: yearLevel,
+            gpa: gpa,
+            citizenship: citizenship,
+            verificationStatus: verStatus,
+            accountStatus: 'Active',
+          });
+        });
+      }
+
+      // Merge registered users with role 'scholar' who might not have a full scholar record yet
+      if (userScholars && userScholars.length > 0) {
+        userScholars.forEach((u: any) => {
+          if (!combinedMap.has(u.id)) {
+            const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Registered Scholar';
+            combinedMap.set(u.id, {
+              id: u.id,
+              name: fullName,
+              email: u.email || 'scholar@iskolarako.app',
+              school: 'Unspecified University',
+              course: 'Undergraduate Degree',
+              yearLevel: '1st Year',
+              gpa: '1.50',
+              citizenship: 'Filipino',
+              verificationStatus: 'Verified',
+              accountStatus: 'Active',
+            });
+          }
+        });
+      }
+
+      setStudents(Array.from(combinedMap.values()));
+    } catch (err) {
+      console.error('Error fetching scholars for admin:', err);
+    } finally {
+      setLoadingScholars(false);
+    }
+  };
+
+  const handleStudentStatus = async (id: number | string, newStatus: 'Active' | 'Suspended') => {
+    setStudents(prev =>
+      prev.map(s => (s.id === id ? { ...s, accountStatus: newStatus } : s))
+    );
+    if (selectedStudent && selectedStudent.id === id) {
+      setSelectedStudent(prev => prev ? { ...prev, accountStatus: newStatus } : null);
+    }
+
+    try {
+      await supabase
+        .from('scholar')
+        .update({ verification_status: newStatus === 'Active' ? 'verified' : 'rejected' })
+        .eq('id', id);
+    } catch (err) {
+      console.error('Error updating scholar status:', err);
+    }
+
+    setToastMessage(`Scholar account status set to ${newStatus}`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  useEffect(() => {
+    fetchStudentsAndScholars();
+  }, [activeTab]);
 
   const [reports, setReports] = useState<AdminReport[]>([
     { id: 1001, reportedEntity: 'Starlight Grants Inc.', type: 'Provider', reason: 'Suspicious fees requested during interview', reporter: 'Student #28491', status: 'Under Investigation', date: 'Aug 08, 2026' },
@@ -1025,21 +1188,6 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     fetchRealScholarships();
   };
 
-  const handleStudentStatus = (id: number, nextStatus: 'Active' | 'Suspended') => {
-    setStudents(prev =>
-      prev.map(s => {
-        const updated = { ...s, accountStatus: nextStatus };
-        if (selectedStudent && selectedStudent.id === id) {
-          setSelectedStudent(updated);
-        }
-        return s.id === id ? updated : s;
-      })
-    );
-    const name = students.find(s => s.id === id)?.name || 'Student';
-    addAuditLog(`${nextStatus.toUpperCase()} STUDENT ACCOUNT`, name);
-    showToast(`Student "${name}" account is now ${nextStatus}.`);
-  };
-
   const handleReportAction = (id: number, action: 'Resolved' | 'Dismissed') => {
     setReports(prev => prev.map(r => (r.id === id ? { ...r, status: action } : r)));
     const report = reports.find(r => r.id === id);
@@ -1118,10 +1266,10 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       )}
 
       {/* Sidebar Navigation */}
-      <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 overflow-hidden ${isCollapsed ? 'w-20' : 'w-64'}`}>
-        <div className="p-4 overflow-y-auto overflow-x-hidden flex-1">
+      <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 overflow-hidden relative ${isCollapsed ? 'w-20' : 'w-64'}`}>
+        <div className="p-4 overflow-y-auto overflow-x-hidden flex-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {/* Sidebar Header */}
-          <div className={`flex items-center justify-between mb-8 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
+          <div className={`flex items-center justify-between mb-6 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
             <div className="flex items-center gap-3">
               <img src={LogoGoldSvg} alt="IskolarAko Logo" className="w-12 h-12 object-contain shrink-0" />
               {!isCollapsed && (
@@ -1166,7 +1314,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                   {renderSidebarBtn('dashboard', 'Dashboard', '📊')}
                   {renderSidebarBtn('providers', 'Provider Management', '🏢')}
                   {renderSidebarBtn('scholarships', 'Scholarships', '🎓')}
-                  {renderSidebarBtn('students', 'Student Management', '👨‍🎓')}
+                  {renderSidebarBtn('students', 'Scholar Management', '👨‍🎓')}
                 </div>
               )}
             </div>
@@ -1798,56 +1946,73 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
           </div>
         )}
 
-        {/* 4. STUDENT MANAGEMENT */}
+        {/* 4. SCHOLAR MANAGEMENT */}
         {activeTab === 'students' && (
           <div className="space-y-6">
             <div className="bg-white rounded-2xl border border-[#D9D2C5] shadow-sm p-6">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Registered Students</h3>
+                <div>
+                  <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Scholar Management</h3>
+                  <p className="text-xs text-[#6C6C70]">Registered scholar directory, profile verification, and account controls</p>
+                </div>
                 <input
                   type="text"
-                  placeholder="Search students..."
+                  placeholder="Search scholars by name, school, course..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="px-4 py-2 text-xs rounded-xl border border-[#D9D2C5] focus:outline-none w-64 bg-white"
+                  className="px-4 py-2 text-xs rounded-xl border border-[#D9D2C5] focus:outline-none w-72 bg-white"
                 />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Students List */}
+                {/* Scholars List */}
                 <div className="lg:col-span-2 space-y-3">
-                  {students
-                    .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.school.toLowerCase().includes(searchQuery.toLowerCase()))
-                    .map(student => (
-                      <div
-                        key={student.id}
-                        onClick={() => setSelectedStudent(student)}
-                        className={`p-4 rounded-xl border transition-all cursor-pointer flex justify-between items-center ${
-                          selectedStudent?.id === student.id
-                            ? 'border-[#2D5941] bg-[#EBF5EE]/30'
-                            : 'border-[#D9D2C5] bg-white hover:bg-[#F9F5EF]/50'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm text-[#1C1C1E]">{student.name}</span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                              student.verificationStatus === 'Verified' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                              student.verificationStatus === 'Pending' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
-                              'bg-red-50 text-[#B34040]'
-                            }`}>
-                              {student.verificationStatus}
-                            </span>
+                  {loadingScholars ? (
+                    <div className="p-8 text-center text-xs text-[#6C6C70] italic bg-white rounded-xl border border-[#D9D2C5]">
+                      Fetching registered scholars from database...
+                    </div>
+                  ) : students.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-[#6C6C70] italic bg-white rounded-xl border border-[#D9D2C5]">
+                      No scholars currently registered in system.
+                    </div>
+                  ) : (
+                    students
+                      .filter(s =>
+                        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        s.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        s.course.toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map(student => (
+                        <div
+                          key={student.id}
+                          onClick={() => setSelectedStudent(student)}
+                          className={`p-4 rounded-xl border transition-all cursor-pointer flex justify-between items-center ${
+                            selectedStudent?.id === student.id
+                              ? 'border-[#2D5941] bg-[#EBF5EE]/30'
+                              : 'border-[#D9D2C5] bg-white hover:bg-[#F9F5EF]/50'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-[#1C1C1E]">{student.name}</span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                student.verificationStatus === 'Verified' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                                student.verificationStatus === 'Pending' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
+                                'bg-red-50 text-[#B34040]'
+                              }`}>
+                                {student.verificationStatus}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[#6C6C70] mt-1">{student.school} • {student.course} ({student.yearLevel}) • GWA: {student.gpa}</p>
                           </div>
-                          <p className="text-xs text-[#6C6C70] mt-1">{student.school} • GPA: {student.gpa}</p>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            student.accountStatus === 'Active' ? 'bg-[#EBF5EE] text-[#2D5941]' : 'bg-red-50 text-[#B34040]'
+                          }`}>
+                            {student.accountStatus}
+                          </span>
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          student.accountStatus === 'Active' ? 'bg-[#EBF5EE] text-[#2D5941]' : 'bg-red-50 text-[#B34040]'
-                        }`}>
-                          {student.accountStatus}
-                        </span>
-                      </div>
-                    ))}
+                      ))
+                  )}
                 </div>
 
                 {/* Detail Panel */}
@@ -1856,7 +2021,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                     <div className="space-y-6">
                       <div>
                         <h4 className="font-bold text-base text-[#1A3C2E] font-serif">{selectedStudent.name}</h4>
-                        <p className="text-xs text-[#6C6C70]">Profile and application audit</p>
+                        <p className="text-xs text-[#6C6C70]">Scholar profile and verification audit</p>
                       </div>
 
                       <div className="space-y-3 bg-white p-4 rounded-xl border border-[#D9D2C5] text-xs">
@@ -1867,6 +2032,18 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                         <div>
                           <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Enrolled Institution</span>
                           <span className="text-[#1C1C1E] font-medium">{selectedStudent.school}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Degree Course & Year Level</span>
+                          <span className="text-[#1C1C1E] font-medium">{selectedStudent.course} • {selectedStudent.yearLevel}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Academic GWA / Grade</span>
+                          <span className="text-[#1C1C1E] font-medium font-serif">{selectedStudent.gpa}</span>
+                        </div>
+                        <div>
+                          <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Citizenship</span>
+                          <span className="text-[#1C1C1E] font-medium">{selectedStudent.citizenship}</span>
                         </div>
                         <div>
                           <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Verification Status</span>
@@ -1881,7 +2058,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                             onClick={() => handleStudentStatus(selectedStudent.id, 'Suspended')}
                             className="w-full bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2 rounded-xl cursor-pointer border-0"
                           >
-                            Suspend Student Account
+                            Suspend Scholar Account
                           </button>
                         ) : (
                           <button
@@ -1896,7 +2073,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                     </div>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-center py-12 text-[#8E8E93]">
-                      <p className="text-xs font-medium">Select a student from the list to manage accounts.</p>
+                      <p className="text-xs font-medium">Select a scholar from the directory to review profile details.</p>
                     </div>
                   )}
                 </div>
