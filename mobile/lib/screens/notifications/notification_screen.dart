@@ -49,11 +49,43 @@ class _NotificationScreenState extends State<NotificationScreen> {
   String _selectedTab = 'All';
   bool _isLoading = true;
   List<NotificationItem> _notifications = [];
+  RealtimeChannel? _realtimeChannel;
 
   @override
   void initState() {
     super.initState();
     _fetchNotifications();
+    _subscribeRealtime();
+  }
+
+  void _subscribeRealtime() {
+    _realtimeChannel = Supabase.instance.client
+        .channel('notifications-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'notifications',
+          callback: (payload) {
+            if (mounted) _fetchNotifications();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'system_notifications',
+          callback: (payload) {
+            if (mounted) _fetchNotifications();
+          },
+        );
+    _realtimeChannel?.subscribe();
+  }
+
+  @override
+  void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
+    super.dispose();
   }
 
   Future<void> _fetchNotifications() async {

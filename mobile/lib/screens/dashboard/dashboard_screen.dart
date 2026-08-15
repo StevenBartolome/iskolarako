@@ -32,11 +32,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<dynamic> _recentActivities = [];
   bool _isProfileComplete = false;
   bool _isLoadingData = true;
+  RealtimeChannel? _realtimeChannel;
 
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _subscribeRealtime();
+  }
+
+  void _subscribeRealtime() {
+    _realtimeChannel = Supabase.instance.client
+        .channel('dashboard-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_applications',
+          callback: (payload) {
+            if (mounted) _loadDashboardData();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_programs',
+          callback: (payload) {
+            if (mounted) _loadDashboardData();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'system_notifications',
+          callback: (payload) {
+            if (mounted) _loadDashboardData();
+          },
+        );
+    _realtimeChannel?.subscribe();
+  }
+
+  @override
+  void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
+    super.dispose();
   }
 
   Future<void> _loadDashboardData() async {

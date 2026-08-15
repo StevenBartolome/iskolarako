@@ -29,15 +29,43 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
   bool _isLoading = true;
   final _searchController = TextEditingController();
 
+  RealtimeChannel? _realtimeChannel;
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _subscribeRealtime();
     _searchController.addListener(_applyFilters);
+  }
+
+  void _subscribeRealtime() {
+    _realtimeChannel = Supabase.instance.client
+        .channel('scholarship-list-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_programs',
+          callback: (payload) {
+            if (mounted) _loadData();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'application_cycles',
+          callback: (payload) {
+            if (mounted) _loadData();
+          },
+        );
+    _realtimeChannel?.subscribe();
   }
 
   @override
   void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
     _searchController.dispose();
     super.dispose();
   }

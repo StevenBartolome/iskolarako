@@ -332,6 +332,29 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   useEffect(() => {
     fetchPrograms();
+
+    const progChannel = supabase
+      .channel('provider-programs-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_programs' },
+        () => {
+          fetchPrograms();
+          showToast('Programs updated in real-time!');
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'application_cycles' },
+        () => {
+          fetchPrograms();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(progChannel);
+    };
   }, [providerDetails?.id, categories]);
 
   // Search & filter states
@@ -985,6 +1008,36 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   useEffect(() => {
     fetchApplicantsAndScholars();
+
+    const appChannel = supabase
+      .channel('provider-applications-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchApplicantsAndScholars();
+          showToast('Applications & Scholar status updated live!');
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholar_documents' },
+        () => {
+          fetchApplicantsAndScholars();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'disbursement_transactions' },
+        () => {
+          fetchApplicantsAndScholars();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(appChannel);
+    };
   }, [providerDetails?.id, activeTab]);
 
   // Interactive Applicants State (Students in an active application cycle)
@@ -1293,8 +1346,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   const handleCreateProgram = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formModalStep < 4) {
+      setFormModalStep(s => Math.min(4, s + 1));
+      return;
+    }
     if (!formTitle || !formDesc || !providerDetails?.id) {
-      showToast("Cannot create program: Provider details missing.");
+      showToast("Cannot create program: Required title or description missing.");
       return;
     }
 
@@ -1585,6 +1642,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   const handleUpdateProgram = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formModalStep < 4) {
+      setFormModalStep(s => Math.min(4, s + 1));
+      return;
+    }
     if (!selectedProgram || !formTitle || !formDesc) return;
 
     const matchedCat = categories.find(c => c.name === formCategory);
@@ -2653,14 +2714,14 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 {formModalStep < 4 ? (
                   <button
                     type="button"
-                    onClick={() => setFormModalStep(s => Math.min(4, s + 1))}
+                    onClick={(e) => { e.preventDefault(); setFormModalStep(s => Math.min(4, s + 1)); }}
                     className="px-8 py-2.5 bg-[#2D5941] hover:bg-[#1A3C2E] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all"
                   >
                     Next →
                   </button>
                 ) : (
                   <button type="submit" className="px-8 py-2.5 bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all shadow-md">
-                    {isEditMode ? '✏️ Update Scholarship Program' : '🎓 Create Scholarship Program'}
+                    {isEditMode ? '💾 Save & Update Program' : '🎓 Create Scholarship Program'}
                   </button>
                 )}
               </div>

@@ -80,11 +80,43 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
 
   bool _isLoading = true;
   List<AppliedScholarship> _appliedScholarships = [];
+  RealtimeChannel? _realtimeChannel;
 
   @override
   void initState() {
     super.initState();
     _fetchApplications();
+    _subscribeRealtime();
+  }
+
+  void _subscribeRealtime() {
+    _realtimeChannel = Supabase.instance.client
+        .channel('app-tracker-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_applications',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar_documents',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        );
+    _realtimeChannel?.subscribe();
+  }
+
+  @override
+  void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
+    super.dispose();
   }
 
   Future<void> _fetchApplications() async {

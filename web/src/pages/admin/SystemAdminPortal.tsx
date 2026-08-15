@@ -544,6 +544,28 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     }
   }, [activeTab]);
 
+  // Subscribe to realtime database updates for real scholarships
+  useEffect(() => {
+    if (activeTab !== 'scholarships') return;
+
+    const channel = supabase
+      .channel('admin-scholarships-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_programs' },
+        () => {
+          fetchRealScholarships();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeTab]);
+
+
+
   // Subscribe to realtime database updates for the provider and requirements config tables
   useEffect(() => {
     if (activeTab !== 'providers') return;
