@@ -354,6 +354,32 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     { id: 903, admin: 'admin02', action: 'APPROVED PROVIDER', target: 'Department of Science and Technology', date: 'Aug 08, 2026', time: '02:45 PM', ip: '192.168.1.99' }
   ]);
 
+  // Dashboard Metrics State
+  const [dashboardMetrics, setDashboardMetrics] = useState<{
+    totalStudents: number;
+    totalProviders: number;
+    verifiedProviders: number;
+    pendingVerifications: number;
+    activeScholarships: number;
+    pendingApplications: number;
+    approvedScholars: number;
+    flaggedReports: number;
+    totalReleased: number;
+    pendingDisbursements: number;
+  }>({
+    totalStudents: 0,
+    totalProviders: 0,
+    verifiedProviders: 0,
+    pendingVerifications: 0,
+    activeScholarships: 0,
+    pendingApplications: 0,
+    approvedScholars: 0,
+    flaggedReports: 0,
+    totalReleased: 0,
+    pendingDisbursements: 0,
+  });
+  const [_loadingDashboard, setLoadingDashboard] = useState(false);
+
   // System Config States
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -420,7 +446,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       setProviderRequirementsMap(reqsMap);
 
       // 2. Fetch providers
-      const { data, error } = await supabase
+      const { data: providersData, error: providersError } = await supabase
         .from('provider')
         .select(`
           id,
@@ -428,19 +454,43 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
           provider_type,
           verification_status,
           requirements_submitted,
-          created_at,
-          users (
-            first_name,
-            last_name,
-            email
-          )
+          created_at
         `);
 
-      if (error) throw error;
-      if (!data) return;
+      if (providersError) throw providersError;
+      if (!providersData) return;
 
-      const formatted: ProviderOrg[] = data.map((p: any) => {
-        const rep = p.users?.[0] || {};
+      // 3. Fetch users for these providers (reverse lookup on users.provider_id)
+      const providerIds = providersData.map(p => p.id);
+      const usersByProviderId: Record<string, any> = {};
+
+      if (providerIds.length > 0) {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, email, provider_id')
+          .in('provider_id', providerIds);
+
+        usersData?.forEach(u => {
+          if (u.provider_id) {
+            usersByProviderId[u.provider_id] = u;
+          }
+        });
+      }
+
+      // Also query users with role = 'provider' or 'provider-member' as fallback
+      const { data: providerRoleUsers } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email, provider_id')
+        .in('role', ['provider', 'provider-member']);
+
+      providerRoleUsers?.forEach(u => {
+        if (u.provider_id && !usersByProviderId[u.provider_id]) {
+          usersByProviderId[u.provider_id] = u;
+        }
+      });
+
+      const formatted: ProviderOrg[] = providersData.map((p: any) => {
+        const rep = usersByProviderId[p.id] || {};
         const repName = rep.first_name && rep.last_name ? `${rep.first_name} ${rep.last_name}` : 'No Representative';
         const repEmail = rep.email || 'N/A';
         const remarks = p.requirements_submitted?._remarks || '';
@@ -479,6 +529,12 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       console.error('Error fetching real providers:', err);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'providers' || activeTab === 'dashboard') {
+      fetchRealProviders();
+    }
+  }, [activeTab]);
 
   const fetchRealScholarships = async () => {
     setLoadingScholarships(true);
@@ -535,9 +591,70 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     }
   }, [activeTab]);
 
+  const fetchDashboardMetrics = async () => {
+    setLoadingDashboard(true);
+    try {
+      // Fetch total students (from scholar table)
+      const { count: studentCount } = await supabase
+        .from('scholar')
+        .select('*', { count: 'exact', head: true });
+
+      // Fetch providers
+      const { data: providersData } = await supabase
+        .from('provider')
+        .select('id, verification_status');
+
+      const totalProviders = providersData?.length || 0;
+      const verifiedProviders = providersData?.filter(p => p.verification_status === 'verified').length || 0;
+      const pendingVerifications = providersData?.filter(p => p.verification_status === 'pending' || p.verification_status === 'under_review').length || 0;
+
+      // Fetch active scholarships
+      const { data: scholarshipsData } = await supabase
+        .from('scholarship_programs')
+        .select('id, status, budget_total')
+        .eq('status', 'active');
+
+      const activeScholarships = scholarshipsData?.length || 0;
+
+      // Fetch pending applications
+      const { count: pendingAppsCount } = await supabase
+        .from('scholarship_applications')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      // Fetch approved scholars (applications with approved status)
+      const { count: approvedAppsCount } = await supabase
+        .from('scholarship_applications')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'approved');
+
+      const flaggedCount = 0;
+
+      const totalReleased = scholarshipsData?.reduce((sum, p) => sum + (Number(p.budget_total) || 0), 0) || 0;
+      const pendingDisbursements = 0;
+
+      setDashboardMetrics({
+        totalStudents: studentCount || 0,
+        totalProviders,
+        verifiedProviders,
+        pendingVerifications,
+        activeScholarships,
+        pendingApplications: pendingAppsCount || 0,
+        approvedScholars: approvedAppsCount || 0,
+        flaggedReports: flaggedCount || 0,
+        totalReleased,
+        pendingDisbursements,
+      });
+    } catch (err) {
+      console.error('Error fetching dashboard metrics:', err);
+    } finally {
+      setLoadingDashboard(false);
+    }
+  };
+
   useEffect(() => {
-    if (activeTab === 'providers') {
-      fetchRealProviders();
+    if (activeTab === 'dashboard') {
+      fetchDashboardMetrics();
     }
   }, [activeTab]);
 
@@ -1396,6 +1513,16 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
           <AdminDashboardTab
             setActiveTab={setActiveTab}
             auditLogs={auditLogs}
+            totalStudents={dashboardMetrics.totalStudents}
+            totalProviders={dashboardMetrics.totalProviders}
+            verifiedProviders={dashboardMetrics.verifiedProviders}
+            pendingVerifications={dashboardMetrics.pendingVerifications}
+            activeScholarships={dashboardMetrics.activeScholarships}
+            pendingApplications={dashboardMetrics.pendingApplications}
+            approvedScholars={dashboardMetrics.approvedScholars}
+            flaggedReports={dashboardMetrics.flaggedReports}
+            totalReleased={dashboardMetrics.totalReleased}
+            pendingDisbursements={dashboardMetrics.pendingDisbursements}
           />
         )}
 

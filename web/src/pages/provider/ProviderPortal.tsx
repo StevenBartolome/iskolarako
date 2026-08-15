@@ -658,8 +658,52 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
   const fetchApplicantsAndScholars = async () => {
-    console.log('[Provider Portal Debug]: Fetching scholarship_applications with joined scholar, user, cycle & program tables...');
+    if (!providerDetails?.id) {
+      console.log('[Provider Portal Debug]: No provider details yet, skipping fetch');
+      return;
+    }
+
+    console.log('[Provider Portal Debug]: Fetching scholarship_applications for provider:', providerDetails.id);
     try {
+      // First, get the program IDs for this provider
+      const { data: programsData, error: programsError } = await supabase
+        .from('scholarship_programs')
+        .select('id')
+        .eq('provider_id', providerDetails.id);
+
+      if (programsError) {
+        console.error('[Provider Portal Programs Error]:', programsError);
+        return;
+      }
+
+      const programIds = programsData?.map(p => p.id) || [];
+      if (programIds.length === 0) {
+        console.log('[Provider Portal Debug]: No programs found for this provider');
+        setApplicantsList([]);
+        setScholarsList([]);
+        return;
+      }
+
+      // Get cycle IDs for these programs
+      const { data: cyclesData, error: cyclesError } = await supabase
+        .from('application_cycles')
+        .select('id')
+        .in('program_id', programIds);
+
+      if (cyclesError) {
+        console.error('[Provider Portal Cycles Error]:', cyclesError);
+        return;
+      }
+
+      const cycleIds = cyclesData?.map(c => c.id) || [];
+      if (cycleIds.length === 0) {
+        console.log('[Provider Portal Debug]: No cycles found for this provider programs');
+        setApplicantsList([]);
+        setScholarsList([]);
+        return;
+      }
+
+      // Now fetch applications for these cycles only
       const { data, error } = await supabase
         .from('scholarship_applications')
         .select(`
@@ -678,6 +722,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             program:scholarship_programs (*)
           )
         `)
+        .in('cycle_id', cycleIds)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -688,17 +733,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         return;
       }
 
-      if (data && data.length > 0) {
-        const providerApps = data.filter((app: any) => {
-          if (!providerDetails?.id) return true;
-          return app.cycle?.program?.provider_id === providerDetails.id;
-        });
+      console.log(`[Provider Portal Debug]: Found ${data?.length || 0} applications for provider ${providerDetails.name}`);
 
-        console.log(`[Provider Portal Debug]: Total DB applications: ${data.length}, Filtered for current provider (${providerDetails?.name || 'All'}): ${providerApps.length}`);
-
-        if (providerApps.length > 0) {
+        if (data && data.length > 0) {
           // Fetch scholar_documents for the scholars in these applications
-          const scholarIds = providerApps.map((a: any) => a.scholar_id).filter(Boolean);
+          const scholarIds = data.map((a: any) => a.scholar_id).filter(Boolean);
           let scholarDocsMap: Record<string, SubmittedDocItem[]> = {};
           if (scholarIds.length > 0) {
             try {
@@ -749,7 +788,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             return String(yl);
           };
 
-          const mappedApplicants: ApplicationDetail[] = providerApps.map((app: any) => {
+          const mappedApplicants: ApplicationDetail[] = data.map((app: any) => {
             const scholar = app.scholar || {};
             const user = scholar.user || {};
             const cycle = app.cycle || {};
@@ -874,7 +913,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
           setApplicantsList(mappedApplicants);
 
-          const approvedApps = providerApps.filter((app: any) => (app.status || '').toLowerCase() === 'approved');
+          const approvedApps = data.filter((app: any) => (app.status || '').toLowerCase() === 'approved');
           const mappedScholars: ScholarAward[] = approvedApps.map((app: any) => {
             const scholar = app.scholar || {};
             const user = scholar.user || {};
@@ -1000,7 +1039,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             setScholarsList(mappedScholars);
           }
         }
-      }
     } catch (err) {
       console.error('Error fetching applicants:', err);
     }
@@ -1038,7 +1076,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     return () => {
       supabase.removeChannel(appChannel);
     };
-  }, [providerDetails?.id, activeTab]);
+  }, [providerDetails?.id]);
 
   // Interactive Applicants State (Students in an active application cycle)
   const [applicantsList, setApplicantsList] = useState<ApplicationDetail[]>([
@@ -1306,41 +1344,116 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
-  // Interactive Disbursements Mock State
-  const [disbursementsList, setDisbursementsList] = useState<DisbursementTx[]>([
-    { id: 'TXN-9081', scholar: 'Maria Santos', program: 'DOST-SEI Undergraduate Scholarship', method: 'Landbank', amount: '₱40,000', numericAmount: 40000, status: 'Completed', date: 'Aug 07, 2026' },
-    { id: 'TXN-9082', scholar: 'Princess Diaz', program: 'DOST-SEI Merit Renewal 2026', method: 'GCash', amount: '₱25,000', numericAmount: 25000, status: 'Completed', date: 'Aug 06, 2026' },
-    { id: 'TXN-9083', scholar: 'Juan Dela Cruz', program: 'DOST-SEI Undergraduate Scholarship', method: 'Landbank', amount: '₱40,000', numericAmount: 40000, status: 'Processing', date: 'Aug 08, 2026' },
-    { id: 'TXN-9084', scholar: 'Ethan Gomez', program: 'Tulong Dunong Financial Assistance', method: 'PayMaya', amount: '₱15,000', numericAmount: 15000, status: 'Processing', date: 'Aug 08, 2026' },
-    { id: 'TXN-9085', scholar: 'Sofia Lopez', program: 'Tulong Dunong Financial Assistance', method: 'GCash', amount: '₱15,000', numericAmount: 15000, status: 'Failed', date: 'Aug 04, 2026' }
-  ]);
+  // Interactive Disbursements State (loaded from Supabase)
+  const [disbursementsList, setDisbursementsList] = useState<DisbursementTx[]>([]);
+  const [_loadingDisbursements, setLoadingDisbursements] = useState(false);
+
+  const fetchDisbursements = async () => {
+    if (!providerDetails?.id) return;
+    setLoadingDisbursements(true);
+    try {
+      const { data, error } = await supabase
+        .from('disbursement_transactions')
+        .select(`
+          *,
+          scholar:scholar (
+            first_name,
+            last_name
+          ),
+          program:scholarship_programs (
+            title
+          )
+        `)
+        .eq('program.provider_id', providerDetails.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) {
+        const mapped: DisbursementTx[] = data.map((d: any) => ({
+          id: d.id,
+          scholar: d.scholar ? `${d.scholar.first_name} ${d.scholar.last_name}` : 'Unknown Scholar',
+          program: d.program?.title || 'Unknown Program',
+          method: d.disbursement_channel || 'Bank Transfer',
+          amount: `₱${Number(d.amount).toLocaleString()}`,
+          numericAmount: Number(d.amount) || 0,
+          status: d.status,
+          date: d.disbursement_date ? new Date(d.disbursement_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'N/A',
+        }));
+        setDisbursementsList(mapped);
+      }
+    } catch (err) {
+      console.error('Error fetching disbursements:', err);
+    } finally {
+      setLoadingDisbursements(false);
+    }
+  };
 
   const totalCredited = disbursementsList
-    .filter(tx => tx.status === 'Completed')
+    .filter(tx => tx.status === 'COMPLETED' || tx.status === 'Completed')
     .reduce((sum, tx) => sum + tx.numericAmount, 0);
 
   const totalPending = disbursementsList
-    .filter(tx => tx.status === 'Processing')
+    .filter(tx => tx.status === 'PENDING' || tx.status === 'Pending' || tx.status === 'PROCESSING' || tx.status === 'Processing')
     .reduce((sum, tx) => sum + tx.numericAmount, 0);
 
-  // Handle program payout release first
-  const handleReleaseProgramFunds = (e: React.FormEvent) => {
-    e.preventDefault();
-    let updatedCount = 0;
-    setDisbursementsList(prev =>
-      prev.map(tx => {
-        if (tx.program === selectedPayoutProgram && tx.status === 'Processing') {
-          updatedCount++;
-          return { ...tx, status: 'Completed' };
+  // Fetch disbursements when provider details are loaded
+  useEffect(() => {
+    fetchDisbursements();
+  }, [providerDetails?.id]);
+
+  // Subscribe to realtime disbursement updates
+  useEffect(() => {
+    if (!providerDetails?.id) return;
+
+    const channel = supabase
+      .channel('provider-disbursements-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'disbursement_transactions'
+        },
+        () => {
+          fetchDisbursements();
+          showToast('Disbursements updated in real-time!');
         }
-        return tx;
-      })
-    );
-    setIsPayoutModalOpen(false);
-    if (updatedCount > 0) {
-      showToast(`Released funds! Completed ${updatedCount} transactions for "${selectedPayoutProgram}".`);
-    } else {
-      showToast(`No pending transactions in queue for "${selectedPayoutProgram}".`);
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [providerDetails?.id]);
+
+  // Handle program payout release first
+  const handleReleaseProgramFunds = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!providerDetails?.id) return;
+
+    try {
+      // Get the program ID for the selected program
+      const program = programsList.find(p => p.title === selectedPayoutProgram);
+      if (!program) {
+        showToast(`Program "${selectedPayoutProgram}" not found.`);
+        return;
+      }
+
+      // Update disbursement transactions for this program that are pending/processing
+      const { error } = await supabase
+        .from('disbursement_transactions')
+        .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+        .eq('program_id', program.id)
+        .in('status', ['PENDING', 'Pending', 'PROCESSING', 'Processing']);
+
+      if (error) throw error;
+
+      setIsPayoutModalOpen(false);
+      showToast(`Released funds! Completed pending transactions for "${selectedPayoutProgram}".`);
+      // Real-time subscription will refresh the list
+    } catch (err: any) {
+      console.error('Error releasing funds:', err);
+      showToast(`Error: ${err.message || 'Failed to release funds'}`);
     }
   };
 

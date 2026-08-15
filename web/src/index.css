@@ -17,3 +17,13 @@ body {
 .font-serif {
   font-family: 'Playfair Display', Georgia, serif;
 }
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-slide-up {
+  animation: fadeSlideUp 400ms ease-out forwards;
+  opacity: 0;
+}

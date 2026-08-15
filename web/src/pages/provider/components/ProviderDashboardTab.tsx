@@ -54,6 +54,57 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
         </div>
       </div>
 
+      {/* Quick Actions */}
+      <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 shadow-sm p-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#2D5941]/5 via-transparent to-[#C97B2E]/5" />
+        <h3 className="text-sm font-bold text-[#1A3C2E] uppercase border-b border-[#D9D2C5]/60 pb-3 mb-6 relative z-10 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-gradient-to-r from-[#2D5941] to-[#C97B2E]" />
+          Quick Actions
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+          <ProviderQuickActionCard
+            title="Create Program"
+            subtitle="Launch new scholarship"
+            icon={<PlusIcon />}
+            gradient="from-[#2D5941] to-[#1A3C2E]"
+            bgGradient="from-[#ECF4ED] to-[#E8F0E8]"
+            accentColor="#2D5941"
+            hoverBorder="#2D5941"
+            delay={0}
+          />
+          <ProviderQuickActionCard
+            title="Review Applications"
+            subtitle={`${applicantsList.length} pending review`}
+            icon={<ClipboardIcon />}
+            gradient="from-[#C97B2E] to-[#E8A838]"
+            bgGradient="from-[#FFF8EE] to-[#FEF3E7]"
+            accentColor="#C97B2E"
+            hoverBorder="#C97B2E"
+            delay={50}
+          />
+          <ProviderQuickActionCard
+            title="Manage Scholars"
+            subtitle={`${scholarsList.length} active scholars`}
+            icon={<UsersIcon />}
+            gradient="from-[#1A3C2E] to-[#2D5941]"
+            bgGradient="from-[#ECF4ED] to-[#E8F0E8]"
+            accentColor="#1A3C2E"
+            hoverBorder="#1A3C2E"
+            delay={100}
+          />
+          <ProviderQuickActionCard
+            title="Release Funds"
+            subtitle={`₱${(totalPending / 1000).toFixed(0)}K pending`}
+            icon={<WalletIcon />}
+            gradient="from-[#C97B2E] to-[#E8A838]"
+            bgGradient="from-[#FFF8EE] to-[#FEF3E7]"
+            accentColor="#C97B2E"
+            hoverBorder="#C97B2E"
+            delay={150}
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm lg:col-span-2 space-y-6">
           <div className="flex justify-between items-center">
@@ -98,3 +149,89 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
     </div>
   );
 };
+
+interface ProviderQuickActionCardProps {
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  gradient: string;
+  bgGradient: string;
+  accentColor: string;
+  hoverBorder: string;
+  delay: number;
+}
+
+const ProviderQuickActionCard: React.FC<ProviderQuickActionCardProps> = ({
+  title,
+  subtitle,
+  icon,
+  gradient,
+  bgGradient,
+  accentColor,
+  hoverBorder,
+  delay,
+}) => {
+  return (
+    <button
+      className="group relative p-5 rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden animate-fade-slide-up"
+      style={{
+        borderColor: '#D9D2C5',
+        background: bgGradient,
+        animationDelay: `${delay}ms`,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = hoverBorder;
+        e.currentTarget.style.boxShadow = `0 12px 40px -12px ${accentColor}40, 0 4px 16px -4px ${accentColor}20`;
+        e.currentTarget.style.transform = 'translateY(-4px)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = '#D9D2C5';
+        e.currentTarget.style.boxShadow = 'none';
+        e.currentTarget.style.transform = 'translateY(0)';
+      }}
+    >
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ background: `linear-gradient(135deg, ${gradient.replace('from-', '').replace('to-', '')})` }} />
+      <div className="absolute inset-0 bg-gradient-to-br from-white/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="relative z-10 flex flex-col items-center gap-3 text-center">
+        <div className="relative w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110" style={{ background: bgGradient }}>
+          <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ background: gradient }} />
+          <span className="relative z-10 text-3xl">{icon}</span>
+        </div>
+        <div>
+          <p className="text-sm font-bold text-[#1A3C2E] leading-tight">{title}</p>
+          <p className="text-[11px] font-medium mt-1" style={{ color: accentColor }}>{subtitle}</p>
+        </div>
+        <div className="absolute bottom-4 right-4 w-8 h-8 rounded-xl opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" style={{ background: gradient }}>
+          <svg className="w-5 h-5 text-white mx-auto my-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+          </svg>
+        </div>
+      </div>
+    </button>
+  );
+};
+
+// SVG Icons for Provider
+const PlusIcon = () => (
+  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ stroke: '#2D5941' }}>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+  </svg>
+);
+
+const ClipboardIcon = () => (
+  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ stroke: '#C97B2E' }}>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ stroke: '#1A3C2E' }}>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+);
+
+const WalletIcon = () => (
+  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ stroke: '#C97B2E' }}>
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2h2m-2-4h.01M17 20h4a2 2 0 002-2v-6a2 2 0 00-2-2h-4" />
+  </svg>
+);
