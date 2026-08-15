@@ -72,3 +72,50 @@ ON public.scholar_documents
 FOR SELECT
 TO authenticated
 USING (true);
+
+DROP POLICY IF EXISTS "Allow scholar update scholar_documents" ON public.scholar_documents;
+CREATE POLICY "Allow scholar update scholar_documents"
+ON public.scholar_documents
+FOR UPDATE
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- 5. Notifications table for in-app alert tracking
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text NOT NULL,
+  message text NOT NULL,
+  type text NOT NULL DEFAULT 'info',
+  is_read boolean NOT NULL DEFAULT false,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT notifications_pkey PRIMARY KEY (id)
+);
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow user select notifications" ON public.notifications;
+CREATE POLICY "Allow user select notifications"
+ON public.notifications
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Allow user insert notifications" ON public.notifications;
+CREATE POLICY "Allow user insert notifications"
+ON public.notifications
+FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow user update notifications" ON public.notifications;
+CREATE POLICY "Allow user update notifications"
+ON public.notifications
+FOR UPDATE
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+

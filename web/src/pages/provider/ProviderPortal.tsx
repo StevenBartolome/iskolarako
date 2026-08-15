@@ -2,11 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
+import { sendDecisionNotification } from '@/services/notificationService';
 import { CloseProgramConfirmModal } from './components/CloseProgramConfirmModal';
 import { DeleteCycleConfirmModal } from './components/DeleteCycleConfirmModal';
 import { RenewCycleModal } from './components/RenewCycleModal';
 import { ReviewApplicationModal } from './components/ReviewApplicationModal';
 import type { ApplicationDetail, SubmittedDocItem } from './components/ReviewApplicationModal';
+import { ProviderDashboardTab } from './components/ProviderDashboardTab';
+import { ProviderApplicantsTab } from './components/ProviderApplicantsTab';
+import { ProviderProgramsTab } from './components/ProviderProgramsTab';
+import { ProviderDisbursementsTab } from './components/ProviderDisbursementsTab';
+import { ProviderAnnouncementsTab } from './components/ProviderAnnouncementsTab';
+import { ProviderReportsTab } from './components/ProviderReportsTab';
+import { ProviderVerificationTab } from './components/ProviderVerificationTab';
+import type {
+  ProviderPortalProps,
+  TabType,
+  AnnType,
+  ApplicantStatus,
+  FundingFreq,
+  RenewalPolicy,
+  ScholarshipType,
+  AvailabilityScope,
+  ApplicationCycle,
+  ProgramRequirement,
+  Program,
+  DisbursementTx,
+  ScholarAward,
+} from './types';
+export type { ApplicationCycle, ProgramRequirement, Program };
 
 const parseLocalMidnight = (dateStr: string) => {
   if (!dateStr) return new Date();
@@ -20,88 +44,6 @@ const getTodayMidnight = () => {
   return today;
 };
 
-
-interface ProviderPortalProps {
-  onLogout: () => void;
-  showWelcome?: boolean;
-}
-
-type TabType = 'dashboard' | 'applicants' | 'programs' | 'disbursements' | 'announcements' | 'reports' | 'verification';
-type AnnType = 'Examination Schedule' | 'Release of Funds' | 'General Notice' | 'Requirements Update';
-type ApplicantStatus = 'Pending' | 'Under Review' | 'Approved' | 'Rejected' | 'For Exam';
-
-type FundingFreq = 'Per Semester' | 'Once a Year' | 'One-time';
-type RenewalPolicy = 'No Renewal' | 'Automatic Renewal' | 'Conditional Renewal' | 'Annual Reapplication' | 'Semester Renewal';
-type ScholarshipType = 'merit' | 'need_based' | 'merit_and_need' | 'grant' | 'fellowship';
-type AvailabilityScope = 'nationwide' | 'regional' | 'provincial' | 'municipality' | 'barangay' | 'specific_schools';
-
-export interface ApplicationCycle {
-  id: string | number;
-  name: string;
-  startDate: string;
-  endDate: string;
-  status: 'Open' | 'Closed' | 'Evaluating' | 'Upcoming';
-}
-
-export interface ProgramRequirement {
-  name: string;
-  description: string;
-  required: boolean;
-}
-
-export interface Program {
-  id: string | number;
-  provider: string;
-  status: string;
-  statusType: 'success' | 'draft' | 'closing';
-  title: string;
-  description: string;
-  category: string;
-  scholarshipType: ScholarshipType;
-  coverstuition: boolean;
-  coversStipend: boolean;
-  stipendAmount: string;
-  coversAllowance: boolean;
-  allowanceAmount: string;
-  otherBenefits: string[];
-  courseEligibility: string[];
-  yearLevelEligibility: number[];
-  minimumGwa: string;
-  availabilityScope: AvailabilityScope;
-  availableRegions: string[];
-  availableSchools: string;
-  totalSlots: string;
-  applicationRequirements: ProgramRequirement[];
-  renewalPolicy: RenewalPolicy;
-  fundingFrequency: FundingFreq;
-  renewalGwa: string;
-  cycles: ApplicationCycle[];
-  budgetUsed: string;
-  budgetTotal: string;
-  rejectionRemarks?: string;
-}
-
-interface DisbursementTx {
-  id: string;
-  scholar: string;
-  program: string;
-  method: string;
-  amount: string;
-  numericAmount: number;
-  status: 'Completed' | 'Processing' | 'Failed';
-  date: string;
-}
-
-interface ScholarAward {
-  id: string | number;
-  scholarName: string;
-  programTitle: string;
-  cycleJoined: string;
-  status: 'Maintaining' | 'Awaiting Grades' | 'Requirements Warning' | 'Graduated' | 'Suspended';
-  gwa: string;
-  dateAwarded: string;
-  appDetail?: ApplicationDetail;
-}
 
 export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWelcome }) => {
   const [activeTab, setActiveTab] = useState<TabType>('programs');
@@ -425,6 +367,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [renewStartDate, setRenewStartDate] = useState('');
   const [renewEndDate, setRenewEndDate] = useState('');
   const [renewSlots, setRenewSlots] = useState('');
+  const [renewCycleType, setRenewCycleType] = useState<'new_applicant' | 'renewal'>('renewal');
+  const [renewSemester, setRenewSemester] = useState<string>('2nd Semester');
 
   // Delete Cycle Confirm Modal States
   const [isDeleteCycleConfirmOpen, setIsDeleteCycleConfirmOpen] = useState(false);
@@ -635,7 +579,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   };
 
   // Announcements mock state
-  const [announcements, setAnnouncements] = useState([
+  const [announcements, setAnnouncements] = useState<any[]>([
     {
       id: 1,
       title: 'Undergraduate Screening Examination Schedule',
@@ -889,6 +833,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               phone: phone,
               program: prog.title || 'Scholarship Program',
               cycle: cycle.cycle_name || 'Active Cycle',
+              cycle_type: cycle.cycle_type,
+              semester: cycle.semester,
               school: school,
               course: course,
               yearLevel: yearLevel,
@@ -1124,27 +1070,164 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     else if (nextStatus === 'Approved') dbStatus = 'approved';
     else if (nextStatus === 'Rejected') dbStatus = 'rejected';
 
+    const applicant = applicantsList.find(a => a.id === id);
+    const existingRefNum = applicant?.rawApplication?.submitted_documents?.reference_number || `ISK-${new Date().getFullYear()}-${id.toString().substring(0, 5).toUpperCase()}`;
+
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData?.user?.id;
+
       const updatePayload: any = {
         status: dbStatus,
         updated_at: new Date().toISOString(),
+        reviewed_at: new Date().toISOString(),
       };
+      if (currentUserId) {
+        updatePayload.reviewed_by = currentUserId;
+      }
       if (remarks !== undefined) {
         updatePayload.remarks = remarks;
       }
       if (updatedDocs !== undefined) {
-        updatePayload.submitted_documents = { documents: updatedDocs };
+        updatePayload.submitted_documents = {
+          reference_number: existingRefNum,
+          documents: updatedDocs
+        };
       }
 
       await supabase
         .from('scholarship_applications')
         .update(updatePayload)
         .eq('id', id);
+
+      // Synchronize document verification statuses to scholar_documents table
+      let scholarId = applicant?.scholarId || applicant?.rawApplication?.scholar_id;
+
+      if (!scholarId && typeof id === 'string' && id.includes('-') && id.length > 20) {
+        try {
+          const { data: appData } = await supabase
+            .from('scholarship_applications')
+            .select('scholar_id')
+            .eq('id', id)
+            .maybeSingle();
+          if (appData?.scholar_id) {
+            scholarId = appData.scholar_id;
+          }
+        } catch (fetchScholarErr) {
+          console.warn('[Fetch scholar_id fallback note]:', fetchScholarErr);
+        }
+      }
+
+      if (scholarId && updatedDocs && updatedDocs.length > 0) {
+        for (const doc of updatedDocs) {
+          const docStatusDb = doc.status === 'Verified' ? 'verified' : doc.status === 'Flagged' ? 'rejected' : 'under_review';
+          const docRemarks = doc.remarks || (doc.status === 'Verified' ? 'Verified by scholarship provider' : doc.status === 'Flagged' ? 'Flagged: Resubmission required' : null);
+          const docUrl = doc.document_url || doc.url || '';
+          const docName = doc.name || doc.filename || 'Submitted Document';
+
+          try {
+            // 1. Try finding by ID if doc.id is a UUID
+            let recordIdToUpdate: string | null = null;
+            if (doc.id && typeof doc.id === 'string' && doc.id.includes('-') && doc.id.length > 20) {
+              const { data: byId } = await supabase
+                .from('scholar_documents')
+                .select('id')
+                .eq('id', doc.id)
+                .maybeSingle();
+              if (byId?.id) {
+                recordIdToUpdate = byId.id;
+              }
+            }
+
+            // 2. If not found by ID, search by scholar_id and flexible document_name / url matching
+            if (!recordIdToUpdate) {
+              const { data: existingRecords } = await supabase
+                .from('scholar_documents')
+                .select('id, document_name, document_url')
+                .eq('scholar_id', scholarId);
+
+              if (existingRecords && existingRecords.length > 0) {
+                const match = existingRecords.find(r =>
+                  (r.document_name && r.document_name.toLowerCase().trim() === docName.toLowerCase().trim()) ||
+                  (r.document_url && docUrl && r.document_url.trim() === docUrl.trim()) ||
+                  (r.document_name && docName.toLowerCase().includes(r.document_name.toLowerCase())) ||
+                  (r.document_name && r.document_name.toLowerCase().includes(docName.toLowerCase()))
+                );
+                if (match) {
+                  recordIdToUpdate = match.id;
+                }
+              }
+            }
+
+            if (recordIdToUpdate) {
+              const { error: updErr } = await supabase
+                .from('scholar_documents')
+                .update({
+                  verification_status: docStatusDb,
+                  remarks: docRemarks,
+                  document_url: docUrl || undefined,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', recordIdToUpdate);
+
+              if (updErr) {
+                console.error(`[Error updating scholar_documents record ${recordIdToUpdate}]:`, updErr);
+              } else {
+                console.log(`[Success updating scholar_documents record ${recordIdToUpdate}]: status -> ${docStatusDb}`);
+              }
+            } else if (docUrl || docName) {
+              const { error: insErr } = await supabase
+                .from('scholar_documents')
+                .insert({
+                  scholar_id: scholarId,
+                  document_name: docName,
+                  document_url: docUrl || '',
+                  verification_status: docStatusDb,
+                  remarks: docRemarks,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                });
+
+              if (insErr) {
+                console.error('[Error inserting scholar_documents record]:', insErr);
+              } else {
+                console.log(`[Success inserting scholar_documents record]: ${docName} -> ${docStatusDb}`);
+              }
+            }
+          } catch (docSyncErr) {
+            console.error('[Doc Sync Exception]:', docSyncErr);
+          }
+        }
+      }
+
+      await fetchApplicantsAndScholars();
+
+      // Trigger EmailJS & In-App System Notification for the student
+      const recipientEmail = applicant?.email || applicant?.rawApplication?.scholar?.user?.email || applicant?.rawApplication?.scholar?.email;
+      const recipientName = applicant?.name || 'Scholar Applicant';
+      const progTitle = applicant?.program || applicant?.rawApplication?.cycle?.program?.title || 'Scholarship Program';
+      const pName = providerDetails?.name || 'Scholarship Provider';
+
+      const hasFlaggedDocs = updatedDocs?.some(d => d.status === 'Flagged');
+      const flaggedRemarks = updatedDocs?.find(d => d.status === 'Flagged')?.remarks;
+      let effectiveStatus = nextStatus;
+      if (hasFlaggedDocs && (nextStatus === 'Under Review' || nextStatus === 'Pending')) {
+        effectiveStatus = 'Flagged';
+      }
+
+      sendDecisionNotification({
+        toEmail: recipientEmail,
+        toName: recipientName,
+        programTitle: progTitle,
+        providerName: pName,
+        status: effectiveStatus,
+        remarks: remarks || flaggedRemarks || '',
+        scholarId: scholarId,
+        userId: applicant?.rawApplication?.scholar?.user_id,
+      }).catch(err => console.warn('[Notification Service Call Note]:', err));
     } catch (e) {
       console.error('Error updating application status in Supabase:', e);
     }
-
-    const applicant = applicantsList.find(a => a.id === id);
 
     if (nextStatus === 'Approved' && applicant) {
       const newScholar: ScholarAward = {
@@ -1155,18 +1238,18 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         status: 'Maintaining',
         gwa: applicant.grade,
         dateAwarded: 'Today',
-        appDetail: { ...applicant, status: 'Approved' }
+        appDetail: { ...applicant, status: 'Approved', remarks: remarks || applicant.remarks, submittedDocuments: updatedDocs || applicant.submittedDocuments }
       };
       setScholarsList(prev => [newScholar, ...prev]);
       setApplicantsList(prev =>
         prev.map(a => (a.id === id ? { ...a, status: 'Approved', remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
       );
-      showToast(`Approved ${applicant.name}! Issued Scholar Award.`);
+      showToast(`Approved ${applicant.name}! Issued Scholar Award & sent email notification.`);
     } else {
       setApplicantsList(prev =>
         prev.map(a => (a.id === id ? { ...a, status: nextStatus, remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
       );
-      showToast(`Application updated to ${nextStatus}`);
+      showToast(`Application updated to ${nextStatus}. Email notification sent to student.`);
     }
   };
 
@@ -1525,15 +1608,17 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       ? [...prog.cycles].sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())[0]
       : null;
       
+    const currentYear = new Date().getFullYear();
+    setRenewCycleType('renewal');
+    setRenewSemester('2nd Semester');
     if (latestCycle) {
-      setRenewCycleName(getNextCycleName(latestCycle.name));
+      setRenewCycleName(`${getNextCycleName(latestCycle.name)} • 2nd Sem Renewal`);
     } else {
-      const currentYear = new Date().getFullYear();
-      setRenewCycleName(`AY ${currentYear}-${currentYear + 1}`);
+      setRenewCycleName(`AY ${currentYear}-${currentYear + 1} • 2nd Sem Renewal`);
     }
     
     setRenewStartDate(new Date().toISOString().split('T')[0]);
-    setRenewEndDate(new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0]);
+    setRenewEndDate(new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0]);
     setRenewSlots(prog.totalSlots || '');
     setIsRenewModalOpen(true);
   };
@@ -1548,15 +1633,17 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     try {
       const cycleStatus = parseLocalMidnight(renewStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
       
-      // 1. Insert new cycle
+      // 1. Insert new cycle with cycle_type & semester
       const { error: cycleErr } = await supabase
         .from('application_cycles')
         .insert({
           program_id: selectedProgramForRenewal.id,
           cycle_name: renewCycleName,
+          cycle_type: renewCycleType,
+          semester: renewSemester,
           application_start_date: renewStartDate,
           application_end_date: renewEndDate,
-          slots_available: renewSlots ? parseInt(renewSlots, 10) : null,
+          slots_available: renewCycleType === 'renewal' ? null : (renewSlots ? parseInt(renewSlots, 10) : null),
           status: cycleStatus
         });
 
@@ -1566,7 +1653,55 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         return;
       }
 
-      // 2. Update program status to 'active'
+      // 2. If Semestral Renewal, notify continuing scholars of this program
+      if (renewCycleType === 'renewal') {
+        try {
+          const { data: approvedApps } = await supabase
+            .from('scholarship_applications')
+            .select(`
+              id,
+              scholar_id,
+              scholar:scholars(
+                id,
+                user_id,
+                first_name,
+                last_name,
+                user:users(id, email, first_name, last_name)
+              ),
+              cycle:application_cycles!inner(program_id)
+            `)
+            .eq('status', 'approved')
+            .eq('cycle.program_id', selectedProgramForRenewal.id);
+
+          if (approvedApps && approvedApps.length > 0) {
+            const notifInserts = approvedApps.map((app: any) => {
+              const uId = app.scholar?.user_id || app.scholar?.user?.id;
+              return {
+                user_id: uId,
+                title: `📢 ${selectedProgramForRenewal.title} — ${renewSemester} Renewal Open!`,
+                message: `Notice for Continuing Scholars: The semestral renewal for ${selectedProgramForRenewal.title} (${renewSemester}) is now open until ${renewEndDate}. Please upload your latest Grade Slip and Certificate of Registration (COR) in your IskoAko app to maintain your scholarship grant.`,
+                type: 'info',
+                is_read: false,
+                metadata: {
+                  program_id: selectedProgramForRenewal.id,
+                  cycle_name: renewCycleName,
+                  semester: renewSemester,
+                  action: 'renewal_submission'
+                }
+              };
+            }).filter((n: any) => !!n.user_id);
+
+            if (notifInserts.length > 0) {
+              await supabase.from('notifications').insert(notifInserts);
+              console.log(`[Renewal Broadcast]: Sent in-app notifications to ${notifInserts.length} continuing scholars.`);
+            }
+          }
+        } catch (notifErr) {
+          console.warn('[Renewal Scholar Notification Exception]:', notifErr);
+        }
+      }
+
+      // 3. Update program status to 'active'
       const { error: progErr } = await supabase
         .from('scholarship_programs')
         .update({ status: 'active' })
@@ -1576,7 +1711,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         console.error('Error updating program status on renewal:', progErr);
         showToast('Cycle added, but failed to set program status to active.');
       } else {
-        showToast(`Successfully renewed "${selectedProgramForRenewal.title}" with cycle "${renewCycleName}"!`);
+        showToast(`Successfully opened "${renewCycleName}" for "${selectedProgramForRenewal.title}"!`);
       }
 
       // Reload programs
@@ -1589,6 +1724,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       setRenewStartDate('');
       setRenewEndDate('');
       setRenewSlots('');
+      setRenewCycleType('renewal');
+      setRenewSemester('2nd Semester');
     } catch (err) {
       console.error('Unexpected error during renewal:', err);
       showToast('An unexpected error occurred.');
@@ -1623,7 +1760,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       showToast(`Successfully deleted cycle "${cycleName}".`);
       
       if (selectedProgram) {
-        const updatedCycles = selectedProgram.cycles.filter(c => c.id !== cycleId);
+        const updatedCycles = selectedProgram.cycles.filter((c: any) => c.id !== cycleId);
         setSelectedProgram({
           ...selectedProgram,
           cycles: updatedCycles
@@ -1645,8 +1782,20 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const filteredApplicants = applicantsList.filter(app => {
     const matchesSearch = app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.program.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || app.status === statusFilter;
+      app.program.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (app.cycle && app.cycle.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const isRenewal = Boolean(app.cycle_type === 'renewal' || (app.cycle && app.cycle.toLowerCase().includes('renewal')));
+
+    let matchesStatus = true;
+    if (statusFilter === 'Renewals') {
+      matchesStatus = isRenewal;
+    } else if (statusFilter === 'New Applicants') {
+      matchesStatus = !isRenewal;
+    } else if (statusFilter !== 'All') {
+      matchesStatus = app.status === statusFilter;
+    }
+
     return matchesSearch && matchesStatus;
   });
 
@@ -2673,1043 +2822,100 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-10 max-w-7xl mx-auto">
-
-        {/* ==================== 1. DASHBOARD VIEW ==================== */}
         {activeTab === 'dashboard' && (
-          <div className="space-y-8 animate-fade-in">
-            <div>
-              <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Dashboard</h2>
-              <p className="text-sm text-[#6C6C70] mt-1 font-medium">Real-time Scholarship Monitoring</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Permanent Programs</span>
-                <h3 className="text-3xl font-bold text-[#1A3C2E] font-serif mt-1">{programsList.length}</h3>
-                <span className="text-xs text-[#2D5941] font-semibold flex items-center gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2D5941]" /> Fully Lifecycle Managed
-                </span>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Active Scholars (Awards)</span>
-                <h3 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">{scholarsList.length}</h3>
-                <span className="text-xs text-[#C97B2E] font-semibold flex items-center gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#C97B2E]" /> Undergoing renewal checks
-                </span>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Active Cycle Applicants</span>
-                <h3 className="text-3xl font-bold text-[#B34040] font-serif mt-1">{applicantsList.length}</h3>
-                <span className="text-xs text-[#B34040] font-semibold flex items-center gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#B34040]" /> In active intake cycles
-                </span>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Funds Released</span>
-                <h3 className="text-3xl font-bold text-[#2D5941] font-serif mt-1">₱{(totalCredited / 1000000).toFixed(2)}M</h3>
-                <span className="text-xs text-[#2D5941] font-semibold flex items-center gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2D5941]" /> ₱{(totalPending / 1000).toFixed(0)}K pending release
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm lg:col-span-2 space-y-6">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-bold text-[#1A3C2E] font-serif">Fund Allocation Distribution</h4>
-                  <span className="text-xs font-semibold text-[#8E8E93]">AY 2026-2027</span>
-                </div>
-                <div className="space-y-4 pt-2">
-                  {programsList.map(prog => (
-                    <div key={prog.id}>
-                      <div className="flex justify-between text-xs font-semibold text-[#1C1C1E] mb-1.5">
-                        <span>{prog.title}</span>
-                        <span>{prog.budgetUsed} / {prog.budgetTotal}</span>
-                      </div>
-                      <div className="w-full bg-[#EDE8DE] h-3.5 rounded-full overflow-hidden">
-                        <div className="bg-[#2D5941] h-full rounded-full" style={{ width: '65%' }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-5">
-                <h4 className="font-bold text-[#1A3C2E] font-serif">Recent System Events</h4>
-                <div className="space-y-4 text-xs">
-                  <div className="flex gap-3 pb-3 border-b border-[#D9D2C5]/40">
-                    <div className="w-8 h-8 rounded-full bg-[#EBF5EE] text-[#2D5941] flex items-center justify-center font-bold shrink-0">IA</div>
-                    <div>
-                      <p className="font-semibold text-[#1C1C1E]">Scholar Award Issued</p>
-                      <p className="text-[10px] text-[#6C6C70] mt-0.5">Applicant upgraded to continuing status</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-3 pb-3 border-b border-[#D9D2C5]/40">
-                    <div className="w-8 h-8 rounded-full bg-[#F9F0E0] text-[#C97B2E] flex items-center justify-center font-bold shrink-0">RC</div>
-                    <div>
-                      <p className="font-semibold text-[#1C1C1E]">Renewal Policy Warning</p>
-                      <p className="text-[10px] text-[#6C6C70] mt-0.5">Marcus Vian flagged (GWA 2.10 under Conditional Policy)</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ProviderDashboardTab
+            programsList={programsList}
+            scholarsList={scholarsList}
+            applicantsList={applicantsList}
+            totalCredited={totalCredited}
+            totalPending={totalPending}
+          />
         )}
 
-        {/* ==================== 2. APPLICANTS & SCHOLARS VIEW (SPLIT SECTIONS) ==================== */}
         {activeTab === 'applicants' && (
-          <div className="space-y-8 animate-fade-in">
-
-            {/* Header and Toggle Button between Applicants and Scholars */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">
-                  {subTab === 'applicants' ? 'Cycle Applicants' : 'Continuing Scholars'}
-                </h2>
-                <p className="text-sm text-[#6C6C70] mt-1 font-medium">
-                  {subTab === 'applicants'
-                    ? 'Review incoming entries for active intake cycles. Approving them creates a continuing Scholar Award.'
-                    : 'Monitor active scholar awards, GWA requirements, and renewal conditions.'
-                  }
-                </p>
-              </div>
-
-              {/* Toggle Selector */}
-              <div className="flex bg-[#EDE8DE]/60 p-1 rounded-xl text-xs font-semibold gap-1">
-                <button
-                  onClick={() => { setSubTab('applicants'); setStatusFilter('All'); }}
-                  className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${subTab === 'applicants' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
-                    }`}
-                >
-                  Applicants ({applicantsList.length})
-                </button>
-                <button
-                  onClick={() => { setSubTab('scholars'); setStatusFilter('All'); }}
-                  className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${subTab === 'scholars' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
-                    }`}
-                >
-                  Continuing Scholars ({scholarsList.length})
-                </button>
-              </div>
-            </div>
-
-            {/* Filter bar for Applicants */}
-            {subTab === 'applicants' && (
-              <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-[#D9D2C5]/60 shadow-sm">
-                <div className="relative flex-1 max-w-md">
-                  <svg className="absolute left-4 top-3 w-4 h-4 text-[#8E8E93]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                  <input
-                    type="text" placeholder="Search applicants..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-11 pr-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none focus:border-[#2D5941] text-xs"
-                  />
-                </div>
-
-                <div className="flex gap-1 bg-[#EDE8DE]/45 p-1 rounded-lg text-[10px] font-bold">
-                  {['All', 'Pending', 'Under Review', 'For Exam', 'Rejected'].map(st => (
-                    <button
-                      key={st} onClick={() => setStatusFilter(st)}
-                      className={`px-3 py-1.5 rounded cursor-pointer ${statusFilter === st ? 'bg-[#1A3C2E] text-white' : 'text-[#6C6C70]'}`}
-                    >
-                      {st}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Render table based on toggle */}
-            {subTab === 'applicants' ? (
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="bg-[#F9F5EF] border-b border-[#D9D2C5]/60 text-xs font-bold text-[#6C6C70] uppercase tracking-wider">
-                      <th className="px-6 py-4">Applicant Name</th>
-                      <th className="px-6 py-4">Target Program</th>
-                      <th className="px-6 py-4">Active Cycle</th>
-                      <th className="px-6 py-4 text-center">GWA</th>
-                      <th className="px-6 py-4">Current Status</th>
-                      <th className="px-6 py-4 text-center">Actions / Decision</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-                    {filteredApplicants.map((app) => (
-                      <tr key={app.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
-                        <td className="px-6 py-4 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#1A3C2E] text-white flex items-center justify-center font-bold text-xs uppercase">
-                            {app.name.split(' ').map(n => n[0]).join('')}
-                          </div>
-                          <div>
-                            <span className="block font-bold text-[#1C1C1E]">{app.name}</span>
-                            <span className="text-[10px] text-[#8E8E93]">{app.school} • {app.course} ({app.yearLevel}) • Applied {app.date}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-[#1C1C1E]">{app.program}</td>
-                        <td className="px-6 py-4 text-xs font-bold text-[#2D5941]">{app.cycle}</td>
-                        <td className="px-6 py-4 text-center font-serif text-[#1C1C1E]">{app.grade}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${app.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                            app.status === 'Pending' ? 'bg-[#F9F0E0] text-[#C97B2E]' :
-                              app.status === 'Under Review' ? 'bg-[#EAF3FA] text-[#2A6BA8]' :
-                                app.status === 'For Exam' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-[#FDF2F2] text-[#B34040]'
-                            }`}>
-                            {app.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedAppForReview(app);
-                                setIsReviewModalOpen(true);
-                              }}
-                              className="bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm cursor-pointer border-0 flex items-center gap-1 transition-all"
-                            >
-                              👁️ View Application
-                            </button>
-                            <select
-                              value={app.status}
-                              onChange={(e) => handleUpdateStatus(app.id, e.target.value as ApplicantStatus)}
-                              className="bg-white border border-[#D9D2C5] rounded-xl px-2 py-1.5 text-xs font-semibold focus:outline-none cursor-pointer"
-                            >
-                              <option value="Pending">Pending</option>
-                              <option value="Under Review">Under Review</option>
-                              <option value="For Exam">For Exam</option>
-                              <option value="Approved">Approve & Issue Award</option>
-                              <option value="Rejected">Rejected</option>
-                            </select>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              // Active Scholars Monitoring View
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="bg-[#F9F5EF] border-b border-[#D9D2C5]/60 text-xs font-bold text-[#6C6C70] uppercase tracking-wider">
-                      <th className="px-6 py-4">Scholar Name</th>
-                      <th className="px-6 py-4">Awarded Program</th>
-                      <th className="px-6 py-4">Intake Cycle</th>
-                      <th className="px-6 py-4 text-center">Latest GWA</th>
-                      <th className="px-6 py-4">Monitoring Status</th>
-                      <th className="px-6 py-4 text-center">Award Date</th>
-                      <th className="px-6 py-4 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-                    {filteredScholars.map((sch) => (
-                      <tr key={sch.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
-                        <td className="px-6 py-4 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#C97B2E] text-white flex items-center justify-center font-bold text-xs uppercase">
-                            {sch.scholarName.split(' ').map(n => n[0]).join('')}
-                          </div>
-                          <span className="font-bold text-[#1C1C1E]">{sch.scholarName}</span>
-                        </td>
-                        <td className="px-6 py-4 text-[#1C1C1E]">{sch.programTitle}</td>
-                        <td className="px-6 py-4 text-xs font-semibold text-[#6C6C70]">{sch.cycleJoined}</td>
-                        <td className="px-6 py-4 text-center font-serif font-bold text-[#2D5941]">{sch.gwa}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${sch.status === 'Maintaining' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                            sch.status === 'Awaiting Grades' ? 'bg-amber-50 text-[#C97B2E]' :
-                              sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
-                                'bg-gray-100 text-gray-700'
-                            }`}>
-                            {sch.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center text-xs text-[#8E8E93]">{sch.dateAwarded}</td>
-                        <td className="px-6 py-4 text-center">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (sch.appDetail) {
-                                setSelectedAppForReview(sch.appDetail);
-                                setIsReviewModalOpen(true);
-                              }
-                            }}
-                            className="bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm cursor-pointer border-0 flex items-center gap-1 mx-auto transition-all"
-                          >
-                            👁️ View Application
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <ProviderApplicantsTab
+            subTab={subTab}
+            setSubTab={setSubTab}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            applicantsList={applicantsList}
+            scholarsList={scholarsList}
+            filteredApplicants={filteredApplicants}
+            filteredScholars={filteredScholars}
+            setSelectedAppForReview={setSelectedAppForReview}
+            setIsReviewModalOpen={setIsReviewModalOpen}
+            handleUpdateStatus={handleUpdateStatus}
+          />
         )}
 
-        {/* ==================== 3. PROGRAMS VIEW (LIFECYCLE SCHEMAS SHOWN) ==================== */}
         {activeTab === 'programs' && (
-          <div className="space-y-8 animate-fade-in">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Scholarship Programs</h2>
-                <p className="text-sm text-[#6C6C70] mt-1 font-medium">Permanent scholarship schemas, active application cycles, and renewal rules</p>
-              </div>
-              <button
-                onClick={() => {
-                  if (providerDetails?.verificationStatus !== 'verified') {
-                    showToast('Create locked: Your organization is not verified. Please submit documents in the Verification Org tab.');
-                  } else {
-                    setIsCreateModalOpen(true);
-                  }
-                }}
-                disabled={providerDetails?.verificationStatus !== 'verified'}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all border border-[#1A3C2E]/10 ${
-                  providerDetails?.verificationStatus === 'verified'
-                    ? 'bg-[#E8A838] hover:bg-[#cfa532] text-[#1A3C2E] cursor-pointer'
-                    : 'bg-gray-200 text-gray-500 cursor-not-allowed border-gray-400'
-                }`}
-              >
-                <span>{providerDetails?.verificationStatus === 'verified' ? '+' : '🔒'}</span> New program
-              </button>
-            </div>
-
-            {providerDetails && providerDetails.verificationStatus !== 'verified' && (
-              <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 rounded-2xl p-5 flex items-start gap-4 shadow-sm animate-fade-in">
-                <div className="bg-[#C97B2E]/10 p-2.5 rounded-xl text-[#C97B2E] shrink-0">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0-6h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.3-2.67-1.3-3.44 0L2.18 16c-.77 1.3.2 3 1.73 3z" />
-                  </svg>
-                </div>
-                <div className="space-y-1">
-                  <h4 className="font-bold text-[#1A3C2E] text-sm">Scholarship Creation Locked</h4>
-                  <p className="text-xs text-[#6C6C70] leading-relaxed">
-                    Your organization is currently not verified (Status: <strong className="capitalize">{providerDetails.verificationStatus.replace('_', ' ')}</strong>). 
-                    You must upload and submit your organization credentials under the <strong>Verification Org</strong> tab. Once approved by the administrator, you will be allowed to post scholarships.
-                  </p>
-                  <button 
-                    onClick={() => setActiveTab('verification')}
-                    className="text-xs font-bold text-[#2D5941] hover:text-[#1A3C2E] underline mt-1.5 cursor-pointer block bg-transparent border-0 p-0 text-left font-sans"
-                  >
-                    Go to Verification Org &rarr;
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {programsList.length === 0 ? (
-              <div className="bg-[#F9F5EF]/60 rounded-3xl border border-dashed border-[#D9D2C5] p-12 text-center space-y-4">
-                <div className="w-16 h-16 bg-[#EDE8DE] rounded-full flex items-center justify-center mx-auto text-[#2D5941] text-2xl">
-                  🎓
-                </div>
-                <div className="space-y-1">
-                  <h4 className="font-bold text-[#1A3C2E] font-serif text-lg">No Scholarship Programs Yet</h4>
-                  <p className="text-xs text-[#6C6C70] max-w-sm mx-auto">
-                    You haven't configured any programs yet. Click the <strong>New program</strong> button above to launch your first scholarship and cycle!
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {programsList.map((prog) => (
-                  <div
-                    key={prog.id}
-                    className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-7 shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-[340px] animate-fade-in"
-                  >
-                    <div className="space-y-3.5">
-                      <div className="flex justify-between items-center">
-                        <span className="px-3.5 py-1.5 rounded-xl bg-[#1A3C2E] text-white text-xs font-bold tracking-wider">
-                          {prog.provider}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                            prog.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                            prog.status === 'Pending Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
-                            prog.status === 'Rejected' ? 'bg-red-50 text-[#B34040]' :
-                            prog.status === 'Draft' ? 'bg-blue-50 text-blue-600' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
-                            {prog.status}
-                          </span>
-                          <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5]">
-                            ⚙️ Policy: {prog.renewalPolicy}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <h3 className="text-xl font-bold text-[#1A3C2E] font-serif leading-snug truncate">
-                          {prog.title}
-                        </h3>
-                        <p className="text-xs text-[#6C6C70] mt-0.5 font-medium line-clamp-1">
-                          {prog.description}
-                        </p>
-                      </div>
-
-                      {/* Application Cycles checklist sub-layout */}
-                      <div className="space-y-1.5 pt-1">
-                        <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wide block">Registered Cycles</span>
-                        <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                          {prog.cycles.map((cyc) => (
-                            <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
-                              <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                                cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
-                                  'bg-gray-200 text-gray-600'
-                                }`}>
-                                {cyc.status}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Rejection Banner */}
-                    {prog.status === 'Rejected' && prog.rejectionRemarks && (
-                      <div className="bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 mb-2">
-                        <span className="text-[9px] uppercase font-bold text-[#B34040] tracking-wider block mb-0.5">Rejection Remarks</span>
-                        <p className="text-[11px] text-[#B34040] leading-snug line-clamp-2">{prog.rejectionRemarks}</p>
-                      </div>
-                    )}
-                    <div className="border-t border-[#D9D2C5]/50 pt-4 flex justify-between items-center text-xs">
-                      <div>
-                        <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
-                        <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleViewDetails(prog)}
-                          className="px-3 py-1.5 rounded-lg bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[10px] font-bold border-0 cursor-pointer transition-all"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={() => handleEditProgram(prog)}
-                          className="px-3 py-1.5 rounded-lg bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[10px] font-bold border-0 cursor-pointer transition-all"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleOpenRenewModal(prog)}
-                          className="px-3 py-1.5 rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-[10px] font-bold border border-[#D9D2C5] cursor-pointer transition-all"
-                        >
-                          Renew / Add Cycle
-                        </button>
-                        {prog.status === 'Rejected' ? (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const { error } = await supabase
-                                  .from('scholarship_programs')
-                                  .update({ status: 'pending', rejection_remarks: null })
-                                  .eq('id', prog.id);
-                                if (error) {
-                                  console.error('Error resubmitting program:', error);
-                                  showToast('Error resubmitting program.');
-                                } else {
-                                  showToast(`"${prog.title}" has been resubmitted for review.`);
-                                  await fetchPrograms();
-                                }
-                              } catch (err) {
-                                console.error('Unexpected error resubmitting program:', err);
-                                showToast('An unexpected error occurred.');
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-[#FFF8EE] hover:bg-amber-100 text-[#C97B2E] text-[10px] font-bold border border-amber-200 cursor-pointer transition-all"
-                          >
-                            Resubmit
-                          </button>
-                        ) : prog.status !== 'Closed' && prog.status !== 'closed' ? (
-                          <button
-                            onClick={() => { setProgramToClose(prog); setIsCloseConfirmOpen(true); }}
-                            className="px-3 py-1.5 rounded-lg bg-[#FDF2F2] hover:bg-red-100 text-[#B34040] text-[10px] font-bold border border-red-200 cursor-pointer transition-all"
-                          >
-                            Close
-                          </button>
-                        ) : (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const { error } = await supabase
-                                  .from('scholarship_programs')
-                                  .update({ status: 'active' })
-                                  .eq('id', prog.id);
-                                if (error) {
-                                  console.error('Error re-opening program:', error);
-                                  showToast('Error re-opening program.');
-                                } else {
-                                  showToast(`"${prog.title}" has been re-opened.`);
-                                  await fetchPrograms();
-                                }
-                              } catch (err) {
-                                console.error('Unexpected error re-opening program:', err);
-                                showToast('An unexpected error occurred.');
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-[#EBF5EE] hover:bg-green-100 text-[#2D5941] text-[10px] font-bold border border-green-200 cursor-pointer transition-all"
-                          >
-                            Re-open
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <ProviderProgramsTab
+            providerDetails={providerDetails}
+            programsList={programsList}
+            showToast={showToast}
+            setIsCreateModalOpen={setIsCreateModalOpen}
+            setActiveTab={setActiveTab}
+            handleViewDetails={handleViewDetails}
+            handleEditProgram={handleEditProgram}
+            handleOpenRenewModal={handleOpenRenewModal}
+            setProgramToClose={setProgramToClose}
+            setIsCloseConfirmOpen={setIsCloseConfirmOpen}
+            fetchPrograms={fetchPrograms}
+          />
         )}
 
-        {/* ==================== 4. DISBURSEMENTS VIEW ==================== */}
         {activeTab === 'disbursements' && (
-          <div className="space-y-8 animate-fade-in">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Disbursements</h2>
-                <p className="text-sm text-[#6C6C70] mt-1 font-medium">Release specific program batch payouts using the batch wizard</p>
-              </div>
-              <button
-                onClick={() => setIsPayoutModalOpen(true)}
-                className="bg-[#2D5941] hover:bg-[#1A3C2E] text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md cursor-pointer transition-all"
-              >
-                Process Payouts Batch
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Current Cash Allocation</span>
-                <h4 className="text-3xl font-bold text-[#1A3C2E] font-serif mt-1">₱11,100,000</h4>
-                <p className="text-[11px] text-[#6C6C70] mt-2">DOST-SEI provider balance</p>
-              </div>
-              <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Total Credited</span>
-                <h4 className="text-3xl font-bold text-[#2D5941] font-serif mt-1">₱{totalCredited.toLocaleString()}</h4>
-                <p className="text-[11px] text-[#2D5941] mt-2">Credited to linked student accounts</p>
-              </div>
-              <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Pending Release</span>
-                <h4 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">₱{totalPending.toLocaleString()}</h4>
-                <p className="text-[11px] text-[#C97B2E] mt-2">Waiting in payouts queue</p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
-              <div className="p-5 border-b border-[#D9D2C5]/40 bg-[#F9F5EF]/20">
-                <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Transaction Ledger</h3>
-              </div>
-              <table className="w-full border-collapse text-left text-sm">
-                <thead>
-                  <tr className="bg-[#F9F5EF] border-b border-[#D9D2C5]/60 text-xs font-bold text-[#6C6C70] uppercase tracking-wider">
-                    <th className="px-6 py-4">Transaction ID</th>
-                    <th className="px-6 py-4">Scholar</th>
-                    <th className="px-6 py-4">Target Program</th>
-                    <th className="px-6 py-4">Method</th>
-                    <th className="px-6 py-4">Amount</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-                  {disbursementsList.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
-                      <td className="px-6 py-4 text-xs font-bold text-[#2D5941]">{tx.id}</td>
-                      <td className="px-6 py-4 font-bold text-[#1C1C1E]">{tx.scholar}</td>
-                      <td className="px-6 py-4 text-[#6C6C70]">{tx.program}</td>
-                      <td className="px-6 py-4 text-[#1C1C1E]">{tx.method}</td>
-                      <td className="px-6 py-4 text-[#2D5941] font-bold">{tx.amount}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold ${tx.status === 'Completed'
-                            ? 'bg-[#EBF5EE] text-[#2D5941]'
-                            : tx.status === 'Processing'
-                              ? 'bg-[#F9F0E0] text-[#C97B2E]'
-                              : 'bg-[#FDF2F2] text-[#B34040]'
-                            }`}
-                        >
-                          {tx.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right text-xs text-[#8E8E93]">{tx.date}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <ProviderDisbursementsTab
+            totalCredited={totalCredited}
+            totalPending={totalPending}
+            disbursementsList={disbursementsList}
+            setIsPayoutModalOpen={setIsPayoutModalOpen}
+          />
         )}
 
-        {/* ==================== 5. ANNOUNCEMENTS VIEW ==================== */}
         {activeTab === 'announcements' && (
-          <div className="space-y-8 animate-fade-in">
-            <div>
-              <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Announcements</h2>
-              <p className="text-sm text-[#6C6C70] mt-1 font-medium">Broadcast notices and search exam venues with live Google Maps Autocomplete</p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-              {/* Broadcast Announcement Form */}
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-4">
-                <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Broadcast Announcement</h3>
-                <form onSubmit={handleAddAnnouncement} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Type</label>
-                      <select
-                        value={newAnnType}
-                        onChange={(e) => setNewAnnType(e.target.value as AnnType)}
-                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                      >
-                        <option value="General Notice">General Notice</option>
-                        <option value="Examination Schedule">Exam Schedule</option>
-                        <option value="Release of Funds">Release of Funds</option>
-                        <option value="Requirements Update">Requirements</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Audience</label>
-                      <select
-                        value={newAnnAudience} onChange={(e) => setNewAnnAudience(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                      >
-                        <option value="All Scholars">All Scholars</option>
-                        <option value="DOST-SEI Only">DOST-SEI Only</option>
-                        <option value="CHED Only">CHED Only</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Google Maps Autocomplete Search Input */}
-                  {newAnnType === 'Examination Schedule' && (
-                    <div className="space-y-2 p-2.5 rounded-2xl border border-[#D9D2C5] bg-[#F9F5EF]/50 animate-fade-in">
-                      <div className="flex justify-between items-center">
-                        <label className="block text-[10px] font-bold text-[#1A3C2E] uppercase tracking-wide">🔍 Search Location</label>
-                        <button
-                          type="button"
-                          onClick={() => setIsBigMapModalOpen(true)}
-                          className="text-[10px] font-bold text-[#2D5941] hover:underline cursor-pointer bg-transparent border-0"
-                        >
-                          Choose on Larger Map 🗺️
-                        </button>
-                      </div>
-
-                      {isLoaded ? (
-                        <Autocomplete
-                          onLoad={onAutocompleteLoad}
-                          onPlaceChanged={onPlaceChanged}
-                        >
-                          <input
-                            type="text"
-                            placeholder="Type venue e.g. UP Diliman..."
-                            value={mapSearchText}
-                            onChange={(e) => setMapSearchText(e.target.value)}
-                            className="w-full px-3 py-1.5 rounded-lg border border-[#D9D2C5] text-xs font-semibold bg-white focus:outline-none focus:border-[#2D5941]"
-                          />
-                        </Autocomplete>
-                      ) : (
-                        <div className="text-xs font-medium text-[#6C6C70]">Loading search script...</div>
-                      )}
-
-                      {/* Google Maps live viewport */}
-                      <div className="w-full h-28 rounded-xl border border-[#D9D2C5] overflow-hidden relative flex flex-col justify-between shadow-inner bg-slate-100">
-                        {isLoaded ? (
-                          <GoogleMap
-                            mapContainerStyle={{ width: '100%', height: '100%' }}
-                            center={{ lat: examCoords.lat, lng: examCoords.lng }}
-                            zoom={mapZoom}
-                            onClick={handleMapClick}
-                            options={{
-                              disableDefaultUI: true,
-                              zoomControl: false,
-                            }}
-                          >
-                            <Marker position={{ lat: examCoords.lat, lng: examCoords.lng }} />
-                          </GoogleMap>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-[#6C6C70]">
-                            Loading Live Google Maps...
-                          </div>
-                        )}
-
-                        <div className="absolute top-1.5 left-1.5 z-10 bg-white/90 backdrop-blur px-1.5 py-0.5 rounded text-[7px] text-[#6C6C70] font-semibold border border-[#D9D2C5]/50 shadow-sm">
-                          <span>
-                            {examCoords.lat.toFixed(4)}° N, {examCoords.lng.toFixed(4)}° E
-                          </span>
-                        </div>
-
-                        <div className="absolute bottom-1.5 left-1.5 right-1.5 z-10 flex justify-between items-center">
-                          <span className="text-[6px] text-[#2D5941] bg-white/90 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shadow">
-                            Google Maps
-                          </span>
-                          <div className="flex gap-1">
-                            <button type="button" onClick={() => setMapZoom(prev => Math.min(prev + 1, 18))} className="w-4 h-4 bg-white border border-[#D9D2C5] hover:bg-slate-50 text-[9px] font-bold rounded flex items-center justify-center cursor-pointer shadow-sm">+</button>
-                            <button type="button" onClick={() => setMapZoom(prev => Math.max(prev - 1, 10))} className="w-4 h-4 bg-white border border-[#D9D2C5] hover:bg-slate-50 text-[9px] font-bold rounded flex items-center justify-center cursor-pointer shadow-sm">-</button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <p className="text-[9px] text-[#6C6C70] leading-relaxed italic truncate">
-                        <strong>Address:</strong> {examCoords.address}
-                      </p>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Announcement Title</label>
-                    <input
-                      type="text" required placeholder="e.g. Schedule of Qualifying Examinations"
-                      value={newAnnTitle} onChange={(e) => setNewAnnTitle(e.target.value)}
-                      className="w-full px-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Message / Details</label>
-                    <textarea
-                      required rows={3} placeholder="Specify date, times, venues or step-by-step info here..."
-                      value={newAnnBody} onChange={(e) => setNewAnnBody(e.target.value)}
-                      className="w-full px-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] text-white py-2.5 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer border-0"
-                  >
-                    Publish Announcement
-                  </button>
-                </form>
-              </div>
-
-              <div className="lg:col-span-2 space-y-6">
-                <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Active Broadcast Board</h3>
-                <div className="space-y-4">
-                  {announcements.map((ann) => (
-                    <div key={ann.id} className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-4 animate-fade-in">
-                      <div className="flex justify-between items-start gap-4">
-                        <div>
-                          <span
-                            className={`inline-block px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${ann.type === 'Examination Schedule'
-                              ? 'bg-amber-100 text-[#C97B2E] border border-amber-200'
-                              : ann.type === 'Release of Funds'
-                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                : ann.type === 'Requirements Update'
-                                  ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                  : 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20'
-                              }`}
-                          >
-                            {ann.type}
-                          </span>
-                          <h4 className="text-lg font-bold text-[#1A3C2E] font-serif mt-2">{ann.title}</h4>
-                          <span className="text-[10px] text-[#6C6C70] font-medium block mt-1">
-                            Published by {ann.author} on {ann.date}
-                          </span>
-                        </div>
-                        <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70]">
-                          {ann.audience}
-                        </span>
-                      </div>
-
-                      <p className="text-sm text-[#6C6C70] leading-relaxed">{ann.body}</p>
-
-                      {ann.location && (
-                        <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#C97B2E]">
-                          <span>📍 Venue:</span>
-                          <span className="underline">{ann.location}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <ProviderAnnouncementsTab
+            handleAddAnnouncement={handleAddAnnouncement}
+            newAnnType={newAnnType}
+            setNewAnnType={setNewAnnType}
+            newAnnAudience={newAnnAudience}
+            setNewAnnAudience={setNewAnnAudience}
+            setIsBigMapModalOpen={setIsBigMapModalOpen}
+            isLoaded={isLoaded}
+            onAutocompleteLoad={onAutocompleteLoad}
+            onPlaceChanged={onPlaceChanged}
+            mapSearchText={mapSearchText}
+            setMapSearchText={setMapSearchText}
+            examCoords={examCoords}
+            mapZoom={mapZoom}
+            setMapZoom={setMapZoom}
+            handleMapClick={handleMapClick}
+            newAnnTitle={newAnnTitle}
+            setNewAnnTitle={setNewAnnTitle}
+            newAnnBody={newAnnBody}
+            setNewAnnBody={setNewAnnBody}
+            announcements={announcements}
+          />
         )}
 
-        {/* ==================== 6. REPORTS VIEW ==================== */}
-        {activeTab === 'reports' && (
-          <div className="space-y-8 animate-fade-in">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Reports & Audits</h2>
-                <p className="text-sm text-[#6C6C70] mt-1 font-medium">Export system utilization and compliance audit logs</p>
-              </div>
-            </div>
+        {activeTab === 'reports' && <ProviderReportsTab />}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm flex flex-col justify-between">
-                <div>
-                  <h4 className="text-base font-bold text-[#1A3C2E] font-serif">Fund Utilization Summary</h4>
-                  <p className="text-xs text-[#6C6C70] mt-1">Full breakdown of disbursement ratios and budget balances.</p>
-                </div>
-                <div className="mt-6 flex justify-between items-center border-t border-[#D9D2C5]/40 pt-4">
-                  <span className="text-[10px] text-[#8E8E93] font-bold">PDF / EXCEL</span>
-                  <button className="text-xs font-bold text-[#C97B2E] hover:underline cursor-pointer">Download</button>
-                </div>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm flex flex-col justify-between">
-                <div>
-                  <h4 className="text-base font-bold text-[#1A3C2E] font-serif">Scholar Performance Audit</h4>
-                  <p className="text-xs text-[#6C6C70] mt-1">Summary of scholars\' GWAs, grade sheet validation, and failures.</p>
-                </div>
-                <div className="mt-6 flex justify-between items-center border-t border-[#D9D2C5]/40 pt-4">
-                  <span className="text-[10px] text-[#8E8E93] font-bold">CSV / XLSX</span>
-                  <button className="text-xs font-bold text-[#C97B2E] hover:underline cursor-pointer">Download</button>
-                </div>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm flex flex-col justify-between">
-                <div>
-                  <h4 className="text-base font-bold text-[#1A3C2E] font-serif">Announcements Engagement</h4>
-                  <p className="text-xs text-[#6C6C70] mt-1">Metrics on student read acknowledgments and message reach.</p>
-                </div>
-                <div className="mt-6 flex justify-between items-center border-t border-[#D9D2C5]/40 pt-4">
-                  <span className="text-[10px] text-[#8E8E93] font-bold">PDF</span>
-                  <button className="text-xs font-bold text-[#C97B2E] hover:underline cursor-pointer">Download</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ==================== 7. VERIFICATION TAB ==================== */}
         {activeTab === 'verification' && (
-          <div className="space-y-8 animate-fade-in">
-            <div>
-              <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Organization Verification</h2>
-              <p className="text-sm text-[#6C6C70] mt-1 font-medium">Manage and submit organizational documentation required to post scholarship programs.</p>
-            </div>
-
-            {/* Status Banner */}
-            {providerDetails && (
-              <div className={`p-6 rounded-3xl border shadow-sm flex items-start gap-4 ${
-                providerDetails.verificationStatus === 'verified'
-                  ? 'bg-[#EBF5EE] border-[#2D5941]/30 text-[#1A3C2E]'
-                  : providerDetails.verificationStatus === 'under_review'
-                    ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#1A3C2E]'
-                    : providerDetails.verificationStatus === 'rejected'
-                      ? 'bg-red-50 border-red-200 text-red-900'
-                      : 'bg-white border-[#D9D2C5]/60 text-[#1C1C1E]'
-              }`}>
-                <div className={`p-3 rounded-2xl shrink-0 ${
-                  providerDetails.verificationStatus === 'verified'
-                    ? 'bg-[#2D5941]/10 text-[#2D5941]'
-                    : providerDetails.verificationStatus === 'under_review'
-                      ? 'bg-[#C97B2E]/10 text-[#C97B2E]'
-                      : providerDetails.verificationStatus === 'rejected'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-[#EDE8DE] text-[#6C6C70]'
-                }`}>
-                  {providerDetails.verificationStatus === 'verified' ? (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                  ) : providerDetails.verificationStatus === 'under_review' ? (
-                    <svg className="w-6 h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  ) : providerDetails.verificationStatus === 'rejected' ? (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M9 16h6m2 4H7a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v12a2 2 0 01-2 2z" />
-                    </svg>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold">
-                    {providerDetails.verificationStatus === 'verified' && 'Verified Provider Partner'}
-                    {providerDetails.verificationStatus === 'under_review' && 'Documents Under Review'}
-                    {providerDetails.verificationStatus === 'rejected' && 'Verification Rejected'}
-                    {providerDetails.verificationStatus === 'pending' && 'Verification Incomplete'}
-                  </h3>
-                  <p className="text-xs opacity-90 leading-relaxed max-w-2xl font-sans">
-                    {providerDetails.verificationStatus === 'verified' && 'Your credentials have been successfully reviewed and verified by our system administrators. You are cleared to publish new scholarship programs and manage applications.'}
-                    {providerDetails.verificationStatus === 'under_review' && 'Your documents are being reviewed by the operations team. The evaluation process usually takes 1-2 business days. You will be notified when your status is updated.'}
-                    {providerDetails.verificationStatus === 'rejected' && 'Your submitted documents did not meet our verification guidelines. Please review the comments below, re-upload the corrected files, and submit a new request.'}
-                    {providerDetails.verificationStatus === 'pending' && 'To enable full access to cycle management and student matches, please upload and submit the credentials required for your provider type.'}
-                  </p>
-
-                  {providerDetails.verificationStatus === 'rejected' && providerDetails.requirementsSubmitted['_remarks'] && (
-                    <div className="mt-3 p-3 bg-red-100/50 border border-red-200/50 rounded-xl text-red-900 text-xs">
-                      <strong>Remarks: </strong> {providerDetails.requirementsSubmitted['_remarks']}
-                    </div>
-                  )}
-
-                  {(providerDetails.verificationStatus === 'under_review' || providerDetails.verificationStatus === 'rejected') && profile?.role === 'provider' && (
-                    <button
-                      type="button"
-                      onClick={handleUnsubmitVerification}
-                      disabled={submittingVerification}
-                      className="mt-3 bg-white/20 hover:bg-white/30 text-current border border-solid border-current px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer font-sans"
-                    >
-                      {submittingVerification ? 'Processing...' : 'Unsubmit & Edit Documents'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Checklist & Form */}
-            <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-8 shadow-sm space-y-6">
-              <div className="border-b border-[#D9D2C5]/40 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Required Documents Checklist</h3>
-                  <p className="text-xs text-[#6C6C70] mt-0.5 font-sans">Requirements for <span className="uppercase font-bold text-[#2D5941]">{providerDetails?.providerType || 'public'}</span> providers:</p>
-                </div>
-                {profile?.role === 'provider-member' && (
-                  <span className="px-3.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold font-sans flex items-center gap-1.5 shrink-0">
-                    🔒 Read-only (Member View)
-                  </span>
-                )}
-              </div>
-
-              {profile?.role === 'provider-member' && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-slate-600 text-xs font-sans">
-                  You are viewing this panel as a <strong>Provider Member</strong>. Only the primary <strong>Provider Admin</strong> role is authorized to upload, update, or submit organizational verification requirements.
-                </div>
-              )}
-
-              <div className="space-y-4">
-                {requiredDocs.map((doc, idx) => {
-                  const isUploaded = !!providerDetails?.requirementsSubmitted[doc.name];
-                  const docUrl = providerDetails?.requirementsSubmitted[doc.name];
-                  const isUnderReviewOrVerified = providerDetails?.verificationStatus === 'under_review' || providerDetails?.verificationStatus === 'verified';
-                  const isReadOnly = isUnderReviewOrVerified || profile?.role === 'provider-member';
-
-                  return (
-                    <div 
-                      key={idx}
-                      className="p-5 rounded-2xl border border-[#D9D2C5]/50 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:bg-slate-50/50"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-sm text-[#1C1C1E]">{doc.name}</h4>
-                          {doc.required ? (
-                            <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQUIRED</span>
-                          ) : (
-                            <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">OPTIONAL</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-[#6C6C70] font-sans">{doc.description}</p>
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        {isUploaded ? (
-                          <div className="flex items-center gap-3">
-                            <span className="flex items-center gap-1 text-xs text-[#2D5941] font-bold font-sans">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Uploaded
-                            </span>
-                            <a 
-                              href={docUrl} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="text-xs font-bold text-[#C97B2E] hover:underline"
-                            >
-                              View File
-                            </a>
-                            {!isReadOnly && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  if (!providerDetails) return;
-                                  const updatedReqs = { ...providerDetails.requirementsSubmitted };
-                                  delete updatedReqs[doc.name];
-                                  
-                                  // Update local state
-                                  setProviderDetails({
-                                    ...providerDetails,
-                                    requirementsSubmitted: updatedReqs
-                                  });
-
-                                  // Update Supabase database immediately
-                                  try {
-                                    const { error } = await supabase
-                                      .from('provider')
-                                      .update({
-                                        requirements_submitted: updatedReqs,
-                                        updated_at: new Date().toISOString()
-                                      })
-                                      .eq('id', providerDetails.id);
-                                    if (error) throw error;
-                                    showToast(`Unsubmitted document: ${doc.name}`);
-                                  } catch (err: any) {
-                                    console.error('Error unsubmitting document:', err);
-                                    showToast(`Failed to update database: ${err.message}`);
-                                  }
-                                }}
-                                className="text-xs text-red-500 hover:text-red-700 cursor-pointer bg-transparent border-0 font-sans"
-                              >
-                                Unsubmit File
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div>
-                            {isReadOnly ? (
-                              <span className="text-xs text-gray-400 italic font-sans">Not Provided</span>
-                            ) : (
-                              <div>
-                                <label className="relative flex items-center justify-center bg-[#EBF5EE] hover:bg-[#d5ebd9] text-[#2D5941] px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer border border-[#2D5941]/10">
-                                  {uploadingDoc === doc.name ? (
-                                    <span className="flex items-center gap-1">
-                                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                      </svg>
-                                      Uploading...
-                                    </span>
-                                  ) : (
-                                    <span>Choose & Upload File</span>
-                                  )}
-                                  <input
-                                    type="file"
-                                    disabled={uploadingDoc !== null}
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) handleUploadDocument(doc.name, file);
-                                    }}
-                                  />
-                                </label>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Submit Action */}
-              {providerDetails && providerDetails.verificationStatus !== 'verified' && providerDetails.verificationStatus !== 'under_review' && profile?.role === 'provider' && (
-                <div className="border-t border-[#D9D2C5]/40 pt-6 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleSubmitVerification}
-                    disabled={submittingVerification || uploadingDoc !== null}
-                    className={`px-8 py-3.5 rounded-xl font-bold text-sm shadow-md transition-all border border-[#1A3C2E]/10 cursor-pointer ${
-                      submittingVerification || uploadingDoc !== null
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400'
-                        : 'bg-[#2D5941] hover:bg-[#1A3C2E] text-white'
-                    }`}
-                  >
-                    {submittingVerification ? 'Submitting Request...' : 'Submit Verification Request'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+          <ProviderVerificationTab
+            providerDetails={providerDetails}
+            profile={profile}
+            handleUnsubmitVerification={handleUnsubmitVerification}
+            submittingVerification={submittingVerification}
+            requiredDocs={requiredDocs}
+            setProviderDetails={setProviderDetails}
+            showToast={showToast}
+            uploadingDoc={uploadingDoc}
+            handleUploadDocument={handleUploadDocument}
+            handleSubmitVerification={handleSubmitVerification}
+          />
         )}
-
       </main>
 
       {/* ─── View Details Modal ─── */}
@@ -3758,7 +2964,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   {selectedProgram.coverstuition && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Full Tuition</span>}
                   {selectedProgram.coversStipend && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Stipend ₱{Number(selectedProgram.stipendAmount).toLocaleString()}/mo</span>}
                   {selectedProgram.coversAllowance && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Allowance ₱{Number(selectedProgram.allowanceAmount).toLocaleString()}</span>}
-                  {selectedProgram.otherBenefits.map((b, i) => <span key={i} className="bg-[#EDE8DE] text-[#6C6C70] text-xs font-semibold px-3 py-1 rounded-full">{b}</span>)}
+                  {selectedProgram.otherBenefits?.map((b: any, i: number) => <span key={i} className="bg-[#EDE8DE] text-[#6C6C70] text-xs font-semibold px-3 py-1 rounded-full">{b}</span>)}
                 </div>
               </div>
 
@@ -3766,8 +2972,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               <div>
                 <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Eligibility</h4>
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div><span className="text-[#8E8E93] font-semibold">Courses: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.courseEligibility.join(', ') || 'All'}</span></div>
-                  <div><span className="text-[#8E8E93] font-semibold">Year Levels: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.yearLevelEligibility.length > 0 ? selectedProgram.yearLevelEligibility.map(y => `Year ${y}`).join(', ') : 'All'}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Courses: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.courseEligibility?.join(', ') || 'All'}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Year Levels: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.yearLevelEligibility?.length > 0 ? selectedProgram.yearLevelEligibility.map((y: any) => `Year ${y}`).join(', ') : 'All'}</span></div>
                   <div><span className="text-[#8E8E93] font-semibold">Min GWA: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.minimumGwa || 'None'}</span></div>
                   <div><span className="text-[#8E8E93] font-semibold">Availability: </span><span className="font-bold text-[#1C1C1E] capitalize">{selectedProgram.availabilityScope}</span></div>
                   <div><span className="text-[#8E8E93] font-semibold">Total Slots: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.totalSlots || 'Unlimited'}</span></div>
@@ -3776,11 +2982,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               </div>
 
               {/* Requirements */}
-              {selectedProgram.applicationRequirements.length > 0 && (
+              {selectedProgram.applicationRequirements?.length > 0 && (
                 <div>
                   <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Document Requirements</h4>
                   <div className="space-y-2">
-                    {selectedProgram.applicationRequirements.map((req, i) => (
+                    {selectedProgram.applicationRequirements?.map((req: any, i: number) => (
                       <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-[#D9D2C5]/50 bg-[#F9F5EF]/50 text-xs">
                         <div className="flex-1">
                           <span className="font-bold text-[#1C1C1E]">{req.name}</span>
@@ -3805,7 +3011,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {selectedProgram.cycles.map(cyc => (
+                  {selectedProgram.cycles?.map((cyc: any) => (
                     <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
                       <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
                       <div className="flex items-center gap-3">
@@ -3869,6 +3075,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         setRenewEndDate={setRenewEndDate}
         renewSlots={renewSlots}
         setRenewSlots={setRenewSlots}
+        renewCycleType={renewCycleType}
+        setRenewCycleType={setRenewCycleType}
+        renewSemester={renewSemester}
+        setRenewSemester={setRenewSemester}
       />
 
       {/* ─── Review Application Modal ─── */}

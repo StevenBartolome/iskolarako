@@ -14,6 +14,10 @@ interface RenewCycleModalProps {
   setRenewEndDate: (val: string) => void;
   renewSlots: string;
   setRenewSlots: (val: string) => void;
+  renewCycleType: 'new_applicant' | 'renewal';
+  setRenewCycleType: (val: 'new_applicant' | 'renewal') => void;
+  renewSemester: string;
+  setRenewSemester: (val: string) => void;
 }
 
 export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
@@ -29,6 +33,10 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
   setRenewEndDate,
   renewSlots,
   setRenewSlots,
+  renewCycleType,
+  setRenewCycleType,
+  renewSemester,
+  setRenewSemester,
 }) => {
   if (!isOpen || !program) return null;
 
@@ -37,7 +45,9 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-[#D9D2C5]/30">
         <div className="bg-[#1A3C2E] p-6 text-white flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-bold font-serif">Renew / Add Application Cycle</h3>
+            <h3 className="text-lg font-bold font-serif">
+              {renewCycleType === 'renewal' ? '🔄 Open Semestral Renewal Period' : '✨ New Application Cycle'}
+            </h3>
             <p className="text-xs text-white/70 mt-1">For: {program.title}</p>
           </div>
           <button
@@ -49,6 +59,76 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
 
         <form onSubmit={onSubmit} className="p-7 space-y-5">
           <div className="space-y-4">
+
+            {/* Cycle Type Selector */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Cycle Purpose *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRenewCycleType('renewal');
+                    const year = new Date().getFullYear();
+                    setRenewCycleName(`AY ${year}-${year + 1} • 2nd Sem Renewal`);
+                  }}
+                  className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                    renewCycleType === 'renewal'
+                      ? 'border-[#1A3C2E] bg-[#EBF5EE] text-[#1A3C2E] font-bold shadow-sm'
+                      : 'border-[#D9D2C5] bg-white text-[#6C6C70] hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="text-xs font-bold flex items-center gap-1.5">
+                    <span>🔄 Semestral Renewal</span>
+                  </div>
+                  <p className="text-[10.5px] text-[#6C6C70] mt-1">
+                    For approved/continuing scholars submitting grades & COR
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRenewCycleType('new_applicant');
+                    const year = new Date().getFullYear();
+                    setRenewCycleName(`AY ${year + 1}-${year + 2}`);
+                  }}
+                  className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                    renewCycleType === 'new_applicant'
+                      ? 'border-[#1A3C2E] bg-[#EBF5EE] text-[#1A3C2E] font-bold shadow-sm'
+                      : 'border-[#D9D2C5] bg-white text-[#6C6C70] hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="text-xs font-bold flex items-center gap-1.5">
+                    <span>✨ New Applicant Batch</span>
+                  </div>
+                  <p className="text-[10.5px] text-[#6C6C70] mt-1">
+                    For fresh applicants & incoming new scholars
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Semester Selection */}
+            {renewCycleType === 'renewal' && (
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Academic Term / Semester *</label>
+                <select
+                  value={renewSemester}
+                  onChange={(e) => {
+                    const newSem = e.target.value;
+                    setRenewSemester(newSem);
+                    const year = new Date().getFullYear();
+                    setRenewCycleName(`AY ${year}-${year + 1} • ${newSem} Renewal`);
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-xs font-bold font-sans"
+                >
+                  <option value="2nd Semester">2nd Semester (Mid-Year Renewal)</option>
+                  <option value="1st Semester">1st Semester (Annual Continuing Renewal)</option>
+                  <option value="Summer Term">Summer / Midyear Term</option>
+                </select>
+              </div>
+            )}
+
             {/* Cycle Name */}
             <div className="space-y-1">
               <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Cycle Name *</label>
@@ -57,16 +137,15 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                 required
                 value={renewCycleName}
                 onChange={(e) => setRenewCycleName(e.target.value)}
-                placeholder="e.g. AY 2027-2028"
+                placeholder="e.g. AY 2026-2027 • 2nd Sem Renewal"
                 className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
               />
-              <p className="text-[10px] text-[#6C6C70]">Suggested automatically based on the latest cycle.</p>
             </div>
 
             {/* Date Inputs */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Start Date *</label>
+                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Submission Start *</label>
                 <input
                   type="date"
                   required
@@ -76,7 +155,7 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">End Date *</label>
+                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Submission Deadline *</label>
                 <input
                   type="date"
                   required
@@ -89,17 +168,41 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
             </div>
 
             {/* Slots Available */}
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Slots Available (Optional)</label>
-              <input
-                type="number"
-                min="1"
-                value={renewSlots}
-                onChange={(e) => setRenewSlots(e.target.value)}
-                placeholder="Leave empty for unlimited/configured slots"
-                className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
-              />
-            </div>
+            {renewCycleType === 'new_applicant' ? (
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Slots Available (Optional)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={renewSlots}
+                  onChange={(e) => setRenewSlots(e.target.value)}
+                  placeholder="Leave empty for unlimited slots"
+                  className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
+                />
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-[#EBF5EE] border border-[#2D5941]/30 text-xs text-[#1A3C2E] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">👥</span>
+                  <span className="font-bold">Renewal Slots:</span>
+                </div>
+                <span className="font-extrabold bg-[#1A3C2E] text-white px-3 py-1 rounded-full text-[11px] shadow-sm">
+                  Unlimited (All Active Continuing Scholars)
+                </span>
+              </div>
+            )}
+
+            {renewCycleType === 'renewal' && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-[#C97B2E] space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <span>📢 Automatic Continuing Scholar Notification</span>
+                </div>
+                <p className="text-[11px] text-[#8C5216] leading-relaxed">
+                  Publishing this cycle will automatically notify all currently approved scholars of <strong>{program.title}</strong> to submit their latest semester grade slip and enrollment proof (COR).
+                </p>
+              </div>
+            )}
+
           </div>
 
           <div className="flex gap-3 pt-4 border-t border-[#D9D2C5]/30 justify-end">
@@ -112,9 +215,9 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-sm font-bold border-0 cursor-pointer transition-all"
+              className="px-5 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-sm font-bold border-0 cursor-pointer transition-all shadow-md"
             >
-              Confirm Renewal
+              {renewCycleType === 'renewal' ? 'Open Renewal Period' : 'Confirm Cycle'}
             </button>
           </div>
         </form>
