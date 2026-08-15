@@ -198,7 +198,10 @@ class _RegisterScreenState extends State<RegisterScreen>
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'origin': 'http://localhost',
+        },
         body: jsonEncode({
           'service_id': dotenv.env['EMAILJS_SERVICE_ID'] ?? '',
           'template_id': dotenv.env['EMAILJS_TEMPLATE_ID'] ?? '',
@@ -210,6 +213,9 @@ class _RegisterScreenState extends State<RegisterScreen>
           }
         }),
       );
+      if (response.statusCode != 200) {
+        debugPrint('EmailJS error status ${response.statusCode}: ${response.body}');
+      }
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('EmailJS error: $e');

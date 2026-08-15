@@ -380,7 +380,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
 
   const [formFundingFreq, setFormFundingFreq] = useState<FundingFreq>('Per Semester');
-  const [formRenewalPolicy, setFormRenewalPolicy] = useState<RenewalPolicy>('Conditional Renewal');
+  const [formRenewalPolicy, setFormRenewalPolicy] = useState<RenewalPolicy>('Semester Renewal');
   const [formCycleName, setFormCycleName] = useState('AY 2026-2027');
   // Extended program form fields
   const [formCategory, setFormCategory] = useState('Merit-Based');
@@ -1395,6 +1395,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       setFormTotalSlots('');
       setFormBudgetTotal('');
       setFormRenewalGwa('');
+      setFormRenewalPolicy('Semester Renewal');
       setFormCycleName('AY 2026-2027');
       setFormCycleStartDate('');
       setFormCycleEndDate('');
@@ -1417,9 +1418,114 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [programToClose, setProgramToClose] = useState<Program | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
 
+  // Auto pre-select PSGC dropdowns in edit mode when cascading PSGC data finishes loading
+  useEffect(() => {
+    if (isEditMode && selectedProgram && psgcRegions.length > 0 && !selectedRegionCode) {
+      const regionName = selectedProgram.availableRegions[0];
+      if (regionName) {
+        const matched = psgcRegions.find(
+          r => r.name.toLowerCase() === regionName.toLowerCase() ||
+               r.name.toLowerCase().includes(regionName.toLowerCase()) ||
+               regionName.toLowerCase().includes(r.name.toLowerCase()) ||
+               r.code === regionName
+        );
+        if (matched) {
+          setSelectedRegionCode(matched.code);
+        }
+      }
+    }
+  }, [isEditMode, selectedProgram, psgcRegions, selectedRegionCode]);
+
+  useEffect(() => {
+    if (isEditMode && selectedProgram && psgcProvinces.length > 0 && !selectedProvinceCode) {
+      const targetName = selectedProgram.availableSchools;
+      if (targetName) {
+        const matched = psgcProvinces.find(
+          p => p.name.toLowerCase() === targetName.toLowerCase() ||
+               p.name.toLowerCase().includes(targetName.toLowerCase()) ||
+               targetName.toLowerCase().includes(p.name.toLowerCase())
+        );
+        if (matched) {
+          setSelectedProvinceCode(matched.code);
+        }
+      }
+    }
+  }, [isEditMode, selectedProgram, psgcProvinces, selectedProvinceCode]);
+
+  useEffect(() => {
+    if (isEditMode && selectedProgram && psgcMunicipalities.length > 0 && !selectedMunicipalityCode) {
+      const targetName = selectedProgram.availableSchools;
+      if (targetName) {
+        const matched = psgcMunicipalities.find(
+          m => m.name.toLowerCase() === targetName.toLowerCase() ||
+               m.name.toLowerCase().includes(targetName.toLowerCase()) ||
+               targetName.toLowerCase().includes(m.name.toLowerCase())
+        );
+        if (matched) {
+          setSelectedMunicipalityCode(matched.code);
+        }
+      }
+    }
+  }, [isEditMode, selectedProgram, psgcMunicipalities, selectedMunicipalityCode]);
+
+  useEffect(() => {
+    if (isEditMode && selectedProgram && psgcBarangays.length > 0 && !selectedBarangayCode) {
+      const targetName = selectedProgram.availableSchools;
+      if (targetName) {
+        const matched = psgcBarangays.find(
+          b => b.name.toLowerCase() === targetName.toLowerCase() ||
+               b.name.toLowerCase().includes(targetName.toLowerCase()) ||
+               targetName.toLowerCase().includes(b.name.toLowerCase())
+        );
+        if (matched) {
+          setSelectedBarangayCode(matched.code);
+        }
+      }
+    }
+  }, [isEditMode, selectedProgram, psgcBarangays, selectedBarangayCode]);
+
   const handleViewDetails = (prog: Program) => {
     setSelectedProgram(prog);
     setIsViewModalOpen(true);
+  };
+
+  const handleOpenCreateProgram = () => {
+    setIsEditMode(false);
+    setSelectedProgram(null);
+    setFormTitle('');
+    setFormDesc('');
+    setFormCategory('Merit-Based');
+    setFormScholarshipType('merit');
+    setFormCoverstuition(false);
+    setFormCoversStipend(false);
+    setFormStipendAmount('');
+    setFormCoversAllowance(false);
+    setFormAllowanceAmount('');
+    setFormOtherBenefits('');
+    setFormCourseEligibility([]);
+    setFormCourseInput('');
+    setFormYearLevelEligibility([]);
+    setFormMinGwa('');
+    setFormAvailabilityScope('nationwide');
+    setFormAvailableRegions('');
+    setFormAvailableSchools('');
+    setSelectedRegionCode('');
+    setSelectedProvinceCode('');
+    setSelectedMunicipalityCode('');
+    setSelectedBarangayCode('');
+    setFormTotalSlots('');
+    setFormBudgetTotal('');
+    setFormRenewalGwa('');
+    setFormRenewalPolicy('Semester Renewal');
+    setFormCycleName('AY 2026-2027');
+    setFormCycleStartDate('');
+    setFormCycleEndDate('');
+    setFormRequirements([
+      { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
+      { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
+    ]);
+    setFormModalStep(1);
+    setIsCreateModalOpen(true);
   };
 
   const handleEditProgram = (prog: Program) => {
@@ -1452,6 +1558,28 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     setFormModalStep(1);
     setSelectedProgram(prog);
     setIsEditMode(true);
+
+    // Pre-select PSGC region code if available
+    const regionName = prog.availableRegions[0];
+    if (regionName && psgcRegions.length > 0) {
+      const matchedRegion = psgcRegions.find(
+        r => r.name.toLowerCase() === regionName.toLowerCase() ||
+             r.name.toLowerCase().includes(regionName.toLowerCase()) ||
+             regionName.toLowerCase().includes(r.name.toLowerCase()) ||
+             r.code === regionName
+      );
+      if (matchedRegion) {
+        setSelectedRegionCode(matchedRegion.code);
+      } else {
+        setSelectedRegionCode('');
+      }
+    } else {
+      setSelectedRegionCode('');
+    }
+    setSelectedProvinceCode('');
+    setSelectedMunicipalityCode('');
+    setSelectedBarangayCode('');
+
     setIsCreateModalOpen(true);
   };
 
@@ -2088,11 +2216,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                           value={formRenewalPolicy} onChange={(e) => setFormRenewalPolicy(e.target.value as RenewalPolicy)}
                           className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
                         >
-                          <option value="No Renewal">No Renewal</option>
-                          <option value="Automatic Renewal">Automatic Renewal</option>
-                          <option value="Conditional Renewal">Conditional Renewal</option>
-                          <option value="Annual Reapplication">Annual Reapplication</option>
                           <option value="Semester Renewal">Semester Renewal</option>
+                          <option value="No Renewal">No Renewal</option>
+                          <option value="Annual Reapplication">Annual Reapplication</option>
                         </select>
                       </div>
                       <div>
@@ -2855,7 +2981,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             providerDetails={providerDetails}
             programsList={programsList}
             showToast={showToast}
-            setIsCreateModalOpen={setIsCreateModalOpen}
+            setIsCreateModalOpen={(open) => open ? handleOpenCreateProgram() : setIsCreateModalOpen(false)}
             setActiveTab={setActiveTab}
             handleViewDetails={handleViewDetails}
             handleEditProgram={handleEditProgram}
