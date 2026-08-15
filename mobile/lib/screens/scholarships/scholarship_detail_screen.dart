@@ -66,7 +66,7 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
 
     final stipendAmt = program?['stipend_amount'] != null ? '₱${program?['stipend_amount']}' : '₱0';
     final amountText = coversStipend ? stipendAmt : (coversTuition ? 'Tuition Covered' : 'Varies');
-    final periodText = coversStipend ? 'per sem' : '';
+    final periodText = coversStipend ? 'per semester' : '';
     final budgetStr = amountText;
     final slotsStr = program?['total_slots']?.toString() ?? 'Unlimited';
 

@@ -488,6 +488,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
         .select(`
           id,
           title,
+          budget_total,
           covers_tuition,
           covers_stipend,
           stipend_amount,
@@ -508,17 +509,13 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       if (error) throw error;
       if (data) {
         const formatted: ScholarshipAdminView[] = data.map((p: any) => {
-          let val = 0;
-          if (p.covers_tuition) val += 15000; // estimated/average representation for semantic sorting/display
-          if (p.covers_stipend && p.stipend_amount) val += Number(p.stipend_amount) * 5; // monthly * 5 months/sem
-          if (p.covers_allowance && p.allowance_amount) val += Number(p.allowance_amount);
-
+          const realValue = p.budget_total || 0;
           return {
             id: p.id,
             title: p.title,
             providerName: p.provider?.name || 'Unknown Provider',
             category: p.scholarship_categories?.name || 'Uncategorized',
-            amount: val || 0,
+            amount: realValue,
             status: (p.status === 'active' || p.status === 'Active' || p.status === 'approved' || p.status === 'Approved' ? 'Approved' : p.status === 'closed' ? 'Suspended' : p.status === 'paused' ? 'Rejected' : 'Pending Review') as any,
             dateCreated: new Date(p.created_at).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' })
           };

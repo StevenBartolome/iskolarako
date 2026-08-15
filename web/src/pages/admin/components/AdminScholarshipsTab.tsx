@@ -54,7 +54,7 @@ export const AdminScholarshipsTab: React.FC<AdminScholarshipsTabProps> = ({
                   <td className="py-4 font-bold text-[#1C1C1E]">{s.title}</td>
                   <td>{s.providerName}</td>
                   <td>{s.category}</td>
-                  <td className="font-semibold text-[#2D5941]">₱{s.amount.toLocaleString()}/sem</td>
+                  <td className="font-semibold text-[#2D5941]">₱{s.amount.toLocaleString()}</td>
                   <td>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                       s.status === 'Published' ? 'bg-[#EBF5EE] text-[#2D5941]' :
