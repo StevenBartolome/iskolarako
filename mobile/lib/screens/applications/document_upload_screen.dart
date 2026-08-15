@@ -524,6 +524,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       final uploadedDocsList = _docs
           .where((d) => d.status == _DocStatus.uploaded)
           .map((d) => {
+                'name': d.name,
                 'document_name': d.name,
                 'filename': d.filename,
                 'filesize': d.filesize,

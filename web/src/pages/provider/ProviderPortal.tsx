@@ -820,21 +820,66 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
             let docs: SubmittedDocItem[] = [];
             if (app.submitted_documents) {
+              let rawDocs: any[] = [];
               if (Array.isArray(app.submitted_documents)) {
-                docs = [...app.submitted_documents];
+                rawDocs = app.submitted_documents;
               } else if (app.submitted_documents.documents && Array.isArray(app.submitted_documents.documents)) {
-                docs = [...app.submitted_documents.documents];
+                rawDocs = app.submitted_documents.documents;
               }
+              docs = rawDocs.map((d: any) => ({
+                id: d.id,
+                name: d.name || d.document_name || d.filename || 'Submitted Document',
+                filename: d.filename || d.name || d.document_name,
+                filesize: d.filesize,
+                document_url: d.document_url || d.url,
+                url: d.document_url || d.url,
+                submitted_at: d.submitted_at || (app.created_at ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently'),
+                status: d.status || (d.verification_status === 'verified' ? 'Verified' : d.verification_status === 'rejected' ? 'Flagged' : 'Pending'),
+                remarks: d.remarks || ''
+              }));
             }
 
             if (scholarDocsMap[scholar.id]) {
-              const existingNames = new Set(docs.map(d => d.name));
+              const existingNames = new Set(docs.map(d => (d.name || '').toLowerCase().trim()));
+              const existingUrls = new Set(docs.map(d => (d.document_url || d.url || '').toLowerCase().trim()).filter(Boolean));
+              const existingFiles = new Set(docs.map(d => (d.filename || '').toLowerCase().trim()).filter(Boolean));
+
               scholarDocsMap[scholar.id].forEach(sd => {
-                if (!existingNames.has(sd.name)) {
+                const sdName = (sd.name || '').toLowerCase().trim();
+                const sdUrl = (sd.document_url || sd.url || '').toLowerCase().trim();
+                const sdFile = (sd.filename || '').toLowerCase().trim();
+
+                const isDup = (sdName && existingNames.has(sdName)) ||
+                              (sdUrl && existingUrls.has(sdUrl)) ||
+                              (sdFile && existingFiles.has(sdFile));
+
+                if (!isDup) {
                   docs.push(sd);
+                  if (sdName) existingNames.add(sdName);
+                  if (sdUrl) existingUrls.add(sdUrl);
+                  if (sdFile) existingFiles.add(sdFile);
                 }
               });
             }
+
+            // Final strict deduplication of docs list
+            const uniqueDocsList: SubmittedDocItem[] = [];
+            const seenNamesSet = new Set<string>();
+            const seenUrlsSet = new Set<string>();
+
+            for (const docItem of docs) {
+              const nKey = (docItem.name || '').toLowerCase().trim();
+              const uKey = (docItem.document_url || docItem.url || docItem.filename || '').toLowerCase().trim();
+              const isDupN = nKey && seenNamesSet.has(nKey);
+              const isDupU = uKey && seenUrlsSet.has(uKey);
+
+              if (!isDupN && !isDupU) {
+                if (nKey) seenNamesSet.add(nKey);
+                if (uKey) seenUrlsSet.add(uKey);
+                uniqueDocsList.push(docItem);
+              }
+            }
+            docs = uniqueDocsList;
 
             return {
               id: app.id,
@@ -888,21 +933,66 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
             let docs: SubmittedDocItem[] = [];
             if (app.submitted_documents) {
+              let rawDocs: any[] = [];
               if (Array.isArray(app.submitted_documents)) {
-                docs = [...app.submitted_documents];
+                rawDocs = app.submitted_documents;
               } else if (app.submitted_documents.documents && Array.isArray(app.submitted_documents.documents)) {
-                docs = [...app.submitted_documents.documents];
+                rawDocs = app.submitted_documents.documents;
               }
+              docs = rawDocs.map((d: any) => ({
+                id: d.id,
+                name: d.name || d.document_name || d.filename || 'Submitted Document',
+                filename: d.filename || d.name || d.document_name,
+                filesize: d.filesize,
+                document_url: d.document_url || d.url,
+                url: d.document_url || d.url,
+                submitted_at: d.submitted_at || 'Recently',
+                status: d.status || 'Pending',
+                remarks: d.remarks || ''
+              }));
             }
 
             if (scholarDocsMap[scholar.id]) {
-              const existingNames = new Set(docs.map(d => d.name));
+              const existingNames = new Set(docs.map(d => (d.name || '').toLowerCase().trim()));
+              const existingUrls = new Set(docs.map(d => (d.document_url || d.url || '').toLowerCase().trim()).filter(Boolean));
+              const existingFiles = new Set(docs.map(d => (d.filename || '').toLowerCase().trim()).filter(Boolean));
+
               scholarDocsMap[scholar.id].forEach(sd => {
-                if (!existingNames.has(sd.name)) {
+                const sdName = (sd.name || '').toLowerCase().trim();
+                const sdUrl = (sd.document_url || sd.url || '').toLowerCase().trim();
+                const sdFile = (sd.filename || '').toLowerCase().trim();
+
+                const isDup = (sdName && existingNames.has(sdName)) ||
+                              (sdUrl && existingUrls.has(sdUrl)) ||
+                              (sdFile && existingFiles.has(sdFile));
+
+                if (!isDup) {
                   docs.push(sd);
+                  if (sdName) existingNames.add(sdName);
+                  if (sdUrl) existingUrls.add(sdUrl);
+                  if (sdFile) existingFiles.add(sdFile);
                 }
               });
             }
+
+            // Final strict deduplication of docs list
+            const uniqueDocsList: SubmittedDocItem[] = [];
+            const seenNamesSet = new Set<string>();
+            const seenUrlsSet = new Set<string>();
+
+            for (const docItem of docs) {
+              const nKey = (docItem.name || '').toLowerCase().trim();
+              const uKey = (docItem.document_url || docItem.url || docItem.filename || '').toLowerCase().trim();
+              const isDupN = nKey && seenNamesSet.has(nKey);
+              const isDupU = uKey && seenUrlsSet.has(uKey);
+
+              if (!isDupN && !isDupU) {
+                if (nKey) seenNamesSet.add(nKey);
+                if (uKey) seenUrlsSet.add(uKey);
+                uniqueDocsList.push(docItem);
+              }
+            }
+            docs = uniqueDocsList;
 
             const appDetail: ApplicationDetail = {
               id: app.id,

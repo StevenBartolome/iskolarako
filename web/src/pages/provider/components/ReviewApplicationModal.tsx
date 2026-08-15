@@ -76,6 +76,35 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
         }
       }
 
+      // Normalize document items so name, filename, and URLs are always populated
+      docs = docs.map((d: any) => ({
+        ...d,
+        name: d.name || d.document_name || d.filename || 'Submitted Document',
+        filename: d.filename || d.name || d.document_name,
+        document_url: d.document_url || d.url,
+        url: d.url || d.document_url,
+      }));
+
+      // Strict deduplication by name and document_url / filename
+      const uniqueDocs: SubmittedDocItem[] = [];
+      const seenNames = new Set<string>();
+      const seenUrls = new Set<string>();
+
+      for (const item of docs) {
+        const nameKey = (item.name || '').toLowerCase().trim();
+        const urlKey = (item.document_url || item.url || item.filename || '').toLowerCase().trim();
+
+        const isDupName = nameKey && seenNames.has(nameKey);
+        const isDupUrl = urlKey && seenUrls.has(urlKey);
+
+        if (!isDupName && !isDupUrl) {
+          if (nameKey) seenNames.add(nameKey);
+          if (urlKey) seenUrls.add(urlKey);
+          uniqueDocs.push(item);
+        }
+      }
+      docs = uniqueDocs;
+
       // If no docs in JSON, create standard checklist items based on application data
       if (docs.length === 0) {
         docs = [
