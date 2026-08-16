@@ -16,6 +16,7 @@ import { AdminNotificationsTab } from './components/AdminNotificationsTab';
 import { AdminUsersTab } from './components/AdminUsersTab';
 import { AdminLogsTab } from './components/AdminLogsTab';
 import { AdminSettingsTab } from './components/AdminSettingsTab';
+import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
 import type {
   SystemAdminPortalProps,
   AdminTab,
@@ -1131,6 +1132,13 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       remarks = customRemarks;
     }
 
+    // A suspended provider must re-upload and re-submit before being approved again
+    const currentStatus = providers.find(p => p.id === id)?.status;
+    if (nextStatus === 'Verified' && currentStatus === 'Suspended') {
+      showToast('Cannot approve a suspended provider. They must re-upload and re-submit their documents first.');
+      return;
+    }
+
     // Determine DB status
     let dbStatus = 'pending';
     if (nextStatus === 'Verified') dbStatus = 'verified';
@@ -1436,6 +1444,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
                   {renderSidebarBtn('users', 'Admins & Roles', '👥')}
                   {renderSidebarBtn('logs', 'System Audit Logs', '📝')}
                   {renderSidebarBtn('settings', 'System Settings', '⚙️')}
+                  {renderSidebarBtn('profile', 'Profile Settings', '👤')}
                 </div>
               )}
             </div>
@@ -1496,7 +1505,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-extrabold text-[#1A3C2E] font-serif capitalize">
-              {activeTab === 'logs' ? 'System Audit Logs' : activeTab === 'funds' ? 'Fund Release Monitoring' : activeTab === 'providers' ? 'Provider Management' : activeTab}
+              {activeTab === 'logs' ? 'System Audit Logs' : activeTab === 'funds' ? 'Fund Release Monitoring' : activeTab === 'providers' ? 'Provider Management' : activeTab === 'profile' ? 'Profile Settings' : activeTab}
             </h1>
             <p className="text-xs text-[#6C6C70] mt-1">
               System Administration, trust moderation, and oversight metrics.
@@ -1653,6 +1662,13 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             handleSaveRequirements={handleSaveRequirements}
           />
         )}
+
+        {activeTab === 'profile' && (
+          <ProfileSettingsTab
+            showToast={showToast}
+            onProfileUpdated={(updated) => setProfile(prev => prev ? { ...prev, ...updated } : prev)}
+          />
+        )}
       </main>
 
       {/* Reject Remarks Modal */}
@@ -1662,6 +1678,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
         setRejectRemarks={setRejectRemarks}
         onClose={() => setIsRejectModalOpen(false)}
         onConfirm={() => handleVerifyProvider(rejectProviderId, 'Suspended', rejectRemarks)}
+        mode={providers.find(p => p.id === rejectProviderId)?.status === 'Verified' ? 'suspend' : 'reject'}
       />
 
       {/* Scholarship View Details Modal for Admin */}

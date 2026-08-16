@@ -15,6 +15,7 @@ import { ProviderDisbursementsTab } from './components/ProviderDisbursementsTab'
 import { ProviderAnnouncementsTab } from './components/ProviderAnnouncementsTab';
 import { ProviderReportsTab } from './components/ProviderReportsTab';
 import { ProviderVerificationTab } from './components/ProviderVerificationTab';
+import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
 import type {
   ProviderPortalProps,
   TabType,
@@ -72,6 +73,15 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   // Uploading and submission indicators
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const [submittingVerification, setSubmittingVerification] = useState(false);
+
+  // Tracks whether the provider has edited/re-uploaded a document in the current status window
+  const [hasModifiedDocs, setHasModifiedDocs] = useState(false);
+
+  // Reset the modification flag whenever the verification status changes,
+  // so a resubmission always requires a fresh document edit/re-upload
+  useEffect(() => {
+    setHasModifiedDocs(false);
+  }, [providerDetails?.verificationStatus]);
 
   const fetchRequirementsConfig = async (providerType: string) => {
     try {
@@ -2140,6 +2150,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         requirementsSubmitted: updatedReqs
       } : null);
 
+      setHasModifiedDocs(true);
       showToast(`Successfully uploaded ${fieldName}!`);
     } catch (err: any) {
       console.error('Error uploading document:', err);
@@ -3028,6 +3039,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   {renderSidebarItem('applicants', 'Applicants & Scholars', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>)}
                   {renderSidebarItem('programs', 'Programs', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>)}
                   {renderSidebarItem('verification', 'Verification Org', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>)}
+                  {renderSidebarItem('profile', 'Profile Settings', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>)}
                 </div>
               )}
             </div>
@@ -3214,6 +3226,20 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             uploadingDoc={uploadingDoc}
             handleUploadDocument={handleUploadDocument}
             handleSubmitVerification={handleSubmitVerification}
+            hasModifiedDocs={hasModifiedDocs}
+            onDocsModified={() => setHasModifiedDocs(true)}
+          />
+        )}
+
+        {activeTab === 'profile' && (
+          <ProfileSettingsTab
+            showToast={showToast}
+            providerDetails={providerDetails ? { id: providerDetails.id, name: providerDetails.name } : null}
+            onProfileUpdated={(updated) => setProfile(prev => prev ? { ...prev, ...updated } : prev)}
+            onProviderUpdated={(name) => {
+              setProviderDetails(prev => prev ? { ...prev, name } : prev);
+              setProfile(prev => prev ? { ...prev, providerName: name } : prev);
+            }}
           />
         )}
       </main>

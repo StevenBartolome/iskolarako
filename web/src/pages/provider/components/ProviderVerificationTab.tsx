@@ -13,6 +13,8 @@ interface ProviderVerificationTabProps {
   uploadingDoc: string | null;
   handleUploadDocument: (docName: string, file: File) => void;
   handleSubmitVerification: () => void;
+  hasModifiedDocs: boolean;
+  onDocsModified: () => void;
 }
 
 export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = ({
@@ -26,6 +28,8 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
   uploadingDoc,
   handleUploadDocument,
   handleSubmitVerification,
+  hasModifiedDocs,
+  onDocsModified,
 }) => {
   return (
     <div className="space-y-8 animate-fade-in">
@@ -176,6 +180,8 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                             const updatedReqs = { ...providerDetails.requirementsSubmitted };
                             delete updatedReqs[doc.name];
                             
+                            onDocsModified();
+
                             // Update local state
                             setProviderDetails({
                               ...providerDetails,
@@ -244,13 +250,18 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
 
         {/* Submit Action */}
         {providerDetails && providerDetails.verificationStatus !== 'verified' && providerDetails.verificationStatus !== 'under_review' && profile?.role === 'provider' && (
-          <div className="border-t border-[#D9D2C5]/40 pt-6 flex justify-end">
+          <div className="border-t border-[#D9D2C5]/40 pt-6 flex flex-col items-end gap-3">
+            {!hasModifiedDocs && (
+              <p className="text-xs text-[#6C6C70] font-sans bg-[#FFF8EE] border border-[#C97B2E]/20 text-[#C97B2E] px-4 py-2.5 rounded-xl">
+                Edit and re-upload your documents above to enable the submit button.
+              </p>
+            )}
             <button
               type="button"
               onClick={handleSubmitVerification}
-              disabled={submittingVerification || uploadingDoc !== null}
+              disabled={submittingVerification || uploadingDoc !== null || !hasModifiedDocs}
               className={`px-8 py-3.5 rounded-xl font-bold text-sm shadow-md transition-all border border-[#1A3C2E]/10 cursor-pointer ${
-                submittingVerification || uploadingDoc !== null
+                submittingVerification || uploadingDoc !== null || !hasModifiedDocs
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400'
                   : 'bg-[#2D5941] hover:bg-[#1A3C2E] text-white'
               }`}

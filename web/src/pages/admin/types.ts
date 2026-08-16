@@ -15,7 +15,8 @@ export type AdminTab =
   | 'notifications'
   | 'users'
   | 'logs'
-  | 'settings';
+  | 'settings'
+  | 'profile';
 
 export interface ProviderOrg {
   id: any;

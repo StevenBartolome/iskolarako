@@ -6,6 +6,7 @@ interface RejectRemarksModalProps {
   setRejectRemarks: (val: string) => void;
   onClose: () => void;
   onConfirm: () => void;
+  mode?: 'reject' | 'suspend';
 }
 
 export const RejectRemarksModal: React.FC<RejectRemarksModalProps> = ({
@@ -14,8 +15,11 @@ export const RejectRemarksModal: React.FC<RejectRemarksModalProps> = ({
   setRejectRemarks,
   onClose,
   onConfirm,
+  mode = 'reject',
 }) => {
   if (!isOpen) return null;
+
+  const isSuspend = mode === 'suspend';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
@@ -27,20 +31,28 @@ export const RejectRemarksModal: React.FC<RejectRemarksModalProps> = ({
           ✕
         </button>
 
-        <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">Rejection Feedback</h3>
+        <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">
+          {isSuspend ? 'Suspend Provider' : 'Rejection Feedback'}
+        </h3>
         <p className="text-xs text-[#6C6C70]">
-          Enter the reason or feedback for rejecting the provider's verification documents. This will be visible to the provider.
+          {isSuspend
+            ? "Enter the reason for suspending this provider. The provider will be required to re-upload and re-submit their verification documents before they can be approved again."
+            : "Enter the reason or feedback for rejecting the provider's verification documents. This will be visible to the provider."}
         </p>
 
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
-              Remarks / Feedback
+              {isSuspend ? 'Suspension Reason *' : 'Remarks / Feedback'}
             </label>
             <textarea
               value={rejectRemarks}
               onChange={(e) => setRejectRemarks(e.target.value)}
-              placeholder="e.g. Document copy is blurry. Please upload a clear scan of your COR."
+              placeholder={
+                isSuspend
+                  ? 'e.g. Violation of scholarship posting guidelines. Please review and resubmit updated documents.'
+                  : 'e.g. Document copy is blurry. Please upload a clear scan of your COR.'
+              }
               rows={4}
               className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm font-semibold bg-white"
             />
@@ -59,7 +71,7 @@ export const RejectRemarksModal: React.FC<RejectRemarksModalProps> = ({
               onClick={onConfirm}
               className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white py-3.5 rounded-xl text-sm font-bold shadow-md cursor-pointer transition-all border-0"
             >
-              Confirm Rejection
+              {isSuspend ? 'Confirm Suspension' : 'Confirm Rejection'}
             </button>
           </div>
         </div>

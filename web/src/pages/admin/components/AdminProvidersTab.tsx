@@ -182,7 +182,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
 
                 {selectedProvider.remarks && (
                   <div className="bg-red-50/50 border border-red-200/40 text-red-900 rounded-xl p-4 text-xs font-sans space-y-1">
-                    <strong>Active Rejection Remarks:</strong>
+                    <strong>{selectedProvider.status === 'Suspended' ? 'Active Suspension Remarks:' : 'Active Rejection Remarks:'}</strong>
                     <p className="leading-relaxed">{selectedProvider.remarks}</p>
                   </div>
                 )}
@@ -258,29 +258,42 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                 </div>
 
                 <div className="flex flex-col gap-2 pt-4 border-t border-[#D9D2C5]">
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyProvider(selectedProvider.id, 'Verified')}
-                      className="flex-1 bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
-                      className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleVerifyProvider(selectedProvider.id, 'Under Review')}
-                    className="w-full bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1C1C1E] text-xs font-bold py-2 rounded-xl cursor-pointer border-0 transition-all text-center"
-                  >
-                    Mark as Under Review
-                  </button>
+                  {selectedProvider.status === 'Verified' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
+                        className="w-full bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
+                      >
+                        ⛔ Suspend with Remarks
+                      </button>
+                      <p className="text-[10px] text-[#6C6C70] font-sans text-center leading-relaxed">
+                        Suspending requires the provider to re-upload and re-submit their verification documents.
+                      </p>
+                    </>
+                  ) : selectedProvider.status === 'Suspended' ? (
+                    <div className="bg-amber-50 border border-amber-200/60 text-amber-900 rounded-xl p-3 text-xs font-sans leading-relaxed">
+                      This provider is <strong>suspended</strong>. Approval is locked until they re-upload and re-submit
+                      their verification documents.
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyProvider(selectedProvider.id, 'Verified')}
+                        className="flex-1 bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
+                        className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
