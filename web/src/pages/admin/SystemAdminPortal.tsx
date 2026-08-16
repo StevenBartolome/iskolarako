@@ -24,7 +24,6 @@ import type {
   ScholarshipAdminView,
   StudentAdminView,
   AdminReport,
-  TransactionRecord,
   AuditLogEntry,
   RequirementItem,
 } from './types';
@@ -342,12 +341,6 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     { id: 1002, reportedEntity: 'ABC Tech Innovators Grant', type: 'Scholarship', reason: 'Misleading description of benefits', reporter: 'Student #11054', status: 'Under Investigation', date: 'Aug 09, 2026' }
   ]);
 
-  const [transactions] = useState<TransactionRecord[]>([
-    { id: 'TXN-82931', provider: 'Department of Science and Technology', scholar: 'Maria Santos', amount: 5000, status: 'COMPLETED', reference: 'REF-DOST-99281', date: 'Aug 09, 2026' },
-    { id: 'TXN-82932', provider: 'Department of Science and Technology', scholar: 'Juan Dela Cruz', amount: 5000, status: 'COMPLETED', reference: 'REF-DOST-99282', date: 'Aug 09, 2026' },
-    { id: 'TXN-82933', provider: 'ABC Foundation', scholar: 'Ethan Gomez', amount: 3500, status: 'PENDING', reference: 'REF-ABC-44120', date: 'Aug 08, 2026' },
-    { id: 'TXN-82934', provider: 'Starlight Grants Inc.', scholar: 'Angelo Reyes', amount: 6000, status: 'FAILED', reference: 'REF-STAR-11029', date: 'Aug 04, 2026' }
-  ]);
 
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([
     { id: 901, admin: 'admin01', action: 'LOGIN', target: 'System', date: 'Aug 09, 2026', time: '06:30 PM', ip: '192.168.1.45' },
@@ -1588,7 +1581,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
           />
         )}
 
-        {activeTab === 'funds' && <AdminFundsTab transactions={transactions} />}
+        {activeTab === 'funds' && <AdminFundsTab />}
 
         {activeTab === 'notifications' && (
           <AdminNotificationsTab
