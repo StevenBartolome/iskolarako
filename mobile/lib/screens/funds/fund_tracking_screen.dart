@@ -4,33 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/app_components.dart';
-
-class _ProviderDisbursement {
-  final String providerName;
-  final String scholarshipName;
-  final String amount;
-  final String date;
-  final IconData icon;
-  final String txHash;
-  final List<_DisbursementBreakdownItem> breakdown;
-
-  const _ProviderDisbursement({
-    required this.providerName,
-    required this.scholarshipName,
-    required this.amount,
-    required this.date,
-    required this.icon,
-    required this.txHash,
-    required this.breakdown,
-  });
-}
-
-class _DisbursementBreakdownItem {
-  final String label;
-  final String value;
-
-  const _DisbursementBreakdownItem({required this.label, required this.value});
-}
+import 'package:iskoako/services/blockchain_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class FundTrackingScreen extends StatefulWidget {
   const FundTrackingScreen({super.key});
@@ -40,46 +16,119 @@ class FundTrackingScreen extends StatefulWidget {
 }
 
 class _FundTrackingScreenState extends State<FundTrackingScreen> {
-  int? _expandedIndex = 0; // First item expanded by default
+  int? _expandedIndex = 0;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _releasesData = [];
 
-  // Aligned Provider Disbursements List
-  final List<_ProviderDisbursement> _providerDisbursements = [
-    _ProviderDisbursement(
-      providerName: 'CHED',
-      scholarshipName: 'Undergraduate Stipend (Q3)',
-      amount: '₱ 40,000.00',
-      date: 'Oct 15, 2026 · 10:22 AM',
-      icon: LucideIcons.graduationCap,
-      txHash: '0x8fB3c19A2d4eF57b9aC0d2e314aa19bC3f7e9a12',
-      breakdown: [
-        _DisbursementBreakdownItem(label: 'Tuition Support', value: '₱ 20,000.00'),
-        _DisbursementBreakdownItem(label: 'Monthly Stipend (x2)', value: '₱ 16,000.00'),
-        _DisbursementBreakdownItem(label: 'Book Allowance', value: '₱ 4,000.00'),
-      ],
-    ),
-    _ProviderDisbursement(
-      providerName: 'SM Foundation',
-      scholarshipName: 'SM Scholarship Allowance',
-      amount: '₱ 15,000.00',
-      date: 'Jul 15, 2026 · 2:30 PM',
-      icon: LucideIcons.landmark,
-      txHash: '0x7aC2c19B1c4eE57a9bA0d1e314bb19aB3f6c8a24',
-      breakdown: [
-        _DisbursementBreakdownItem(label: 'Monthly Living Allowance', value: '₱ 15,000.00'),
-      ],
-    ),
-    _ProviderDisbursement(
-      providerName: 'DOST-SEI',
-      scholarshipName: 'DOST Book Allowance',
-      amount: '₱ 10,000.00',
-      date: 'Jun 01, 2026 · 9:00 AM',
-      icon: LucideIcons.building,
-      txHash: '0x9eD4c19C3d4fF57b9cB0d3e414cc19cC3f8d9a35',
-      breakdown: [
-        _DisbursementBreakdownItem(label: 'Semester Book stipend', value: '₱ 10,000.00'),
-      ],
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchFundReleases();
+  }
+
+  Future<void> _fetchFundReleases() async {
+    setState(() => _isLoading = true);
+    try {
+      // PostgREST query to join scholar, scholarship_programs and provider
+      final response = await Supabase.instance.client
+          .from('fund_releases')
+          .select('''
+            *,
+            scholar:scholar_id(first_name, last_name, school),
+            scholarship_programs:program_id(title, provider:provider_id(name))
+          ''')
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          _releasesData = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Primary query error, attempting simple select: $e');
+      try {
+        final simpleResponse = await Supabase.instance.client
+            .from('fund_releases')
+            .select('*')
+            .order('created_at', ascending: false);
+
+        if (mounted) {
+          setState(() {
+            _releasesData = List<Map<String, dynamic>>.from(simpleResponse);
+            _isLoading = false;
+          });
+        }
+      } catch (err) {
+        debugPrint('Error fetching fund releases: $err');
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
+
+  double get _totalDisbursedAmount {
+    double total = 0.0;
+    for (final item in _releasesData) {
+      final amt = item['amount'];
+      if (amt != null) {
+        total += (amt is num) ? amt.toDouble() : (double.tryParse(amt.toString()) ?? 0.0);
+      }
+    }
+    return total;
+  }
+
+  String _formatAmount(dynamic amount) {
+    if (amount == null) return '₱ 0.00';
+    final double val = (amount is num) ? amount.toDouble() : (double.tryParse(amount.toString()) ?? 0.0);
+    final String formatted = val.toStringAsFixed(2).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '₱ $formatted';
+  }
+
+  String _formatDate(dynamic dateStr) {
+    if (dateStr == null) return 'N/A';
+    try {
+      final dt = DateTime.parse(dateStr.toString()).toLocal();
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} · $hour:$minute $ampm';
+    } catch (_) {
+      return dateStr.toString();
+    }
+  }
+
+  String _getProviderName(Map<String, dynamic> item) {
+    final providerName = item['scholarship_programs']?['provider']?['name'] ??
+        item['program']?['provider']?['name'];
+    if (providerName != null && providerName.toString().isNotEmpty) {
+      return providerName.toString();
+    }
+    return 'Scholarship Provider';
+  }
+
+  String _getScholarshipTitle(Map<String, dynamic> item) {
+    final title = item['scholarship_programs']?['title'] ?? item['program']?['title'];
+    if (title != null && title.toString().isNotEmpty) {
+      return title.toString();
+    }
+    return 'Scholarship Grant';
+  }
+
+  String _getScholarName(Map<String, dynamic> item) {
+    if (item['scholar'] != null && item['scholar'] is Map) {
+      final first = item['scholar']['first_name'] ?? '';
+      final last = item['scholar']['last_name'] ?? '';
+      final fullName = '$first $last'.trim();
+      if (fullName.isNotEmpty) return fullName;
+    }
+    return 'Scholar Recipient';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -167,21 +216,70 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
             ),
           ),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-              child: Column(
-                children: [
-                  const SizedBox(height: 8),
-                  _buildHeroAmountCard(),
-                  const SizedBox(height: 16),
-                  _buildTransactionDetails(),
-                  const SizedBox(height: 16),
-                  _buildBlockchainRecord(context),
-                  const SizedBox(height: 20),
-                  _buildLedger(),
-                  _buildScholarsDisbursements(),
-                ],
-              ),
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _fetchFundReleases,
+                    color: AppColors.primary,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 8),
+                          _buildHeroAmountCard(),
+                          const SizedBox(height: 16),
+                          if (_releasesData.isNotEmpty) ...[
+                            _buildTransactionDetails(),
+                            const SizedBox(height: 16),
+                            _buildBlockchainRecord(context),
+                            const SizedBox(height: 20),
+                            _buildLedger(),
+                            const SizedBox(height: 16),
+                            _buildScholarsDisbursements(),
+                          ] else
+                            _buildEmptyState(),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.rule),
+      ),
+      child: Column(
+        children: [
+          const Icon(LucideIcons.inbox, size: 48, color: AppColors.textMuted),
+          const SizedBox(height: 16),
+          Text(
+            'No Fund Disbursements Yet',
+            style: GoogleFonts.playfairDisplay(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'When providers release scholarship funds, the transaction details and immutable blockchain records will appear here.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              height: 1.5,
             ),
           ),
         ],
@@ -192,7 +290,7 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
   Widget _buildHeroAmountCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(28),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [AppColors.primaryDark, AppColors.primaryLight],
@@ -212,8 +310,8 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
         children: [
           // Stamp ring
           Container(
-            width: 72,
-            height: 72,
+            width: 64,
+            height: 64,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
@@ -221,18 +319,18 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
             ),
             child: Center(
               child: Container(
-                width: 52,
-                height: 52,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.white.withAlpha(18),
                 ),
                 child: const Icon(LucideIcons.wallet,
-                    color: Colors.white, size: 26),
+                    color: Colors.white, size: 24),
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Text(
             'Total Amount Disbursed',
             style: GoogleFonts.inter(
@@ -243,13 +341,16 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            '₱ 65,000.00',
-            style: GoogleFonts.dmMono(
-              color: Colors.white,
-              fontSize: 36,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -1,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              _formatAmount(_totalDisbursedAmount),
+              style: GoogleFonts.dmMono(
+                color: Colors.white,
+                fontSize: 34,
+                fontWeight: FontWeight.w500,
+                letterSpacing: -1,
+              ),
             ),
           ),
           const SizedBox(height: 4),
@@ -260,21 +361,25 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
               fontSize: 11,
             ),
           ),
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _HeroBadge(
-                icon: LucideIcons.checkCircle2,
-                label: 'PayMongo Transfer',
-              ),
-              const SizedBox(width: 8),
-              _HeroBadge(
-                icon: LucideIcons.shieldCheck,
-                label: 'Blockchain Logged',
-                isGold: true,
-              ),
-            ],
+          const SizedBox(height: 16),
+          // FittedBox prevents 22px right overflow bug
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const _HeroBadge(
+                  icon: LucideIcons.checkCircle2,
+                  label: 'PayMongo Transfer',
+                ),
+                const SizedBox(width: 8),
+                const _HeroBadge(
+                  icon: LucideIcons.shieldCheck,
+                  label: 'Blockchain Logged',
+                  isGold: true,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -282,6 +387,18 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
   }
 
   Widget _buildTransactionDetails() {
+    final latest = _releasesData.firstWhere(
+      (r) => r['blockchain_tx_hash'] != null && r['blockchain_tx_hash'].toString().isNotEmpty,
+      orElse: () => _releasesData.first,
+    );
+
+    final providerName = _getProviderName(latest);
+    final scholarName = _getScholarName(latest);
+    final amountStr = _formatAmount(latest['amount']);
+    final dateStr = _formatDate(latest['created_at']);
+    final paymongoId = latest['paymongo_payment_id']?.toString() ?? 'Pending';
+    final paymongoStatus = latest['paymongo_status']?.toString() ?? 'processed';
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,20 +412,19 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          _TxRow(label: 'From', value: 'CHED — Scholarship Fund'),
-          _TxRow(
-              label: 'To', value: 'Juan dela Cruz · BPI ×4821'),
+          _TxRow(label: 'From', value: providerName),
+          _TxRow(label: 'To', value: scholarName),
           _TxRow(
               label: 'Amount',
-              value: '₱ 40,000.00',
+              value: amountStr,
               valueColor: AppColors.primary,
               isMono: true),
-          _TxRow(label: 'Date & Time', value: 'Oct 15, 2026 · 10:22 AM'),
+          _TxRow(label: 'Date & Time', value: dateStr),
           _TxRow(
-              label: 'Payment via', value: 'PayMongo · Instant Transfer'),
+              label: 'Payment via', value: 'PayMongo · $paymongoStatus'),
           _TxRow(
               label: 'Reference No.',
-              value: 'PM-20261015-84729',
+              value: paymongoId,
               isMono: true),
         ],
       ),
@@ -316,6 +432,14 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
   }
 
   Widget _buildBlockchainRecord(BuildContext context) {
+    final latest = _releasesData.firstWhere(
+      (r) => r['blockchain_tx_hash'] != null && r['blockchain_tx_hash'].toString().isNotEmpty,
+      orElse: () => _releasesData.first,
+    );
+    final txHash = latest['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
+    final blockNo = latest['blockchain_block_number']?.toString() ?? 'Pending';
+    final isVerified = latest['blockchain_verified'] == true;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -329,21 +453,26 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(LucideIcons.shieldCheck,
-                      size: 18, color: AppColors.gold),
-                  const SizedBox(width: 8),
-                  Text(
-                    'LATEST BLOCKCHAIN RECORD',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.gold,
-                      letterSpacing: 1.2,
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.shieldCheck,
+                        size: 18, color: AppColors.gold),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'POLYGON BLOCKCHAIN RECORD',
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.gold,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -364,7 +493,7 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'VERIFIED',
+                      isVerified ? 'VERIFIED' : 'PENDING',
                       style: GoogleFonts.inter(
                         fontSize: 9,
                         fontWeight: FontWeight.w800,
@@ -379,7 +508,7 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
           ),
           const SizedBox(height: 14),
           Text(
-            'TRANSACTION HASH',
+            'TRANSACTION HASH (POLYGON AMOY)',
             style: GoogleFonts.inter(
               color: Colors.white.withAlpha(90),
               fontSize: 9,
@@ -387,24 +516,49 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           GestureDetector(
+            onTap: () async {
+              if (txHash.startsWith('0x')) {
+                final url = Uri.parse(BlockchainService.getExplorerUrl(txHash));
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              }
+            },
             onLongPress: () {
-              Clipboard.setData(const ClipboardData(
-                  text: '0x8fB3c19A2d4eF57b9aC0d2e314aa19bC3f7e9a12'));
+              Clipboard.setData(ClipboardData(text: txHash));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                     content: Text('Transaction hash copied to clipboard'),
                     behavior: SnackBarBehavior.floating),
               );
             },
-            child: Text(
-              '0x8fB3c19A2d4eF57b9aC0d2e314aa19bC3f7e9a12',
-              style: GoogleFonts.dmMono(
-                color: Colors.white.withAlpha(170),
-                fontSize: 11,
-                letterSpacing: 0.5,
-                height: 1.4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white.withAlpha(25)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      txHash,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.dmMono(
+                        color: Colors.white.withAlpha(220),
+                        fontSize: 10,
+                        letterSpacing: 0.3,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(LucideIcons.externalLink, color: AppColors.gold, size: 14),
+                ],
               ),
             ),
           ),
@@ -426,9 +580,9 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '#18,472,931',
+                      '#$blockNo',
                       style: GoogleFonts.dmMono(
-                          color: Colors.white.withAlpha(200), fontSize: 13),
+                          color: Colors.white.withAlpha(200), fontSize: 12),
                     ),
                   ],
                 ),
@@ -448,9 +602,9 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'IskolarChain PH',
+                      'Polygon Amoy Testnet',
                       style: GoogleFonts.dmMono(
-                          color: Colors.white.withAlpha(200), fontSize: 13),
+                          color: Colors.white.withAlpha(200), fontSize: 11),
                     ),
                   ],
                 ),
@@ -465,8 +619,8 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'This record is permanently logged on-chain and cannot be altered. '
-            'Long-press the hash to copy. This serves as your tamper-proof receipt.',
+            'This record is permanently logged on Polygon blockchain and cannot be altered. '
+            'Tap hash to view live block explorer proof.',
             style: GoogleFonts.inter(
               color: Colors.white.withAlpha(80),
               fontSize: 11,
@@ -489,16 +643,19 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
           child: ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: 3,
+            itemCount: _releasesData.length,
             separatorBuilder: (_, __) =>
                 Divider(height: 1, color: AppColors.rule),
             itemBuilder: (_, i) {
-              final isRecent = i == 0;
+              final release = _releasesData[i];
+              final title = _getScholarshipTitle(release);
+              final date = _formatDate(release['created_at']);
+              final amount = _formatAmount(release['amount']);
               return _LedgerTile(
-                title: _ledgerTitles[i],
-                date: _ledgerDates[i],
-                amount: _ledgerAmounts[i],
-                isRecent: isRecent,
+                title: title,
+                date: date,
+                amount: '+$amount',
+                isRecent: i == 0,
               );
             },
           ),
@@ -514,9 +671,16 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
         const SizedBox(height: 24),
         const SectionHeading(title: 'Disbursements by Provider'),
         const SizedBox(height: 12),
-        ...List.generate(_providerDisbursements.length, (index) {
-          final item = _providerDisbursements[index];
+        ...List.generate(_releasesData.length, (index) {
           final isExpanded = _expandedIndex == index;
+          final rel = _releasesData[index];
+
+          final providerName = _getProviderName(rel);
+          final scholarshipName = _getScholarshipTitle(rel);
+          final amountStr = _formatAmount(rel['amount']);
+          final dateStr = _formatDate(rel['created_at']);
+          final txHash = rel['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
+          final fundType = rel['fund_type']?.toString().toUpperCase() ?? 'STIPEND';
 
           return AnimatedContainer(
             duration: const Duration(milliseconds: 300),
@@ -561,9 +725,9 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                                 : AppColors.primary.withAlpha(15),
                             shape: BoxShape.circle,
                           ),
-                          child: Center(
+                          child: const Center(
                             child: Icon(
-                              item.icon,
+                              LucideIcons.graduationCap,
                               color: AppColors.primary,
                               size: 18,
                             ),
@@ -575,7 +739,7 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item.providerName,
+                                providerName,
                                 style: GoogleFonts.inter(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -584,7 +748,7 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                item.scholarshipName,
+                                scholarshipName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.inter(
@@ -595,7 +759,7 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                item.date,
+                                dateStr,
                                 style: GoogleFonts.inter(
                                   fontSize: 9,
                                   color: AppColors.textMuted,
@@ -604,31 +768,35 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                             ],
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Row(
-                              children: [
-                                Text(
-                                  item.amount,
-                                  style: GoogleFonts.dmMono(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.primary,
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Row(
+                                children: [
+                                  Text(
+                                    amountStr,
+                                    style: GoogleFonts.dmMono(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primary,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                Icon(
-                                  isExpanded
-                                      ? LucideIcons.chevronUp
-                                      : LucideIcons.chevronDown,
-                                  size: 18,
-                                  color: AppColors.textMuted,
-                                ),
-                              ],
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    isExpanded
+                                        ? LucideIcons.chevronUp
+                                        : LucideIcons.chevronDown,
+                                    size: 16,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ],
+                              ),
                             ),
                             const SizedBox(height: 4),
-                            StatusChip(
+                            const StatusChip(
                               label: 'Released',
                               type: StatusType.released,
                             ),
@@ -657,29 +825,29 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        ...item.breakdown.map((b) => Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    b.label,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  Text(
-                                    b.value,
-                                    style: GoogleFonts.dmMono(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                ],
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '$fundType Grant Support',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
-                            )),
+                              Text(
+                                amountStr,
+                                style: GoogleFonts.dmMono(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         const SizedBox(height: 12),
                         Divider(height: 1, color: AppColors.rule),
                         const SizedBox(height: 10),
@@ -694,8 +862,16 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                         ),
                         const SizedBox(height: 4),
                         GestureDetector(
+                          onTap: () async {
+                            if (txHash.startsWith('0x')) {
+                              final url = Uri.parse(BlockchainService.getExplorerUrl(txHash));
+                              if (await canLaunchUrl(url)) {
+                                await launchUrl(url, mode: LaunchMode.externalApplication);
+                              }
+                            }
+                          },
                           onLongPress: () {
-                            Clipboard.setData(ClipboardData(text: item.txHash));
+                            Clipboard.setData(ClipboardData(text: txHash));
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Transaction hash copied to clipboard'),
@@ -717,15 +893,17 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    item.txHash,
+                                    txHash,
+                                    overflow: TextOverflow.ellipsis,
                                     style: GoogleFonts.dmMono(
                                       fontSize: 10,
                                       color: AppColors.textSecondary,
                                     ),
                                   ),
                                 ),
-                                const Icon(LucideIcons.copy,
-                                    size: 12, color: AppColors.textMuted),
+                                const SizedBox(width: 4),
+                                const Icon(LucideIcons.externalLink,
+                                    size: 12, color: AppColors.primary),
                               ],
                             ),
                           ),
@@ -747,8 +925,6 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
   }
 }
 
-// ─── Support widgets ─────────────────────────────────────────────────────────
-
 class _HeroBadge extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -763,24 +939,24 @@ class _HeroBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withAlpha(18),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.white.withAlpha(35)),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon,
-              size: 13,
+              size: 12,
               color: isGold ? AppColors.gold : Colors.white.withAlpha(200)),
-          const SizedBox(width: 5),
+          const SizedBox(width: 4),
           Text(
             label,
             style: GoogleFonts.inter(
-              fontSize: 11,
-              color:
-                  isGold ? AppColors.gold : Colors.white.withAlpha(200),
+              fontSize: 10,
+              color: isGold ? AppColors.gold : Colors.white.withAlpha(200),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -806,7 +982,7 @@ class _TxRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -817,19 +993,23 @@ class _TxRow extends StatelessWidget {
                 color: AppColors.textSecondary,
                 fontWeight: FontWeight.w500),
           ),
-          Text(
-            value,
-            style: isMono
-                ? GoogleFonts.dmMono(
-                    fontSize: 12,
-                    color: valueColor ?? AppColors.textPrimary,
-                    fontWeight: FontWeight.w500,
-                  )
-                : GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: valueColor ?? AppColors.textPrimary,
-                  ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: isMono
+                  ? GoogleFonts.dmMono(
+                      fontSize: 11,
+                      color: valueColor ?? AppColors.textPrimary,
+                      fontWeight: FontWeight.w500,
+                    )
+                  : GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: valueColor ?? AppColors.textPrimary,
+                    ),
+            ),
           ),
         ],
       ),
@@ -853,12 +1033,12 @@ class _LedgerTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: isRecent
                   ? AppColors.successBg
@@ -867,9 +1047,8 @@ class _LedgerTile extends StatelessWidget {
             ),
             child: Icon(
               LucideIcons.wallet,
-              size: 20,
-              color:
-                  isRecent ? AppColors.primary : AppColors.released,
+              size: 18,
+              color: isRecent ? AppColors.primary : AppColors.released,
             ),
           ),
           const SizedBox(width: 12),
@@ -880,7 +1059,7 @@ class _LedgerTile extends StatelessWidget {
                 Text(
                   title,
                   style: GoogleFonts.inter(
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary),
                 ),
@@ -893,10 +1072,11 @@ class _LedgerTile extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Text(
             amount,
             style: GoogleFonts.dmMono(
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w500,
               color: AppColors.primary,
             ),
@@ -906,11 +1086,3 @@ class _LedgerTile extends StatelessWidget {
     );
   }
 }
-
-const _ledgerTitles = [
-  'CHED Merit Stipend',
-  'SM Foundation Stipend',
-  'DOST Book Allowance',
-];
-const _ledgerDates = ['Oct 15, 2026', 'Jul 15, 2026', 'Jun 01, 2026'];
-const _ledgerAmounts = ['+₱40,000', '+₱15,000', '+₱10,000'];
