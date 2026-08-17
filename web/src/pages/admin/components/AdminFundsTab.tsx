@@ -13,6 +13,10 @@ interface BlockchainEventRecord {
   status: string;
   verified: boolean;
   createdAt: string;
+  bankName: string;
+  accountNumber: string;
+  isBulk: boolean;
+  documentProofUrl?: string;
 }
 
 export const AdminFundsTab: React.FC = () => {
@@ -33,34 +37,45 @@ export const AdminFundsTab: React.FC = () => {
         .select(`
           *,
           scholar:scholar_id(first_name, last_name),
-          scholarship_programs:program_id(title, provider:provider_id(name))
+          scholarship_programs:program_id(title, provider:provider_id(name)),
+          payment_account:payment_account_id(bank_name, account_number, account_name, document_proof_url)
         `)
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        const formatted: BlockchainEventRecord[] = data.map((item: any) => ({
-          id: item.id,
-          txHash: item.blockchain_tx_hash || 'Pending',
-          blockNumber: item.blockchain_block_number || 'Pending',
-          providerName: item.scholarship_programs?.provider?.name || 'Scholarship Provider',
-          scholarName: item.scholar
-            ? `${item.scholar.first_name || ''} ${item.scholar.last_name || ''}`.trim()
-            : 'Scholar Recipient',
-          programTitle: item.scholarship_programs?.title || 'Scholarship Grant',
-          amount: Number(item.amount) || 0,
-          paymongoId: item.paymongo_payment_id || 'Pending',
-          status: item.status || 'released',
-          verified: item.blockchain_verified ?? true,
-          createdAt: item.created_at
-            ? new Date(item.created_at).toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : 'N/A',
-        }));
+        const formatted: BlockchainEventRecord[] = data.map((item: any) => {
+          const pAcc = item.payment_account;
+          const bankName = pAcc?.bank_name || item.recipient_account_snapshot?.bankName || 'Bank Direct';
+          const accountNumber = pAcc?.account_number || item.recipient_account_snapshot?.accountNumber || '';
+
+          return {
+            id: item.id,
+            txHash: item.blockchain_tx_hash || 'Pending',
+            blockNumber: item.blockchain_block_number || 'Pending',
+            providerName: item.scholarship_programs?.provider?.name || 'Scholarship Provider',
+            scholarName: item.scholar
+              ? `${item.scholar.first_name || ''} ${item.scholar.last_name || ''}`.trim()
+              : 'Scholar Recipient',
+            programTitle: item.scholarship_programs?.title || 'Scholarship Grant',
+            amount: Number(item.amount) || 0,
+            paymongoId: item.paymongo_payment_id || 'Pending',
+            status: item.status || 'released',
+            verified: item.blockchain_verified ?? true,
+            bankName,
+            accountNumber,
+            isBulk: !!item.is_bulk_release,
+            documentProofUrl: pAcc?.document_proof_url,
+            createdAt: item.created_at
+              ? new Date(item.created_at).toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : 'N/A',
+          };
+        });
         setBlockchainEvents(formatted);
       }
     } catch (err) {
@@ -85,7 +100,7 @@ export const AdminFundsTab: React.FC = () => {
           </div>
           <h2 className="text-2xl font-extrabold font-serif mt-1">Platform Blockchain Events</h2>
           <p className="text-xs text-white/80 mt-1 max-w-xl">
-            Real-time immutable ledger monitoring every fund release event recorded across all providers.
+            Real-time immutable ledger monitoring every single & batch fund release event recorded across all providers.
           </p>
         </div>
 
@@ -122,7 +137,7 @@ export const AdminFundsTab: React.FC = () => {
           <h4 className="text-2xl font-bold text-[#2D5941] font-serif mt-1">
             ₱{totalOnChainAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </h4>
-          <span className="text-[10px] text-[#6C6C70] mt-1 block">Cross-verified with PayMongo</span>
+          <span className="text-[10px] text-[#6C6C70] mt-1 block">Orchestrated via PayMongo</span>
         </div>
 
         <div className="bg-white border border-[#D9D2C5] rounded-2xl p-5 shadow-xs">
@@ -145,7 +160,9 @@ export const AdminFundsTab: React.FC = () => {
         <div className="p-5 border-b border-[#D9D2C5]/60 bg-[#F9F5EF]/30 flex justify-between items-center">
           <div>
             <h3 className="text-base font-bold text-[#1A3C2E] font-serif">On-Chain Transaction Audit Ledger</h3>
-            <p className="text-xs text-[#6C6C70]">Every fund release logs a block event with cryptographically verified transaction hash</p>
+            <p className="text-xs text-[#6C6C70]">
+              Every fund release logs a block event with cryptographically verified transaction hash and bank destination
+            </p>
           </div>
         </div>
 
@@ -166,6 +183,7 @@ export const AdminFundsTab: React.FC = () => {
                   <th className="py-3.5 px-4">Block #</th>
                   <th className="py-3.5 px-4">Provider</th>
                   <th className="py-3.5 px-4">Scholar Recipient</th>
+                  <th className="py-3.5 px-4">Bank Destination</th>
                   <th className="py-3.5 px-4">Program</th>
                   <th className="py-3.5 px-4">Amount</th>
                   <th className="py-3.5 px-4">Status</th>
@@ -196,6 +214,29 @@ export const AdminFundsTab: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 font-bold text-[#1C1C1E]">{event.providerName}</td>
                     <td className="py-3 px-4 font-semibold text-[#1C1C1E]">{event.scholarName}</td>
+                    <td className="py-3 px-4 text-[#1C1C1E]">
+                      <div className="flex items-center gap-1.5">
+                        <span>
+                          {event.bankName} {event.accountNumber ? `(•••• ${event.accountNumber.slice(-4)})` : ''}
+                        </span>
+                        {event.isBulk && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#FFF8EE] text-[#C97B2E] border border-[#C97B2E]/30">
+                            Batch
+                          </span>
+                        )}
+                        {event.documentProofUrl && (
+                          <a
+                            href={event.documentProofUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-[#2D5941] font-bold hover:underline ml-1"
+                            title="View Verified Bank Card Scan"
+                          >
+                            📄 Scan
+                          </a>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-3 px-4 text-[#6C6C70]">{event.programTitle}</td>
                     <td className="py-3 px-4 font-bold text-[#2D5941]">
                       ₱{event.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}

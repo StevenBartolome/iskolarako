@@ -1,6 +1,10 @@
-import React from 'react';
-import type { ProviderOrg, AdminTab } from '../types';
+import React, { useState, useEffect } from 'react';
+import type { ProviderOrg, ProviderDocumentItem, AdminTab } from '../types';
 import { supabase } from '@/services/supabaseClient';
+import {
+  verifyDocumentAuthenticity,
+  type ApplicantVerificationContext,
+} from '@/services/aiExtractionService';
 
 interface AdminProvidersTabProps {
   providerFilter: string;
@@ -17,7 +21,13 @@ interface AdminProvidersTabProps {
   providerPrograms: any[];
   setSelectedScholarshipDetails: (prog: any) => void;
   setActiveTab: (tab: AdminTab) => void;
-  handleVerifyProvider: (id: any, status: ProviderOrg['status']) => void;
+  handleVerifyProvider: (id: any, status: ProviderOrg['status'], remarks?: string) => void;
+  onUpdateProviderDocs?: (
+    providerId: any,
+    updatedDocs: ProviderDocumentItem[],
+    newStatus?: ProviderOrg['status'],
+    newRemarks?: string
+  ) => Promise<void>;
 }
 
 export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
@@ -36,12 +46,251 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
   setSelectedScholarshipDetails,
   setActiveTab,
   handleVerifyProvider,
+  onUpdateProviderDocs,
 }) => {
+  // Batch & AI Scanning States
+  const [isBatchScanning, setIsBatchScanning] = useState(false);
+  const [batchProgressMsg, setBatchProgressMsg] = useState('');
+  const [expandedDocIndices, setExpandedDocIndices] = useState<Record<string, boolean>>({});
+  const [autoScanSummary, setAutoScanSummary] = useState<{
+    total: number;
+    verified: number;
+    flagged: number;
+    actionTaken?: string;
+  } | null>(null);
+
+  const getFlagString = (flag: any): string => {
+    if (!flag) return '';
+    if (typeof flag === 'string') return flag.trim();
+    if (typeof flag === 'object') {
+      return flag.description || flag.flag || flag.reason || flag.message || flag.issue || JSON.stringify(flag);
+    }
+    return String(flag);
+  };
+
+  const toggleExpandDoc = (name: string) => {
+    setExpandedDocIndices(prev => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
+  };
+
+  const getProviderContext = (prov: ProviderOrg): ApplicantVerificationContext => ({
+    isProviderOrg: true,
+    organizationName: prov.name,
+    representativeName: prov.representative,
+    providerType: prov.type,
+    email: prov.email,
+  });
+
+  const evaluateAndAdjustStatus = (_prov: ProviderOrg, docs: ProviderDocumentItem[]) => {
+    const scannableDocs = docs.filter(d => d.url && d.url !== '#');
+    if (scannableDocs.length === 0) return;
+
+    const flaggedDocs = docs.filter(
+      d => d.status === 'Flagged' || d.aiVerification?.verificationStatus === 'flagged' || d.aiVerification?.verificationStatus === 'rejected'
+    );
+    const verifiedDocs = docs.filter(
+      d => d.status === 'Verified' || d.aiVerification?.verificationStatus === 'verified'
+    );
+
+    setAutoScanSummary({
+      total: scannableDocs.length,
+      flagged: flaggedDocs.length,
+      verified: verifiedDocs.length,
+      actionTaken: flaggedDocs.length > 0
+        ? `Provider has ${flaggedDocs.length} flagged requirement(s) requiring compliance review.`
+        : `All ${scannableDocs.length} submitted organization document(s) verified authentic.`,
+    });
+  };
+
+  // Single Document AI Scan
+  const handleScanSingleDoc = async (docName: string) => {
+    if (!selectedProvider) return;
+    const doc = selectedProvider.documents.find(d => d.name === docName);
+    if (!doc || !doc.url || doc.url === '#') return;
+
+    // Set scanning spinner
+    const updatedWithSpinner = selectedProvider.documents.map(d =>
+      d.name === docName ? { ...d, isAiScanning: true } : d
+    );
+    setSelectedProvider({ ...selectedProvider, documents: updatedWithSpinner });
+
+    try {
+      const result = await verifyDocumentAuthenticity({
+        documentUrl: doc.url,
+        documentName: doc.name,
+        applicantContext: getProviderContext(selectedProvider),
+      });
+
+      const isVerified = result.verificationStatus === 'verified';
+      const isFlagged = result.verificationStatus === 'flagged' || result.verificationStatus === 'rejected';
+
+      const nextDocs = selectedProvider.documents.map(d => {
+        if (d.name !== docName) return d;
+        return {
+          ...d,
+          isAiScanning: false,
+          verified: isVerified,
+          status: isVerified ? ('Verified' as const) : isFlagged ? ('Flagged' as const) : ('Pending' as const),
+          remarks: result.flags && result.flags.length > 0 ? `AI Flag: ${getFlagString(result.flags[0])}` : (result.summary || ''),
+          aiVerification: result,
+        };
+      });
+
+      setSelectedProvider({ ...selectedProvider, documents: nextDocs });
+      setExpandedDocIndices(prev => ({ ...prev, [docName]: true }));
+      evaluateAndAdjustStatus(selectedProvider, nextDocs);
+
+      if (onUpdateProviderDocs) {
+        await onUpdateProviderDocs(selectedProvider.id, nextDocs);
+      }
+    } catch (err) {
+      console.error('Error verifying provider org document:', err);
+      const resetSpinner = selectedProvider.documents.map(d =>
+        d.name === docName ? { ...d, isAiScanning: false } : d
+      );
+      setSelectedProvider({ ...selectedProvider, documents: resetSpinner });
+    }
+  };
+
+  // Batch AI Scan
+  const handleScanAllDocs = async (onlyUnscanned = false) => {
+    if (!selectedProvider) return;
+    const scannableDocs = selectedProvider.documents.filter(d => {
+      if (!d.url || d.url === '#') return false;
+      if (onlyUnscanned && d.aiVerification && !d.remarks?.toLowerCase().includes('resubmit')) {
+        return false;
+      }
+      return true;
+    });
+
+    if (scannableDocs.length === 0) {
+      evaluateAndAdjustStatus(selectedProvider, selectedProvider.documents);
+      return;
+    }
+
+    setIsBatchScanning(true);
+    setBatchProgressMsg(`Auto-Scanning ${scannableDocs.length} organization document(s)...`);
+
+    let workingDocs = [...selectedProvider.documents];
+    const context = getProviderContext(selectedProvider);
+
+    for (let count = 0; count < scannableDocs.length; count++) {
+      const doc = scannableDocs[count];
+      setBatchProgressMsg(`Auto-Scanning (${count + 1}/${scannableDocs.length}): ${doc.name}...`);
+
+      workingDocs = workingDocs.map(d => d.name === doc.name ? { ...d, isAiScanning: true } : d);
+      setSelectedProvider({ ...selectedProvider, documents: workingDocs });
+
+      try {
+        const result = await verifyDocumentAuthenticity({
+          documentUrl: doc.url,
+          documentName: doc.name,
+          applicantContext: context,
+        });
+
+        const isVerified = result.verificationStatus === 'verified';
+        const isFlagged = result.verificationStatus === 'flagged' || result.verificationStatus === 'rejected';
+
+        workingDocs = workingDocs.map(d => {
+          if (d.name !== doc.name) return d;
+          return {
+            ...d,
+            isAiScanning: false,
+            verified: isVerified,
+            status: isVerified ? ('Verified' as const) : isFlagged ? ('Flagged' as const) : ('Pending' as const),
+            remarks: result.flags && result.flags.length > 0 ? `AI Flag: ${getFlagString(result.flags[0])}` : (result.summary || ''),
+            aiVerification: result,
+          };
+        });
+
+        setSelectedProvider({ ...selectedProvider, documents: workingDocs });
+        setExpandedDocIndices(prev => ({ ...prev, [doc.name]: true }));
+      } catch (err) {
+        console.error(`Error verifying document ${doc.name}:`, err);
+        workingDocs = workingDocs.map(d => d.name === doc.name ? { ...d, isAiScanning: false } : d);
+        setSelectedProvider({ ...selectedProvider, documents: workingDocs });
+      }
+    }
+
+    setBatchProgressMsg('Org Verification Complete!');
+    evaluateAndAdjustStatus(selectedProvider, workingDocs);
+
+    if (onUpdateProviderDocs) {
+      await onUpdateProviderDocs(selectedProvider.id, workingDocs);
+    }
+
+    setTimeout(() => {
+      setIsBatchScanning(false);
+      setBatchProgressMsg('');
+    }, 1200);
+  };
+
+  // Toggle individual requirement status
+  const toggleDocVerified = async (docName: string, newStatus: 'Verified' | 'Flagged' | 'Pending') => {
+    if (!selectedProvider) return;
+    const nextDocs = selectedProvider.documents.map(d => {
+      if (d.name !== docName) return d;
+      return {
+        ...d,
+        status: newStatus,
+        verified: newStatus === 'Verified',
+        remarks: newStatus === 'Verified' ? '' : (d.remarks || 'Flagged by administrator'),
+      };
+    });
+
+    setSelectedProvider({ ...selectedProvider, documents: nextDocs });
+    evaluateAndAdjustStatus(selectedProvider, nextDocs);
+
+    if (onUpdateProviderDocs) {
+      await onUpdateProviderDocs(selectedProvider.id, nextDocs);
+    }
+  };
+
+  // Mark all organization documents as verified
+  const handleMarkAllVerified = async () => {
+    if (!selectedProvider) return;
+    const nextDocs = selectedProvider.documents.map(d => ({
+      ...d,
+      status: 'Verified' as const,
+      verified: true,
+      remarks: '',
+    }));
+
+    setSelectedProvider({ ...selectedProvider, documents: nextDocs });
+    evaluateAndAdjustStatus(selectedProvider, nextDocs);
+
+    if (onUpdateProviderDocs) {
+      await onUpdateProviderDocs(selectedProvider.id, nextDocs);
+    }
+  };
+
+  // Auto-scan unscanned documents when a provider is selected
+  useEffect(() => {
+    if (selectedProvider) {
+      const unscanned = selectedProvider.documents.filter(
+        d => d.url && d.url !== '#' && (!d.aiVerification || d.remarks?.toLowerCase().includes('resubmit'))
+      );
+
+      if (unscanned.length > 0) {
+        handleScanAllDocs(true);
+      } else {
+        evaluateAndAdjustStatus(selectedProvider, selectedProvider.documents);
+      }
+    } else {
+      setAutoScanSummary(null);
+    }
+  }, [selectedProvider?.id]);
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-[#D9D2C5] shadow-sm p-6">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Verification Pipeline</h3>
+          <div>
+            <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Organization Verification Pipeline</h3>
+            <p className="text-xs text-[#6C6C70] mt-0.5">Automated AI compliance check & regulatory document verification.</p>
+          </div>
           <div className="flex gap-2">
             <select
               value={providerFilter}
@@ -57,66 +306,151 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Providers Table / List */}
-          <div className="lg:col-span-2 space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Providers List (5 Cols) */}
+          <div className="lg:col-span-5 space-y-3">
             {providers
               .filter(p => providerFilter === 'All' || p.status === providerFilter)
               .map(prov => (
                 <div
                   key={prov.id}
                   onClick={() => setSelectedProvider(prov)}
-                  className={`p-4 rounded-xl border transition-all cursor-pointer flex justify-between items-center ${
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex justify-between items-center ${
                     selectedProvider?.id === prov.id
-                      ? 'border-[#2D5941] bg-[#EBF5EE]/30'
+                      ? 'border-[#2D5941] bg-[#EBF5EE]/40 shadow-xs'
                       : 'border-[#D9D2C5] bg-white hover:bg-[#F9F5EF]/50'
                   }`}
                 >
-                  <div>
+                  <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-sm text-[#1C1C1E]">{prov.name}</span>
                       <span className="text-[10px] bg-[#EDE8DE] text-[#6C6C70] font-bold px-2 py-0.5 rounded">
                         {prov.type}
                       </span>
                     </div>
-                    <p className="text-xs text-[#6C6C70] mt-1">Rep: {prov.representative} • {prov.email}</p>
-                    <p className="text-[10px] text-[#8E8E93] mt-0.5">Registered: {prov.dateRegistered}</p>
+                    <p className="text-xs text-[#6C6C70]">Rep: {prov.representative}</p>
+                    <p className="text-[10px] text-[#8E8E93]">{prov.email} • Registered {prov.dateRegistered}</p>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                    prov.status === 'Verified' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                    prov.status === 'Under Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
-                    prov.status === 'Suspended' ? 'bg-red-50 text-[#B34040]' :
-                    'bg-[#EDE8DE] text-[#6C6C70]'
-                  }`}>
-                    {prov.status}
-                  </span>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                      prov.status === 'Verified' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                      prov.status === 'Under Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
+                      prov.status === 'Suspended' ? 'bg-red-50 text-[#B34040]' :
+                      'bg-[#EDE8DE] text-[#6C6C70]'
+                    }`}>
+                      {prov.status}
+                    </span>
+                    {prov.documents?.some(d => d.aiVerification) && (
+                      <span className="text-[9px] font-bold text-[#2D5941] bg-white px-1.5 py-0.5 rounded border border-[#2D5941]/30">
+                        ⚡ AI Audited
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
           </div>
 
-          {/* Detail View Pane */}
-          <div className="bg-[#F9F5EF]/50 border border-[#D9D2C5] rounded-2xl p-6">
+          {/* Organization Verification & Detail Pane (7 Cols) */}
+          <div className="lg:col-span-7 bg-[#F9F5EF]/50 border border-[#D9D2C5] rounded-3xl p-6">
             {selectedProvider ? (
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-bold text-base text-[#1A3C2E] font-serif">{selectedProvider.name}</h4>
-                  <p className="text-xs text-[#6C6C70]">{selectedProvider.type} Scholarship Provider</p>
+              <div className="space-y-5">
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-bold text-lg text-[#1A3C2E] font-serif">{selectedProvider.name}</h4>
+                    <p className="text-xs text-[#6C6C70] mt-0.5">
+                      {selectedProvider.type} Classification • Authorized Rep: <strong>{selectedProvider.representative}</strong>
+                    </p>
+                  </div>
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                    selectedProvider.status === 'Verified' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                    selectedProvider.status === 'Under Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
+                    selectedProvider.status === 'Suspended' ? 'bg-red-50 text-[#B34040]' :
+                    'bg-[#EDE8DE] text-[#6C6C70]'
+                  }`}>
+                    {selectedProvider.status}
+                  </span>
                 </div>
 
-                <div className="space-y-3 bg-white p-4 rounded-xl border border-[#D9D2C5] text-xs">
-                  <div>
-                    <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Representative</span>
-                    <span className="text-[#1C1C1E] font-medium">{selectedProvider.representative}</span>
+                {/* Batch Verification Toolbar */}
+                <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-[#D9D2C5] gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-[#1A3C2E]">🤖 AI Forensic Engine:</span>
+                    <span className="text-[10px] text-[#6C6C70]">Pixtral 12B & Gemini Vision</span>
                   </div>
-                  <div>
-                    <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Email Address</span>
-                    <span className="text-[#1C1C1E] font-medium">{selectedProvider.email}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isBatchScanning || selectedProvider.documents.length === 0}
+                      onClick={() => handleScanAllDocs(false)}
+                      className="px-3 py-1.5 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-[11px] font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5 transition-all border-0 disabled:opacity-50"
+                    >
+                      {isBatchScanning ? (
+                        <>
+                          <span className="animate-spin text-xs">⏳</span>
+                          <span>Scanning...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>⚡ Verify All Org Docs with AI</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleMarkAllVerified}
+                      className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-[11px] font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1 transition-all"
+                    >
+                      ✓ Mark All Verified
+                    </button>
                   </div>
                 </div>
 
+                {/* Batch Progress Banner */}
+                {isBatchScanning && (
+                  <div className="bg-[#FFF8EE] border border-[#C97B2E]/40 p-3 rounded-2xl flex items-center justify-between text-xs animate-pulse">
+                    <div className="flex items-center gap-2 text-[#C97B2E] font-bold">
+                      <span className="animate-spin text-base">⚙️</span>
+                      <span>{batchProgressMsg || 'Analyzing organization credentials with multi-AI vision...'}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Smart AI Auto-Audit Summary Banner */}
+                {autoScanSummary && !isBatchScanning && (
+                  <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs shadow-xs transition-all ${
+                    autoScanSummary.flagged > 0
+                      ? 'bg-[#FFF8EE] border-[#C97B2E]/50 text-[#8C4A00]'
+                      : 'bg-[#EBF5EE] border-[#2D5941]/40 text-[#2D5941]'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xl">
+                        {autoScanSummary.flagged > 0 ? '⚠️' : '🛡️'}
+                      </span>
+                      <div>
+                        <strong className="block font-bold">
+                          {autoScanSummary.flagged > 0 ? 'AI Auto-Audit Flagged Issues' : 'AI Organization Verification Passed'}
+                        </strong>
+                        <p className="text-[11px] opacity-90 mt-0.5">{autoScanSummary.actionTaken}</p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white shadow-2xs shrink-0">
+                      {autoScanSummary.verified}/{autoScanSummary.total} Verified
+                    </span>
+                  </div>
+                )}
+
+                {/* Requirements Checklist with AI Vision Forensic Cards */}
                 {(() => {
                   const typeKey = selectedProvider.type === 'Government' ? 'public' : selectedProvider.type === 'Private' ? 'private' : 'ngo';
                   const reqs = providerRequirementsMap[typeKey] || [];
+                  const allRequiredPassed = reqs
+                    .filter(r => r.required)
+                    .every(r => {
+                      const d = selectedProvider.documents.find(doc => doc.name === r.name);
+                      return d && (d.status === 'Verified' || d.verified);
+                    });
+
                   return (
                     <div className="space-y-4">
                       <div className="border-t border-[#D9D2C5] pt-4">
@@ -125,49 +459,241 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                           onClick={() => setIsChecklistCollapsed(!isChecklistCollapsed)}
                           className="w-full flex justify-between items-center text-xs font-bold text-[#1C1C1E] uppercase cursor-pointer border-0 bg-transparent mb-2"
                         >
-                          <span>Requirements Checklist</span>
+                          <span>Legal & Regulatory Requirements ({selectedProvider.documents.length} Submitted)</span>
                           <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${isChecklistCollapsed ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
                         </button>
                         
                         {!isChecklistCollapsed && (
-                          <div className="space-y-2 mt-2">
+                          <div className="space-y-3 mt-2">
                             {reqs.map((req, idx) => {
                               const submittedDoc = selectedProvider.documents.find(d => d.name === req.name);
                               const isPassed = !!submittedDoc;
+                              const aiRes = submittedDoc?.aiVerification;
+                              const isExpanded = !!expandedDocIndices[req.name];
+                              const docStatus = submittedDoc?.status || (submittedDoc?.verified ? 'Verified' : 'Pending');
 
                               return (
-                                <div key={idx} className="p-3.5 bg-white rounded-xl border border-[#D9D2C5]/50 text-xs flex flex-col gap-1.5 shadow-sm">
-                                  <div className="flex justify-between items-start">
+                                <div
+                                  key={idx}
+                                  className={`p-4 bg-white rounded-2xl border transition-all text-xs flex flex-col gap-2.5 shadow-sm ${
+                                    docStatus === 'Verified'
+                                      ? 'border-[#2D5941]/40'
+                                      : docStatus === 'Flagged'
+                                      ? 'border-[#B34040]/50 bg-[#FFFDFD]'
+                                      : 'border-[#D9D2C5]/60'
+                                  }`}
+                                >
+                                  {/* Row Header */}
+                                  <div className="flex justify-between items-start flex-wrap gap-2">
                                     <div>
-                                      <span className="font-bold text-[#1A3C2E]">{req.name}</span>
-                                      {req.required && (
-                                        <span className="ml-1.5 text-[8px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQ</span>
-                                      )}
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold text-sm text-[#1A3C2E]">{req.name}</span>
+                                        {req.required && (
+                                          <span className="text-[8px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">
+                                            REQUIRED
+                                          </span>
+                                        )}
+                                        {/* AI Status Badge */}
+                                        {aiRes ? (
+                                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 ${
+                                            aiRes.verificationStatus === 'verified'
+                                              ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30'
+                                              : aiRes.tamperingDetected
+                                              ? 'bg-red-100 text-red-800 border border-red-300'
+                                              : 'bg-amber-100 text-amber-900 border border-amber-300'
+                                          }`}>
+                                            <span>
+                                              {aiRes.verificationStatus === 'verified' ? '🟢 ✓ AI Verified' : aiRes.tamperingDetected ? '🔴 Tampering Alert' : '🟡 ⚠️ AI Flagged'}
+                                            </span>
+                                            <span className="opacity-70 font-normal">
+                                              ({Math.round((aiRes.confidenceScore || 0.9) * 100)}% match)
+                                            </span>
+                                          </span>
+                                        ) : submittedDoc?.isAiScanning ? (
+                                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
+                                            ⏳ AI Scanning...
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <p className="text-[11px] text-[#6C6C70] mt-0.5 leading-normal">{req.description}</p>
                                     </div>
-                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-sans ${
-                                      isPassed ? 'bg-[#EBF5EE] text-[#2D5941]' : 'bg-amber-50 text-[#C97B2E]'
-                                    }`}>
-                                      {isPassed ? 'Passed' : 'Not Yet'}
-                                    </span>
-                                  </div>
-                                  <p className="text-[10px] text-[#6C6C70] font-sans leading-normal">{req.description}</p>
-                                  
-                                  {isPassed && submittedDoc && (
-                                    <div className="flex justify-end pt-1.5 border-t border-dashed border-[#D9D2C5]/40 mt-1">
-                                      {submittedDoc.url && submittedDoc.url !== '#' ? (
+
+                                    {/* Action Buttons Toolbar */}
+                                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                                      {submittedDoc?.url && submittedDoc.url !== '#' && (
                                         <a
                                           href={submittedDoc.url}
                                           target="_blank"
                                           rel="noreferrer"
-                                          className="text-[10px] font-bold text-[#2D5941] hover:underline flex items-center gap-0.5"
+                                          className="px-2.5 py-1.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[10.5px] font-bold border-0 cursor-pointer inline-flex items-center gap-1 transition-colors no-underline"
                                         >
-                                          Preview Submitted Document &rarr;
+                                          <span>Preview ↗</span>
                                         </a>
-                                      ) : (
-                                        <span className="text-[10px] text-gray-400 italic font-sans">Mock Document Attached</span>
                                       )}
+
+                                      {submittedDoc?.url && submittedDoc.url !== '#' && (
+                                        <button
+                                          type="button"
+                                          disabled={submittedDoc.isAiScanning}
+                                          onClick={() => handleScanSingleDoc(req.name)}
+                                          className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#C97B2E] text-[10.5px] font-bold border border-amber-300/60 cursor-pointer inline-flex items-center gap-1 transition-all disabled:opacity-50"
+                                        >
+                                          {submittedDoc.isAiScanning ? (
+                                            <>
+                                              <span className="animate-spin text-xs">⏳</span>
+                                              <span>Scanning...</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <span>{aiRes ? '🔄 Re-scan AI' : '⚡ Run AI Scan'}</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      )}
+
+                                      {aiRes && (
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleExpandDoc(req.name)}
+                                          className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border ${
+                                            isExpanded
+                                              ? 'bg-[#1A3C2E] text-white border-[#1A3C2E]'
+                                              : 'bg-white text-[#1A3C2E] border-[#D9D2C5] hover:bg-[#F9F5EF]'
+                                          }`}
+                                        >
+                                          <span>{isExpanded ? '▲ Hide Report' : '▼ AI Forensic'}</span>
+                                        </button>
+                                      )}
+
+                                      {isPassed && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleDocVerified(req.name, docStatus === 'Verified' ? 'Pending' : 'Verified')}
+                                            className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border-0 ${
+                                              docStatus === 'Verified'
+                                                ? 'bg-[#2D5941] text-white shadow-2xs'
+                                                : 'bg-[#EBF5EE] text-[#2D5941] hover:bg-[#2D5941] hover:text-white'
+                                            }`}
+                                          >
+                                            {docStatus === 'Verified' ? '✓ Verified' : 'Mark Verified'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleDocVerified(req.name, docStatus === 'Flagged' ? 'Pending' : 'Flagged')}
+                                            className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border-0 ${
+                                              docStatus === 'Flagged'
+                                                ? 'bg-[#B34040] text-white shadow-2xs'
+                                                : 'bg-red-50 text-[#B34040] hover:bg-[#B34040] hover:text-white'
+                                            }`}
+                                          >
+                                            {docStatus === 'Flagged' ? '🚩 Flagged' : 'Flag'}
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Expandable Forensic Breakdown */}
+                                  {isExpanded && aiRes && (
+                                    <div className="mt-1 p-3.5 bg-[#F9F5EF] rounded-2xl border border-[#D9D2C5] space-y-3 animate-fade-in">
+                                      {/* Side-by-Side Comparison */}
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                        {/* Left: Declared Org Profile */}
+                                        <div className="bg-white p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1">
+                                          <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
+                                            🏢 Declared Organization Profile
+                                          </span>
+                                          <div className="space-y-1 text-xs">
+                                            <div className="flex justify-between">
+                                              <span className="text-[#6C6C70]">Organization:</span>
+                                              <strong className="text-[#1C1C1E]">{selectedProvider.name}</strong>
+                                            </div>
+                                            <div className="flex justify-between">
+                                              <span className="text-[#6C6C70]">Representative:</span>
+                                              <strong className="text-[#1C1C1E]">{selectedProvider.representative}</strong>
+                                            </div>
+                                            <div className="flex justify-between">
+                                              <span className="text-[#6C6C70]">Classification:</span>
+                                              <strong className="text-[#2D5941]">{selectedProvider.type}</strong>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Right: AI Extracted Document Data */}
+                                        <div className="bg-white p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1">
+                                          <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
+                                            📄 AI Extracted Legal Data
+                                          </span>
+                                          <div className="space-y-1 text-xs">
+                                            <div className="flex justify-between items-center">
+                                              <span className="text-[#6C6C70]">Org on Document:</span>
+                                              <div className="flex items-center gap-1">
+                                                <strong className="text-[#1C1C1E]">{aiRes.extractedName || 'Not detected'}</strong>
+                                                {aiRes.crossCheckResults.nameMatch ? (
+                                                  <span className="text-[10px] text-[#2D5941]" title="Entity matches registration">✓</span>
+                                                ) : (
+                                                  <span className="text-[10px] text-[#B34040]" title="Entity mismatch">⚠️</span>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                              <span className="text-[#6C6C70]">Issuing Agency:</span>
+                                              <strong className="text-[#1C1C1E]">{aiRes.extractedSchool || 'Agency Identified'}</strong>
+                                            </div>
+                                            {aiRes.extractedGwa && (
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-[#6C6C70]">Registration / TIN:</span>
+                                                <strong className="text-[#2D5941] font-mono">{aiRes.extractedGwa}</strong>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Security Signals */}
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                                        <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
+                                          <span>{aiRes.hasOfficialSealOrSignature ? '🟢' : '🟡'}</span>
+                                          <span className="text-[#1C1C1E]">
+                                            {aiRes.hasOfficialSealOrSignature ? 'Official Dry Seal / Stamp Detected' : 'Seal Unclear'}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
+                                          <span>{aiRes.tamperingDetected ? '🔴' : '🟢'}</span>
+                                          <span className="text-[#1C1C1E]">
+                                            {aiRes.tamperingDetected ? 'Visual Alteration Detected' : 'No Digital Tampering'}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60 col-span-2 sm:col-span-1">
+                                          <span>🔒</span>
+                                          <span className="text-[#6C6C70] truncate font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
+                                            Hash: {aiRes.sha256Hash?.slice(0, 10)}...
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* Flagged Issues */}
+                                      {aiRes.flags.length > 0 && (
+                                        <div className="p-2.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
+                                          <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider block">
+                                            ⚠️ Compliance Anomalies & Warnings:
+                                          </span>
+                                          <ul className="list-disc list-inside text-xs text-[#B34040] space-y-0.5 font-medium">
+                                            {aiRes.flags.map((flag, fIdx) => (
+                                              <li key={fIdx}>{getFlagString(flag)}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+
+                                      {/* Forensic Summary */}
+                                      <div className="p-2.5 bg-white rounded-xl border border-[#D9D2C5]/60 text-xs text-[#1C1C1E]">
+                                        <span className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-0.5">Forensic Summary:</span>
+                                        <p className="text-xs text-[#1C1C1E]">{aiRes.summary}</p>
+                                      </div>
                                     </div>
                                   )}
                                 </div>
@@ -176,16 +702,66 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                           </div>
                         )}
                       </div>
+
+                      {/* Active Remarks Box */}
+                      {selectedProvider.remarks && (
+                        <div className="bg-red-50/50 border border-red-200/40 text-red-900 rounded-xl p-4 text-xs font-sans space-y-1">
+                          <strong>{selectedProvider.status === 'Suspended' ? 'Active Suspension Remarks:' : 'Active Moderation Remarks:'}</strong>
+                          <p className="leading-relaxed">{selectedProvider.remarks}</p>
+                        </div>
+                      )}
+
+                      {/* Action Decision Toolbar */}
+                      <div className="flex flex-col gap-2 pt-4 border-t border-[#D9D2C5]">
+                        {allRequiredPassed && (
+                          <div className="bg-[#EBF5EE] border border-[#2D5941]/30 text-[#2D5941] p-2.5 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5">
+                            <span>✓</span> All required organization compliance documents verified authentic. Ready for Approval.
+                          </div>
+                        )}
+
+                        {selectedProvider.status === 'Verified' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
+                              className="w-full bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
+                            >
+                              ⛔ Suspend Organization with Remarks
+                            </button>
+                            <p className="text-[10px] text-[#6C6C70] font-sans text-center leading-relaxed">
+                              Suspending requires the provider to re-upload and re-submit their verification documents.
+                            </p>
+                          </>
+                        ) : selectedProvider.status === 'Suspended' ? (
+                          <div className="bg-amber-50 border border-amber-200/60 text-amber-900 rounded-xl p-3 text-xs font-sans leading-relaxed">
+                            This provider organization is <strong>suspended</strong>. Approval is locked until they re-upload and re-submit their compliance documents.
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleVerifyProvider(selectedProvider.id, 'Verified')}
+                              className={`flex-1 text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all ${
+                                allRequiredPassed
+                                  ? 'bg-[#2D5941] hover:bg-[#1A3C2E] ring-2 ring-[#2D5941]/40'
+                                  : 'bg-[#2D5941] hover:bg-[#1A3C2E]'
+                              }`}
+                            >
+                              {allRequiredPassed ? '✓ Approve Organization' : 'Approve Organization'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
+                              className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
+                            >
+                              Reject / Suspend
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
-
-                {selectedProvider.remarks && (
-                  <div className="bg-red-50/50 border border-red-200/40 text-red-900 rounded-xl p-4 text-xs font-sans space-y-1">
-                    <strong>{selectedProvider.status === 'Suspended' ? 'Active Suspension Remarks:' : 'Active Rejection Remarks:'}</strong>
-                    <p className="leading-relaxed">{selectedProvider.remarks}</p>
-                  </div>
-                )}
 
                 {/* Provider's Scholarship Programs Oversight Section */}
                 <div className="space-y-3 pt-4 border-t border-[#D9D2C5]">
@@ -256,52 +832,13 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                     </>
                   )}
                 </div>
-
-                <div className="flex flex-col gap-2 pt-4 border-t border-[#D9D2C5]">
-                  {selectedProvider.status === 'Verified' ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
-                        className="w-full bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
-                      >
-                        ⛔ Suspend with Remarks
-                      </button>
-                      <p className="text-[10px] text-[#6C6C70] font-sans text-center leading-relaxed">
-                        Suspending requires the provider to re-upload and re-submit their verification documents.
-                      </p>
-                    </>
-                  ) : selectedProvider.status === 'Suspended' ? (
-                    <div className="bg-amber-50 border border-amber-200/60 text-amber-900 rounded-xl p-3 text-xs font-sans leading-relaxed">
-                      This provider is <strong>suspended</strong>. Approval is locked until they re-upload and re-submit
-                      their verification documents.
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleVerifyProvider(selectedProvider.id, 'Verified')}
-                        className="flex-1 bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
-                        className="flex-1 bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center py-12 text-[#8E8E93]">
                 <svg className="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p className="text-xs font-medium">Select a Provider from the pipeline to verify details.</p>
+                <p className="text-xs font-medium">Select a Provider from the pipeline to verify details with AI.</p>
               </div>
             )}
           </div>

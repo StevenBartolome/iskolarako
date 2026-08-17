@@ -1,10 +1,17 @@
 # Node / React
 web/node_modules/
 web/dist/
-web/.env.local
-web/.env.*.local
+# Environment files
 .env
 .env.*
+*.env
+web/.env
+web/.env.*
+web/.env.local
+web/.env.*.local
+mobile/env
+mobile/.env
+mobile/.env.*
 
 # Flutter / Dart
 mobile/.dart_tool/

@@ -18,6 +18,18 @@ export type AdminTab =
   | 'settings'
   | 'profile';
 
+import type { DocVerificationResult } from '@/services/aiExtractionService';
+
+export interface ProviderDocumentItem {
+  name: string;
+  url: string;
+  verified: boolean;
+  status?: 'Pending' | 'Verified' | 'Flagged';
+  remarks?: string;
+  isAiScanning?: boolean;
+  aiVerification?: DocVerificationResult;
+}
+
 export interface ProviderOrg {
   id: any;
   name: string;
@@ -25,9 +37,15 @@ export interface ProviderOrg {
   email: string;
   type: 'Government' | 'Private' | 'NGO' | string;
   status: 'Pending' | 'Under Review' | 'Verified' | 'Active' | 'Suspended' | 'Revoked' | string;
-  documents: { name: string; url: string; verified: boolean }[];
+  documents: ProviderDocumentItem[];
   dateRegistered: string;
   remarks?: string;
+  aiAuditSummary?: {
+    total: number;
+    verified: number;
+    flagged: number;
+    actionTaken?: string;
+  };
 }
 
 export interface ScholarshipAdminView {

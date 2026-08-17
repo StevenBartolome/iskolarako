@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/app_components.dart';
+import 'package:iskoako/widgets/bank_account_modal.dart';
 
 class AppliedScholarship {
   final String? applicationId;
@@ -40,7 +41,7 @@ class AppliedScholarship {
     required this.compareDate,
     required this.referenceNumber,
     required this.steps,
-    this.submittedDocuments = const [],
+    required this.submittedDocuments,
     this.isCycleOpen = true,
     this.cycleEndDate,
   });
@@ -81,6 +82,9 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
   bool _isLoading = true;
   List<AppliedScholarship> _appliedScholarships = [];
   RealtimeChannel? _realtimeChannel;
+  Map<String, dynamic>? _paymentAccount;
+  String _currentScholarId = '';
+  String _currentScholarName = 'Scholar';
 
   @override
   void initState() {
@@ -130,21 +134,41 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
 
     try {
       final List<String> scholarIds = [user.id];
+      String scholarName = 'Scholar';
+      String resolvedScholarId = user.id;
       try {
         final scholarData = await Supabase.instance.client
             .from('scholar')
-            .select('id')
+            .select('id, first_name, last_name')
             .eq('user_id', user.id)
             .maybeSingle();
 
         if (scholarData != null && scholarData['id'] != null) {
           final idStr = scholarData['id'].toString();
+          resolvedScholarId = idStr;
           if (!scholarIds.contains(idStr)) {
             scholarIds.add(idStr);
+          }
+          final fName = scholarData['first_name']?.toString() ?? '';
+          final lName = scholarData['last_name']?.toString() ?? '';
+          if (fName.isNotEmpty) {
+            scholarName = '$fName $lName'.trim();
           }
         }
       } catch (sErr) {
         debugPrint('Scholar lookup note: $sErr');
+      }
+
+      Map<String, dynamic>? paymentAcc;
+      try {
+        final pAccData = await Supabase.instance.client
+            .from('scholar_payment_accounts')
+            .select()
+            .filter('scholar_id', 'in', scholarIds)
+            .maybeSingle();
+        paymentAcc = pAccData;
+      } catch (pErr) {
+        debugPrint('Payment account fetch note: $pErr');
       }
 
       dynamic appsData;
@@ -438,6 +462,9 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
       if (mounted) {
         setState(() {
           _appliedScholarships = loadedApps;
+          _paymentAccount = paymentAcc;
+          _currentScholarId = resolvedScholarId;
+          _currentScholarName = scholarName;
           _isLoading = false;
         });
       }
@@ -614,6 +641,10 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                               children: [
                                 const Divider(height: 16, thickness: 0.8),
                                 const SizedBox(height: 8),
+                                if (scholarship.statusType == StatusType.approved) ...[
+                                  _buildBankRequirementCard(scholarship),
+                                  const SizedBox(height: 12),
+                                ],
                                 ...List.generate(scholarship.steps.length, (stepIdx) {
                                   final step = scholarship.steps[stepIdx];
                                   return _buildStep(
@@ -653,6 +684,83 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           _buildHeader(context),
           _buildControlBar(),
           Expanded(child: contentWidget),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBankRequirementCard(AppliedScholarship scholarship) {
+    final hasBank = _paymentAccount != null && _paymentAccount!['account_number'] != null;
+    final bankName = _paymentAccount?['bank_name']?.toString() ?? 'Bank Account';
+    final accNum = _paymentAccount?['account_number']?.toString() ?? '';
+    final maskedAcc = accNum.length > 4 ? '•••• ${accNum.substring(accNum.length - 4)}' : accNum;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: hasBank ? const Color(0xFFEBF5EE) : const Color(0xFFFFF8EE),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: hasBank ? AppColors.primary.withAlpha(80) : const Color(0xFFC97B2E).withAlpha(100),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                hasBank ? LucideIcons.checkCircle2 : LucideIcons.alertCircle,
+                size: 18,
+                color: hasBank ? AppColors.primary : const Color(0xFFC97B2E),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  hasBank ? 'Payouts Activated & Bank Verified' : 'Post-Approval Action: Submit Bank Details',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: hasBank ? AppColors.primary : const Color(0xFFC97B2E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            hasBank
+                ? 'Your stipend will be deposited to $bankName ($maskedAcc). Provider releases will automatically route here.'
+                : 'Congratulations on your approval! Please submit your official bank card / ATM scan so the provider can release your funds.',
+            style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF4A4A4A), height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                BankAccountModal.show(
+                  context,
+                  scholarId: _currentScholarId,
+                  scholarName: _currentScholarName,
+                  onSuccess: () => _fetchApplications(),
+                );
+              },
+              icon: Icon(hasBank ? LucideIcons.edit3 : LucideIcons.uploadCloud, size: 14),
+              label: Text(
+                hasBank ? 'Update Bank Account Details' : 'Submit Bank Account & Card Scan 💳',
+                style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: hasBank ? AppColors.primary : const Color(0xFFC97B2E),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1649,6 +1757,11 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
               .update({
                 'document_url': publicUrl,
                 'verification_status': 'under_review',
+                'ai_verification_status': 'pending',
+                'ai_confidence_score': null,
+                'ai_flags': [],
+                'ai_extracted_data': null,
+                'file_sha256_hash': null,
                 'remarks': 'Resubmitted by scholar',
                 'updated_at': DateTime.now().toIso8601String(),
               })
@@ -1661,6 +1774,11 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
                 'document_name': docName,
                 'document_url': publicUrl,
                 'verification_status': 'under_review',
+                'ai_verification_status': 'pending',
+                'ai_confidence_score': null,
+                'ai_flags': [],
+                'ai_extracted_data': null,
+                'file_sha256_hash': null,
                 'remarks': 'Resubmitted by scholar',
               });
         }

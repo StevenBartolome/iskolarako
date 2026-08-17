@@ -296,6 +296,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       applicationRequirements: dbProg.application_requirements || [],
       renewalPolicy: dbProg.renewal_policy,
       fundingFrequency: dbProg.funding_frequency,
+      disbursement_mode: dbProg.disbursement_mode,
+      banking_policy: dbProg.banking_policy,
+      required_bank_name: dbProg.required_bank_name,
       renewalGwa: dbProg.renewal_gwa_requirement ? String(dbProg.renewal_gwa_requirement) : '',
       cycles: (dbProg.cycles || []).map((cyc: any) => ({
         id: cyc.id,
@@ -443,6 +446,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [formReqName, setFormReqName] = useState('');
   const [formReqDesc, setFormReqDesc] = useState('');
   const [formReqRequired, setFormReqRequired] = useState(true);
+  const [formDisbursementMode, setFormDisbursementMode] = useState<'online' | 'in_person_cash' | 'hybrid'>('online');
+  const [formBankingPolicy, setFormBankingPolicy] = useState<'specific_bank' | 'any_bank' | 'provider_issued'>('any_bank');
+  const [formRequiredBankName, setFormRequiredBankName] = useState('Landbank of the Philippines');
   const [formModalStep, setFormModalStep] = useState(1);
 
   // PSGC Geographic Data States & Fetch Effects
@@ -767,6 +773,36 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   if (!scholarDocsMap[d.scholar_id]) {
                     scholarDocsMap[d.scholar_id] = [];
                   }
+
+                  let aiVerificationObj = undefined;
+                  if (d.ai_verification_status && d.ai_verification_status !== 'pending') {
+                    aiVerificationObj = {
+                      isAuthenticLayout: d.ai_verification_status === 'verified',
+                      tamperingDetected: d.ai_flags && Array.isArray(d.ai_flags) && d.ai_flags.some((f: string) => f.toLowerCase().includes('tamper') || f.toLowerCase().includes('alter')),
+                      hasOfficialSealOrSignature: d.ai_verification_status === 'verified',
+                      isDocumentLegitimate: d.ai_verification_status !== 'rejected',
+                      extractedName: d.ai_extracted_data?.extractedName,
+                      extractedSchool: d.ai_extracted_data?.extractedSchool,
+                      extractedGwa: d.ai_extracted_data?.extractedGwa,
+                      extractedIncome: d.ai_extracted_data?.extractedIncome,
+                      extractedDocType: d.ai_extracted_data?.extractedDocType || d.document_name,
+                      verificationStatus: d.ai_verification_status,
+                      confidenceScore: typeof d.ai_confidence_score === 'number' ? d.ai_confidence_score : 0.9,
+                      flags: Array.isArray(d.ai_flags) ? d.ai_flags : [],
+                      summary: d.remarks || 'Forensic verification recorded.',
+                      aiModelUsed: d.ai_model_used || 'AI Forensic Engine',
+                      provider: 'IskoAko AI',
+                      sha256Hash: d.file_sha256_hash,
+                      crossCheckResults: d.ai_extracted_data?.crossCheckResults || {
+                        nameMatch: true,
+                        schoolMatch: true,
+                        gwaMatch: null,
+                        sealPresent: true,
+                        tamperingFound: false,
+                      },
+                    };
+                  }
+
                   scholarDocsMap[d.scholar_id].push({
                     id: d.id,
                     name: d.document_name,
@@ -775,12 +811,30 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                     url: d.document_url,
                     status: d.verification_status === 'verified' ? 'Verified' : d.verification_status === 'rejected' ? 'Flagged' : 'Pending',
                     remarks: d.remarks || '',
-                    submitted_at: d.created_at ? new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently'
+                    submitted_at: d.created_at ? new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently',
+                    aiVerification: aiVerificationObj,
                   });
                 });
               }
             } catch (dErr) {
               console.warn('[Provider Scholar Documents Exception]:', dErr);
+            }
+          }
+
+          let scholarPaymentMap: Record<string, any> = {};
+          if (scholarIds.length > 0) {
+            try {
+              const { data: pAccData } = await supabase
+                .from('scholar_payment_accounts')
+                .select('*')
+                .in('scholar_id', scholarIds);
+              if (pAccData) {
+                pAccData.forEach((p: any) => {
+                  scholarPaymentMap[p.scholar_id] = p;
+                });
+              }
+            } catch (pErr) {
+              console.warn('[Provider Scholar Payment Accounts Exception]:', pErr);
             }
           }
 
@@ -851,29 +905,46 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 url: d.document_url || d.url,
                 submitted_at: d.submitted_at || (app.created_at ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently'),
                 status: d.status || (d.verification_status === 'verified' ? 'Verified' : d.verification_status === 'rejected' ? 'Flagged' : 'Pending'),
-                remarks: d.remarks || ''
+                remarks: d.remarks || '',
+                aiVerification: d.aiVerification,
               }));
             }
 
             if (scholarDocsMap[scholar.id]) {
-              const existingNames = new Set(docs.map(d => (d.name || '').toLowerCase().trim()));
-              const existingUrls = new Set(docs.map(d => (d.document_url || d.url || '').toLowerCase().trim()).filter(Boolean));
-              const existingFiles = new Set(docs.map(d => (d.filename || '').toLowerCase().trim()).filter(Boolean));
-
               scholarDocsMap[scholar.id].forEach(sd => {
                 const sdName = (sd.name || '').toLowerCase().trim();
                 const sdUrl = (sd.document_url || sd.url || '').toLowerCase().trim();
                 const sdFile = (sd.filename || '').toLowerCase().trim();
 
-                const isDup = (sdName && existingNames.has(sdName)) ||
-                              (sdUrl && existingUrls.has(sdUrl)) ||
-                              (sdFile && existingFiles.has(sdFile));
+                const existingIdx = docs.findIndex(d => {
+                  const dName = (d.name || '').toLowerCase().trim();
+                  const dUrl = (d.document_url || d.url || '').toLowerCase().trim();
+                  const dFile = (d.filename || '').toLowerCase().trim();
+                  return (sdName && dName === sdName) ||
+                         (sdUrl && dUrl === sdUrl) ||
+                         (sdFile && dFile === sdFile);
+                });
 
-                if (!isDup) {
+                if (existingIdx !== -1) {
+                  const currentDoc = docs[existingIdx];
+                  const isResubmitted =
+                    (currentDoc.remarks || '').toLowerCase().includes('resubmit') ||
+                    (sd.remarks || '').toLowerCase().includes('resubmit') ||
+                    (currentDoc.document_url && sd.document_url && currentDoc.document_url !== sd.document_url) ||
+                    (currentDoc.status === 'Pending' && !currentDoc.aiVerification);
+
+                  // Merge the cached AI verification and status (clear if resubmitted so it auto-scans)
+                  docs[existingIdx] = {
+                    ...currentDoc,
+                    id: sd.id || currentDoc.id,
+                    status: isResubmitted ? 'Pending' : (sd.status || currentDoc.status),
+                    remarks: isResubmitted ? (currentDoc.remarks || 'Resubmitted by scholar') : (sd.remarks || currentDoc.remarks),
+                    aiVerification: isResubmitted ? undefined : (sd.aiVerification || currentDoc.aiVerification),
+                    document_url: currentDoc.document_url || sd.document_url,
+                    url: currentDoc.url || sd.url,
+                  };
+                } else {
                   docs.push(sd);
-                  if (sdName) existingNames.add(sdName);
-                  if (sdUrl) existingUrls.add(sdUrl);
-                  if (sdFile) existingFiles.add(sdFile);
                 }
               });
             }
@@ -904,6 +975,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               email: email,
               phone: phone,
               program: prog.title || 'Scholarship Program',
+              program_id: prog.id,
+              disbursement_mode: prog.disbursement_mode || 'online',
+              banking_policy: prog.banking_policy || 'any_bank',
+              paymentAccount: scholarPaymentMap[scholar.id] || null,
               cycle: cycle.cycle_name || 'Active Cycle',
               cycle_type: cycle.cycle_type,
               semester: cycle.semester,
@@ -966,29 +1041,45 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 url: d.document_url || d.url,
                 submitted_at: d.submitted_at || 'Recently',
                 status: d.status || 'Pending',
-                remarks: d.remarks || ''
+                remarks: d.remarks || '',
+                aiVerification: d.aiVerification,
               }));
             }
 
             if (scholarDocsMap[scholar.id]) {
-              const existingNames = new Set(docs.map(d => (d.name || '').toLowerCase().trim()));
-              const existingUrls = new Set(docs.map(d => (d.document_url || d.url || '').toLowerCase().trim()).filter(Boolean));
-              const existingFiles = new Set(docs.map(d => (d.filename || '').toLowerCase().trim()).filter(Boolean));
-
               scholarDocsMap[scholar.id].forEach(sd => {
                 const sdName = (sd.name || '').toLowerCase().trim();
                 const sdUrl = (sd.document_url || sd.url || '').toLowerCase().trim();
                 const sdFile = (sd.filename || '').toLowerCase().trim();
 
-                const isDup = (sdName && existingNames.has(sdName)) ||
-                              (sdUrl && existingUrls.has(sdUrl)) ||
-                              (sdFile && existingFiles.has(sdFile));
+                const existingIdx = docs.findIndex(d => {
+                  const dName = (d.name || '').toLowerCase().trim();
+                  const dUrl = (d.document_url || d.url || '').toLowerCase().trim();
+                  const dFile = (d.filename || '').toLowerCase().trim();
+                  return (sdName && dName === sdName) ||
+                         (sdUrl && dUrl === sdUrl) ||
+                         (sdFile && dFile === sdFile);
+                });
 
-                if (!isDup) {
+                if (existingIdx !== -1) {
+                  const currentDoc = docs[existingIdx];
+                  const isResubmitted =
+                    (currentDoc.remarks || '').toLowerCase().includes('resubmit') ||
+                    (sd.remarks || '').toLowerCase().includes('resubmit') ||
+                    (currentDoc.document_url && sd.document_url && currentDoc.document_url !== sd.document_url) ||
+                    (currentDoc.status === 'Pending' && !currentDoc.aiVerification);
+
+                  docs[existingIdx] = {
+                    ...currentDoc,
+                    id: sd.id || currentDoc.id,
+                    status: isResubmitted ? 'Pending' : (sd.status || currentDoc.status),
+                    remarks: isResubmitted ? (currentDoc.remarks || 'Resubmitted by scholar') : (sd.remarks || currentDoc.remarks),
+                    aiVerification: isResubmitted ? undefined : (sd.aiVerification || currentDoc.aiVerification),
+                    document_url: currentDoc.document_url || sd.document_url,
+                    url: currentDoc.url || sd.url,
+                  };
+                } else {
                   docs.push(sd);
-                  if (sdName) existingNames.add(sdName);
-                  if (sdUrl) existingUrls.add(sdUrl);
-                  if (sdFile) existingFiles.add(sdFile);
                 }
               });
             }
@@ -1019,6 +1110,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               email: email,
               phone: phone,
               program: prog.title || 'Scholarship Program',
+              program_id: prog.id,
+              disbursement_mode: prog.disbursement_mode || 'online',
+              banking_policy: prog.banking_policy || 'any_bank',
+              paymentAccount: scholarPaymentMap[scholar.id] || null,
               cycle: cycle.cycle_name || 'Active Cycle',
               school: school,
               course: course,
@@ -1041,6 +1136,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               status: 'Maintaining',
               gwa: gpa,
               dateAwarded: awardedDate,
+              disbursement_mode: prog.disbursement_mode || 'online',
+              banking_policy: prog.banking_policy || 'any_bank',
+              paymentAccount: scholarPaymentMap[scholar.id] || null,
               appDetail: appDetail
             };
           });
@@ -1260,6 +1358,23 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               }
             }
 
+            const aiPayload: any = {};
+            if (doc.aiVerification) {
+              aiPayload.ai_verification_status = doc.aiVerification.verificationStatus;
+              aiPayload.ai_confidence_score = doc.aiVerification.confidenceScore;
+              aiPayload.ai_flags = doc.aiVerification.flags;
+              aiPayload.ai_extracted_data = {
+                extractedName: doc.aiVerification.extractedName,
+                extractedSchool: doc.aiVerification.extractedSchool,
+                extractedGwa: doc.aiVerification.extractedGwa,
+                extractedIncome: doc.aiVerification.extractedIncome,
+                extractedDocType: doc.aiVerification.extractedDocType,
+                crossCheckResults: doc.aiVerification.crossCheckResults,
+              };
+              aiPayload.ai_model_used = doc.aiVerification.aiModelUsed;
+              aiPayload.file_sha256_hash = doc.aiVerification.sha256Hash;
+            }
+
             if (recordIdToUpdate) {
               const { error: updErr } = await supabase
                 .from('scholar_documents')
@@ -1267,12 +1382,26 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   verification_status: docStatusDb,
                   remarks: docRemarks,
                   document_url: docUrl || undefined,
-                  updated_at: new Date().toISOString()
+                  updated_at: new Date().toISOString(),
+                  ...aiPayload,
                 })
                 .eq('id', recordIdToUpdate);
 
               if (updErr) {
-                console.error(`[Error updating scholar_documents record ${recordIdToUpdate}]:`, updErr);
+                // If columns not yet created in SQL editor, retry standard update
+                if (updErr.message?.includes('column') || updErr.code === '42703') {
+                  await supabase
+                    .from('scholar_documents')
+                    .update({
+                      verification_status: docStatusDb,
+                      remarks: docRemarks,
+                      document_url: docUrl || undefined,
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', recordIdToUpdate);
+                } else {
+                  console.error(`[Error updating scholar_documents record ${recordIdToUpdate}]:`, updErr);
+                }
               } else {
                 console.log(`[Success updating scholar_documents record ${recordIdToUpdate}]: status -> ${docStatusDb}`);
               }
@@ -1286,11 +1415,26 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   verification_status: docStatusDb,
                   remarks: docRemarks,
                   created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
+                  updated_at: new Date().toISOString(),
+                  ...aiPayload,
                 });
 
               if (insErr) {
-                console.error('[Error inserting scholar_documents record]:', insErr);
+                if (insErr.message?.includes('column') || insErr.code === '42703') {
+                  await supabase
+                    .from('scholar_documents')
+                    .insert({
+                      scholar_id: scholarId,
+                      document_name: docName,
+                      document_url: docUrl || '',
+                      verification_status: docStatusDb,
+                      remarks: docRemarks,
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    });
+                } else {
+                  console.error('[Error inserting scholar_documents record]:', insErr);
+                }
               } else {
                 console.log(`[Success inserting scholar_documents record]: ${docName} -> ${docStatusDb}`);
               }
@@ -1520,6 +1664,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           funding_frequency: formFundingFreq,
           renewal_policy: formRenewalPolicy,
           renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
+          disbursement_mode: formDisbursementMode,
+          banking_policy: formBankingPolicy,
           status: 'pending'
         })
         .select()
@@ -1732,6 +1878,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     setFormFundingFreq(prog.fundingFrequency);
     setFormRenewalGwa(prog.renewalGwa);
     setFormRequirements(prog.applicationRequirements);
+    setFormDisbursementMode(prog.disbursement_mode || prog.disbursementMode || 'online');
+    setFormBankingPolicy(prog.banking_policy || prog.bankingPolicy || 'any_bank');
+    setFormRequiredBankName(prog.required_bank_name || prog.requiredBankName || 'Landbank of the Philippines');
     setFormCycleName(prog.cycles[0]?.name || 'AY 2026-2027');
     setFormCycleStartDate(prog.cycles[0]?.startDate || '');
     setFormCycleEndDate(prog.cycles[0]?.endDate || '');
@@ -1811,6 +1960,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           funding_frequency: formFundingFreq,
           renewal_policy: formRenewalPolicy,
           renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
+          disbursement_mode: formDisbursementMode,
+          banking_policy: formBankingPolicy,
         })
         .eq('id', selectedProgram.id);
 
@@ -2693,6 +2844,70 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                         )}
                       </div>
                     </div>
+
+                    {/* Disbursement Method & Banking Policy */}
+                    <div className="border-t border-[#D9D2C5]/50 pt-5 space-y-4">
+                      <div>
+                        <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider">
+                          Disbursement Method & Banking Policy
+                        </h4>
+                        <p className="text-xs text-[#6C6C70] mt-0.5">
+                          Specify how funds are transferred to approved scholars and whether a specific bank is required.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                            Disbursement Mode *
+                          </label>
+                          <select
+                            value={formDisbursementMode}
+                            onChange={(e) => setFormDisbursementMode(e.target.value as any)}
+                            className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                          >
+                            <option value="online">🌐 Online Transfer (Bank / E-Wallet via Gateway)</option>
+                            <option value="in_person_cash">💵 In-Person Cash / Personal Distribution</option>
+                            <option value="hybrid">🔄 Hybrid (Online or Cash)</option>
+                          </select>
+                        </div>
+
+                        {formDisbursementMode !== 'in_person_cash' && (
+                          <div>
+                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                              Banking Policy *
+                            </label>
+                            <select
+                              value={formBankingPolicy}
+                              onChange={(e) => setFormBankingPolicy(e.target.value as any)}
+                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
+                            >
+                              <option value="any_bank">Any Philippine Bank Account (Personal)</option>
+                              <option value="specific_bank">Specific Partner Bank Only (e.g. Landbank)</option>
+                              <option value="provider_issued">Provider-Issued / Payroll Account</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+
+                      {formDisbursementMode !== 'in_person_cash' && formBankingPolicy === 'specific_bank' && (
+                        <div>
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                            Required Bank Name *
+                          </label>
+                          <input
+                            type="text"
+                            value={formRequiredBankName}
+                            onChange={(e) => setFormRequiredBankName(e.target.value)}
+                            placeholder="e.g. Landbank of the Philippines"
+                            className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm font-semibold text-[#2D5941]"
+                          />
+                          <p className="text-[11px] text-[#6C6C70] mt-1">
+                            Scholars will be required to upload their ATM card scan for this specific bank upon approval.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -3184,6 +3399,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             totalPending={totalPending}
             disbursementsList={disbursementsList}
             setIsPayoutModalOpen={setIsPayoutModalOpen}
+            programsList={programsList}
           />
         )}
 

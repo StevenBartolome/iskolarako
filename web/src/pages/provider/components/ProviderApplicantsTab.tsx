@@ -289,14 +289,35 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                     </td>
                     <td className="px-6 py-4 text-center font-serif text-[#1C1C1E]">{app.grade}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${app.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                        app.status === 'Pending' ? 'bg-[#F9F0E0] text-[#C97B2E]' :
-                          app.status === 'Under Review' ? 'bg-[#EAF3FA] text-[#2A6BA8]' :
-                            app.status === 'For Exam' ? 'bg-purple-100 text-purple-700' :
-                              'bg-[#FDF2F2] text-[#B34040]'
-                        }`}>
-                        {app.status}
-                      </span>
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${app.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                          app.status === 'Pending' ? 'bg-[#F9F0E0] text-[#C97B2E]' :
+                            app.status === 'Under Review' ? 'bg-[#EAF3FA] text-[#2A6BA8]' :
+                              app.status === 'For Exam' ? 'bg-purple-100 text-purple-700' :
+                                'bg-[#FDF2F2] text-[#B34040]'
+                          }`}>
+                          {app.status}
+                        </span>
+
+                        {/* Post-Approval Bank Account Badge */}
+                        {app.status === 'Approved' && (
+                          <div>
+                            {app.disbursement_mode === 'in_person_cash' ? (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                💵 Cash Payout
+                              </span>
+                            ) : app.paymentAccount ? (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#2D5941] bg-[#EBF5EE] border border-[#2D5941]/30 px-2 py-0.5 rounded" title={`${app.paymentAccount.bank_name} (${app.paymentAccount.account_number})`}>
+                                💳 {app.paymentAccount.bank_name?.replace('of the Philippines', '')} •••• {app.paymentAccount.account_number?.slice(-4)}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
+                                ⚠️ Bank Proof Pending
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-center whitespace-nowrap">
                       <div className="inline-flex items-center justify-center gap-2">
@@ -371,13 +392,28 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                   <td className="px-6 py-4 text-xs font-semibold text-[#6C6C70]">{sch.cycleJoined || sch.batchName || 'Default Batch'}</td>
                   <td className="px-6 py-4 text-center font-serif font-bold text-[#2D5941]">{sch.gwa}</td>
                   <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${sch.status === 'Maintaining' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                      sch.status === 'Awaiting Grades' ? 'bg-amber-50 text-[#C97B2E]' :
-                        sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
-                          'bg-gray-100 text-gray-700'
-                      }`}>
-                      {sch.status}
-                    </span>
+                    <div className="flex flex-col items-start gap-1">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${sch.status === 'Maintaining' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                        sch.status === 'Awaiting Grades' ? 'bg-amber-50 text-[#C97B2E]' :
+                          sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
+                            'bg-gray-100 text-gray-700'
+                        }`}>
+                        {sch.status}
+                      </span>
+                      {sch.disbursement_mode === 'in_person_cash' ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                          💵 Cash
+                        </span>
+                      ) : sch.paymentAccount ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#2D5941] bg-[#EBF5EE] border border-[#2D5941]/30 px-2 py-0.5 rounded" title={`${sch.paymentAccount.bank_name} (${sch.paymentAccount.account_number})`}>
+                          💳 {sch.paymentAccount.bank_name?.replace('of the Philippines', '')} •••• {sch.paymentAccount.account_number?.slice(-4)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
+                          ⚠️ Bank Proof Missing
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-[#8E8E93] text-center text-xs">{sch.dateAwarded}</td>
                   <td className="px-6 py-4 text-center whitespace-nowrap">

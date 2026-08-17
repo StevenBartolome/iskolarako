@@ -21,6 +21,7 @@ import type {
   SystemAdminPortalProps,
   AdminTab,
   ProviderOrg,
+  ProviderDocumentItem,
   ScholarshipAdminView,
   StudentAdminView,
   AdminReport,
@@ -488,16 +489,26 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
         const repName = rep.first_name && rep.last_name ? `${rep.first_name} ${rep.last_name}` : 'No Representative';
         const repEmail = rep.email || 'N/A';
         const remarks = p.requirements_submitted?._remarks || '';
+        const aiVerifications = p.requirements_submitted?._aiVerification || {};
 
-        // Parse documents from jsonb requirements_submitted (ignoring _remarks key)
-        const docs = p.requirements_submitted
+        // Parse documents from jsonb requirements_submitted (ignoring _ keys)
+        const docs: ProviderDocumentItem[] = p.requirements_submitted
           ? Object.entries(p.requirements_submitted)
               .filter(([name]) => !name.startsWith('_'))
-              .map(([name, url]) => ({
-                name,
-                url: url as string,
-                verified: p.verification_status === 'verified'
-              }))
+              .map(([name, url]) => {
+                const aiResult = aiVerifications[name];
+                const isVerified = aiResult?.verificationStatus === 'verified' || p.verification_status === 'verified';
+                const isFlagged = aiResult?.verificationStatus === 'flagged' || aiResult?.verificationStatus === 'rejected';
+
+                return {
+                  name,
+                  url: url as string,
+                  verified: isVerified,
+                  status: isVerified ? 'Verified' : isFlagged ? 'Flagged' : 'Pending',
+                  remarks: aiResult?.flags?.[0] || '',
+                  aiVerification: aiResult,
+                };
+              })
           : [];
 
         let uiStatus: ProviderOrg['status'] = 'Pending';
@@ -1196,6 +1207,78 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     }
   };
 
+  const handleUpdateProviderDocs = async (
+    providerId: any,
+    updatedDocs: ProviderDocumentItem[],
+    newStatus?: ProviderOrg['status'],
+    newRemarks?: string
+  ) => {
+    try {
+      const { data: currentProv } = await supabase
+        .from('provider')
+        .select('requirements_submitted')
+        .eq('id', providerId)
+        .single();
+
+      const aiVerifMap: Record<string, any> = {
+        ...(currentProv?.requirements_submitted?._aiVerification || {}),
+      };
+
+      updatedDocs.forEach(d => {
+        if (d.aiVerification) {
+          aiVerifMap[d.name] = d.aiVerification;
+        }
+      });
+
+      const updatedReqs = {
+        ...(currentProv?.requirements_submitted || {}),
+        _aiVerification: aiVerifMap,
+      };
+
+      if (newRemarks !== undefined) {
+        updatedReqs._remarks = newRemarks;
+      }
+
+      let dbStatus: string | undefined = undefined;
+      if (newStatus === 'Verified') dbStatus = 'verified';
+      else if (newStatus === 'Under Review') dbStatus = 'under_review';
+      else if (newStatus === 'Suspended') dbStatus = 'rejected';
+
+      const updatePayload: any = {
+        requirements_submitted: updatedReqs,
+        updated_at: new Date().toISOString(),
+      };
+      if (dbStatus) {
+        updatePayload.verification_status = dbStatus;
+      }
+
+      await supabase
+        .from('provider')
+        .update(updatePayload)
+        .eq('id', providerId);
+
+      setProviders(prev =>
+        prev.map(p => {
+          if (p.id === providerId) {
+            const updated: ProviderOrg = {
+              ...p,
+              status: newStatus || p.status,
+              documents: updatedDocs,
+              remarks: newRemarks !== undefined ? newRemarks : p.remarks,
+            };
+            if (selectedProvider && selectedProvider.id === providerId) {
+              setSelectedProvider(updated);
+            }
+            return updated;
+          }
+          return p;
+        })
+      );
+    } catch (err) {
+      console.error('Error persisting provider docs:', err);
+    }
+  };
+
   const handleScholarshipAction = async (id: number | string, action: 'Approved' | 'Rejected' | 'Suspended') => {
     // For Rejected, open the remarks modal instead of acting immediately
     if (action === 'Rejected') {
@@ -1545,6 +1628,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             setSelectedScholarshipDetails={setSelectedScholarshipDetails}
             setActiveTab={setActiveTab}
             handleVerifyProvider={handleVerifyProvider}
+            onUpdateProviderDocs={handleUpdateProviderDocs}
           />
         )}
 
