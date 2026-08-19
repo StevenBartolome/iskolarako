@@ -1662,6 +1662,10 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             reports={reports}
             handleReportAction={handleReportAction}
             showToast={showToast}
+            providers={providers}
+            scholarships={scholarships}
+            students={students}
+            auditLogs={auditLogs}
           />
         )}
 

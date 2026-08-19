@@ -2354,7 +2354,17 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           />
         )}
 
-        {activeTab === 'reports' && <ProviderReportsTab />}
+        {activeTab === 'reports' && (
+          <ProviderReportsTab
+            programs={programsList}
+            applicants={applicantsList}
+            scholars={scholarsList}
+            disbursements={disbursementsList}
+            announcements={announcements}
+            providerDetails={providerDetails}
+            showToast={showToast}
+          />
+        )}
 
         {activeTab === 'verification' && (
           <ProviderVerificationTab
