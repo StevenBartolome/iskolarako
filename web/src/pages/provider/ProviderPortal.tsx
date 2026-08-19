@@ -44,7 +44,7 @@ const getTodayMidnight = () => {
 
 
 export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWelcome }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('programs');
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   
   // Profile state loaded dynamically from Supabase
   const [profile, setProfile] = useState<{
