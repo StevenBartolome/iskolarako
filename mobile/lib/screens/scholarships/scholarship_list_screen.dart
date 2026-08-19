@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/app_components.dart';
+import 'package:iskoako/widgets/custom_button.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -57,6 +58,30 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
           callback: (payload) {
             if (mounted) _loadData();
           },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar',
+          callback: (payload) {
+            if (mounted) _loadData();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'provider',
+          callback: (payload) {
+            if (mounted) _loadData();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_applications',
+          callback: (payload) {
+            if (mounted) _loadData();
+          },
         );
     _realtimeChannel?.subscribe();
   }
@@ -83,7 +108,7 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
         final programsData = await Supabase.instance.client
             .from('scholarship_programs')
             .select('*, provider:provider_id(*), cycles:application_cycles(*)')
-            .eq('status', 'active');
+            .filter('status', 'in', ['active', 'Active', 'approved', 'Approved']);
 
         if (mounted) {
           setState(() {
@@ -330,9 +355,73 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
               },
             ),
           ),
+          if (!_isProfileComplete)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.amber.withAlpha(25),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.amber.withAlpha(80), width: 1),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.alertTriangle, color: AppColors.amberDeep, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Profile Incomplete',
+                            style: GoogleFonts.inter(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primaryDark,
+                            ),
+                          ),
+                          Text(
+                            'Complete your details to see matching scholarships.',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pushNamed(context, AppRouter.profileEdit).then((_) => _loadData());
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(LucideIcons.userCheck, size: 14, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Complete',
+                              style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Count
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
             child: Row(
               children: [
                 Text(
@@ -347,34 +436,67 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
           ),
           // List
           Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(AppColors.primary)))
-                : _displayedPrograms.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20.0),
-                          child: Text(
-                            !_isProfileComplete
-                                ? 'Complete your profile to view matching scholarships'
-                                : 'No qualified scholarships found.',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.inter(
-                                color: AppColors.textSecondary),
+            child: RefreshIndicator(
+              onRefresh: _loadData,
+              color: AppColors.primary,
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(AppColors.primary)))
+                  : _displayedPrograms.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            const SizedBox(height: 60),
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(20.0),
+                                child: Column(
+                                  children: [
+                                    const Icon(LucideIcons.graduationCap,
+                                        size: 48, color: AppColors.textMuted),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      !_isProfileComplete
+                                          ? 'Complete your profile to view matching scholarships'
+                                          : 'No qualified scholarships found.',
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.inter(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 14),
+                                    ),
+                                    if (!_isProfileComplete) ...[
+                                      const SizedBox(height: 20),
+                                      SizedBox(
+                                        width: 220,
+                                        child: CustomButton(
+                                          text: 'Complete Profile Now',
+                                          icon: LucideIcons.userCheck,
+                                          onPressed: () {
+                                            Navigator.pushNamed(context, AppRouter.profileEdit)
+                                                .then((_) => _loadData());
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                          itemCount: _displayedPrograms.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          itemBuilder: (_, i) => _ScholarshipCard(
+                            program: _displayedPrograms[i],
+                            scholar: _scholarProfile,
                           ),
                         ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-                        itemCount: _displayedPrograms.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (_, i) => _ScholarshipCard(
-                          program: _displayedPrograms[i],
-                          scholar: _scholarProfile,
-                        ),
-                      ),
+            ),
           ),
         ],
       ),
@@ -409,7 +531,7 @@ class _ScholarshipCard extends StatelessWidget {
     final coversTuition = program['covers_tuition'] == true;
     final coversStipend = program['covers_stipend'] == true;
     final stipendAmt = program['stipend_amount'] != null ? '₱${program['stipend_amount']}' : '₱0';
-    final amountText = coversStipend ? '$stipendAmt' : (coversTuition ? 'Tuition Covered' : 'Varies');
+    final amountText = coversStipend ? stipendAmt : (coversTuition ? 'Tuition Covered' : 'Varies');
     final periodText = coversStipend ? 'per semester' : '';
 
     return AppCard(

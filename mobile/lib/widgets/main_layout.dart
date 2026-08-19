@@ -23,8 +23,10 @@ class _MainLayoutState extends State<MainLayout>
   late Animation<double> _animation;
   bool _isNavbarShrunk = false;
 
-  final List<Widget> _pages = [
-    const DashboardScreen(),
+  final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey<DashboardScreenState>();
+
+  late final List<Widget> _pages = [
+    DashboardScreen(key: _dashboardKey),
     const ScholarshipListScreen(),
     const ApplicationTrackerScreen(),
     const FundTrackingScreen(),
@@ -61,7 +63,12 @@ class _MainLayoutState extends State<MainLayout>
   }
 
   void _onTabTapped(int index) {
-    if (_currentIndex == index) return;
+    if (_currentIndex == index) {
+      if (index == 0) {
+        _dashboardKey.currentState?.refreshDashboard();
+      }
+      return;
+    }
 
     final double start = _currentIndex.toDouble();
     final double end = index.toDouble();
@@ -70,6 +77,10 @@ class _MainLayoutState extends State<MainLayout>
       _currentIndex = index;
       _isNavbarShrunk = false;
     });
+
+    if (index == 0) {
+      _dashboardKey.currentState?.refreshDashboard();
+    }
 
     _animation = Tween<double>(begin: start, end: end).animate(
       CurvedAnimation(

@@ -12,10 +12,15 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class DashboardScreenState extends State<DashboardScreen> {
+  void refreshDashboard() {
+    if (mounted) {
+      _loadDashboardData();
+    }
+  }
   int _activeFilterIndex = 0;
   final List<String> _filters = [
     'All',
@@ -44,6 +49,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _subscribeRealtime() {
     _realtimeChannel = Supabase.instance.client
         .channel('dashboard-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar',
+          callback: (payload) {
+            if (mounted) _loadDashboardData();
+          },
+        )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',

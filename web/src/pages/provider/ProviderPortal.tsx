@@ -30,6 +30,8 @@ import type {
   Program,
   DisbursementTx,
   ScholarAward,
+  EducationLevel,
+  GradingSystem,
 } from './types';
 export type { ApplicationCycle, ProgramRequirement, Program };
 
@@ -309,7 +311,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       })),
       budgetUsed: '₱0',
       budgetTotal: dbProg.budget_total ? `₱${Number(dbProg.budget_total).toLocaleString()}` : '₱0',
-      rejectionRemarks: dbProg.rejection_remarks || undefined
+      rejectionRemarks: dbProg.rejection_remarks || undefined,
+      targetEducationLevel: dbProg.target_education_level || 'college',
+      gradingSystem: dbProg.grading_system || 'scale_5',
     };
   };
 
@@ -450,6 +454,38 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [formBankingPolicy, setFormBankingPolicy] = useState<'specific_bank' | 'any_bank' | 'provider_issued'>('any_bank');
   const [formRequiredBankName, setFormRequiredBankName] = useState('Landbank of the Philippines');
   const [formModalStep, setFormModalStep] = useState(1);
+  const [formEduLevel, setFormEduLevel] = useState<EducationLevel>('college');
+  const [formGradingSystem, setFormGradingSystem] = useState<GradingSystem>('scale_5');
+
+  // Year level options per education level
+  const EDU_YEAR_LEVEL_OPTIONS: Record<EducationLevel, { val: number; label: string }[]> = {
+    college:          [1,2,3,4,5].map(y => ({ val: y, label: `Year ${y}` })),
+    graduate:         [1,2,3,4].map(y => ({ val: y, label: `Year ${y}` })),
+    senior_high:      [{ val: 11, label: 'Grade 11' }, { val: 12, label: 'Grade 12' }],
+    high_school:      [7,8,9,10].map(y => ({ val: y, label: `Grade ${y}` })),
+    elementary:       [1,2,3,4,5,6].map(y => ({ val: y, label: `Grade ${y}` })),
+    vocational:       [{ val: 1, label: 'Semester 1' }, { val: 2, label: 'Semester 2' }, { val: 3, label: 'Semester 3' }],
+    incoming_college: [],
+  };
+  const EDU_LEVEL_LABELS: Record<EducationLevel, string> = {
+    college: '🎓 College / Undergraduate',
+    graduate: '🏛️ Graduate Studies (MA/PhD)',
+    senior_high: '📚 Senior High School (SHS)',
+    high_school: '🏫 High School (JHS)',
+    elementary: '🔖 Elementary',
+    vocational: '🔧 Vocational / TVET',
+    incoming_college: '🌟 Incoming College (Graduating SHS)',
+  };
+  const GRADING_SYSTEM_LABELS: Record<GradingSystem, string> = {
+    scale_5: 'Scale 1–5 (1.00 = Highest, UP-style)',
+    scale_4: 'Scale 4.0 (4.00 = Highest, DLSU/Ateneo-style)',
+    percentage: 'Percentage (60–100, SHS/JHS/Elem)',
+  };
+  const GWA_CONFIG: Record<GradingSystem, { min: string; max: string; step: string; placeholder: string; hint: string }> = {
+    scale_5:     { min: '1', max: '5',   step: '0.01', placeholder: 'e.g. 1.75', hint: 'Student GWA must be ≤ this value to qualify.' },
+    scale_4:     { min: '0', max: '4',   step: '0.01', placeholder: 'e.g. 3.00', hint: 'Student GPA must be ≥ this value to qualify.' },
+    percentage:  { min: '60', max: '100', step: '0.5',  placeholder: 'e.g. 85', hint: 'Student average must be ≥ this percentage to qualify.' },
+  };
 
   // PSGC Geographic Data States & Fetch Effects
   const [psgcRegions, setPsgcRegions] = useState<{ code: string; name: string }[]>([]);
@@ -1666,6 +1702,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
           disbursement_mode: formDisbursementMode,
           banking_policy: formBankingPolicy,
+          target_education_level: formEduLevel,
+          grading_system: formGradingSystem,
           status: 'pending'
         })
         .select()
@@ -1729,6 +1767,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
         { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
       ]);
+      setFormEduLevel('college');
+      setFormGradingSystem('scale_5');
       setFormModalStep(1);
 
     } catch (err) {
@@ -1850,6 +1890,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
       { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
     ]);
+    setFormEduLevel('college');
+    setFormGradingSystem('scale_5');
     setFormModalStep(1);
     setIsCreateModalOpen(true);
   };
@@ -1884,6 +1926,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     setFormCycleName(prog.cycles[0]?.name || 'AY 2026-2027');
     setFormCycleStartDate(prog.cycles[0]?.startDate || '');
     setFormCycleEndDate(prog.cycles[0]?.endDate || '');
+    setFormEduLevel((prog.targetEducationLevel || prog.target_education_level || 'college') as EducationLevel);
+    setFormGradingSystem((prog.gradingSystem || prog.grading_system || 'scale_5') as GradingSystem);
     setFormModalStep(1);
     setSelectedProgram(prog);
     setIsEditMode(true);
@@ -1962,6 +2006,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
           disbursement_mode: formDisbursementMode,
           banking_policy: formBankingPolicy,
+          target_education_level: formEduLevel,
+          grading_system: formGradingSystem,
         })
         .eq('id', selectedProgram.id);
 
@@ -2509,6 +2555,35 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                       </div>
                     </div>
 
+                    {/* Education Level */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Target Education Level *</label>
+                      <select
+                        value={formEduLevel}
+                        onChange={(e) => {
+                          setFormEduLevel(e.target.value as EducationLevel);
+                          setFormYearLevelEligibility([]);
+                          // Auto-set grading system for HS/Elem
+                          if (['high_school', 'elementary', 'senior_high'].includes(e.target.value)) {
+                            setFormGradingSystem('percentage');
+                          } else if (e.target.value === 'incoming_college') {
+                            setFormGradingSystem('percentage');
+                          } else {
+                            setFormGradingSystem('scale_5');
+                          }
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl border border-[#1A3C2E]/40 focus:outline-none text-xs font-semibold cursor-pointer bg-[#F9F5EF]"
+                      >
+                        <option value="college">🎓 College / Undergraduate</option>
+                        <option value="graduate">🏛️ Graduate Studies (MA / PhD)</option>
+                        <option value="senior_high">📚 Senior High School (SHS)</option>
+                        <option value="high_school">🏫 High School (JHS)</option>
+                        <option value="elementary">🔖 Elementary</option>
+                        <option value="vocational">🔧 Vocational / TVET</option>
+                        <option value="incoming_college">🌟 Incoming College (Graduating SHS)</option>
+                      </select>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Scholarship Type *</label>
@@ -2678,35 +2753,72 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                           )}
                         </div>
 
-                        {/* Year Level */}
+                        {/* Year Level — dynamic per education level */}
                         <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Year Levels (check all that apply)</label>
-                          <div className="flex gap-3">
-                            {[1, 2, 3, 4, 5].map(yr => (
-                              <label key={yr} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Year / Grade Levels (check all that apply)</label>
+                          {formEduLevel === 'incoming_college' ? (
+                            <p className="text-xs text-[#8E8E93] italic">Not applicable — incoming college students have not yet enrolled.</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-3">
+                              {EDU_YEAR_LEVEL_OPTIONS[formEduLevel].map(opt => (
+                                <label key={opt.val} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={formYearLevelEligibility.includes(opt.val)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) setFormYearLevelEligibility(prev => [...prev, opt.val].sort((a,b)=>a-b));
+                                      else setFormYearLevelEligibility(prev => prev.filter(y => y !== opt.val));
+                                    }}
+                                    className="w-4 h-4 text-[#2D5941] rounded cursor-pointer"
+                                  />
+                                  {opt.label}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Grading System + GWA — dynamic */}
+                        <div className="space-y-3">
+                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide">Grading System</label>
+                          <div className="grid grid-cols-1 gap-2">
+                            {(['scale_5', 'scale_4', 'percentage'] as GradingSystem[]).map(gs => (
+                              <label key={gs} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                formGradingSystem === gs
+                                  ? 'border-[#2D5941] bg-[#EBF5EE]'
+                                  : 'border-[#D9D2C5] hover:bg-[#F9F5EF]'
+                              }`}>
                                 <input
-                                  type="checkbox"
-                                  checked={formYearLevelEligibility.includes(yr)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) setFormYearLevelEligibility(prev => [...prev, yr].sort());
-                                    else setFormYearLevelEligibility(prev => prev.filter(y => y !== yr));
-                                  }}
-                                  className="w-4 h-4 text-[#2D5941] rounded cursor-pointer"
+                                  type="radio"
+                                  name="gradingSystem"
+                                  value={gs}
+                                  checked={formGradingSystem === gs}
+                                  onChange={() => { setFormGradingSystem(gs); setFormMinGwa(''); }}
+                                  className="w-4 h-4 text-[#2D5941] cursor-pointer"
                                 />
-                                Year {yr}
+                                <span className="text-xs font-semibold text-[#1C1C1E]">{GRADING_SYSTEM_LABELS[gs]}</span>
                               </label>
                             ))}
                           </div>
-                        </div>
 
-                        {/* GWA */}
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Minimum GWA Required</label>
-                          <input
-                            type="number" step="0.01" min="1" max="5" placeholder="e.g. 1.75 (blank = no minimum)"
-                            value={formMinGwa} onChange={(e) => setFormMinGwa(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                          />
+                          <div>
+                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Minimum Grade Required</label>
+                            <input
+                              type="number"
+                              step={GWA_CONFIG[formGradingSystem].step}
+                              min={GWA_CONFIG[formGradingSystem].min}
+                              max={GWA_CONFIG[formGradingSystem].max}
+                              placeholder={GWA_CONFIG[formGradingSystem].placeholder + ' (blank = no minimum)'}
+                              value={formMinGwa}
+                              onChange={(e) => setFormMinGwa(e.target.value)}
+                              className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
+                            />
+                            {formMinGwa && (
+                              <p className="text-[11px] text-[#2D5941] font-medium mt-1.5">
+                                💡 {GWA_CONFIG[formGradingSystem].hint}
+                              </p>
+                            )}
+                          </div>
                         </div>
 
                         {/* Availability */}
@@ -3026,13 +3138,14 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
                         <div><span className="text-[#6C6C70]">Title: </span><span className="font-semibold text-[#1C1C1E]">{formTitle || '—'}</span></div>
                         <div><span className="text-[#6C6C70]">Category: </span><span className="font-semibold text-[#1C1C1E]">{formCategory}</span></div>
+                        <div><span className="text-[#6C6C70]">Education Level: </span><span className="font-semibold text-[#1C1C1E]">{EDU_LEVEL_LABELS[formEduLevel]}</span></div>
                         <div><span className="text-[#6C6C70]">Type: </span><span className="font-semibold text-[#1C1C1E] capitalize">{formScholarshipType.replace('_', ' ')}</span></div>
                         <div><span className="text-[#6C6C70]">Funding: </span><span className="font-semibold text-[#1C1C1E]">{formFundingFreq}</span></div>
                         <div><span className="text-[#6C6C70]">Renewal: </span><span className="font-semibold text-[#1C1C1E]">{formRenewalPolicy}</span></div>
                         <div><span className="text-[#6C6C70]">Availability: </span><span className="font-semibold text-[#1C1C1E] capitalize">{formAvailabilityScope}</span></div>
                         <div><span className="text-[#6C6C70]">Slots: </span><span className="font-semibold text-[#1C1C1E]">{formTotalSlots || 'Unlimited'}</span></div>
                         <div><span className="text-[#6C6C70]">Budget: </span><span className="font-semibold text-[#1C1C1E]">{formBudgetTotal ? `₱${Number(formBudgetTotal).toLocaleString()}` : '—'}</span></div>
-                        <div><span className="text-[#6C6C70]">Min GWA: </span><span className="font-semibold text-[#1C1C1E]">{formMinGwa || 'None'}</span></div>
+                        <div><span className="text-[#6C6C70]">Min Grade: </span><span className="font-semibold text-[#1C1C1E]">{formMinGwa ? `${formMinGwa} (${GRADING_SYSTEM_LABELS[formGradingSystem]})` : 'None'}</span></div>
                         <div><span className="text-[#6C6C70]">Requirements: </span><span className="font-semibold text-[#1C1C1E]">{formRequirements.length} docs</span></div>
                       </div>
                     </div>

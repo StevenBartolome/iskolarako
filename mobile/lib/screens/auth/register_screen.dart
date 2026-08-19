@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:iskoako/constants/app_colors.dart';
+import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/custom_button.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -39,6 +40,15 @@ class _RegisterScreenState extends State<RegisterScreen>
   final TextEditingController _courseController = TextEditingController();
   int? _selectedYearLevel;
   final TextEditingController _gpaController = TextEditingController();
+  String? _selectedEduLevel = 'college';
+  String? _selectedGpaScale = 'scale_5';
+  // For incoming_college students
+  final TextEditingController _plannedUniversityController = TextEditingController();
+  final List<TextEditingController> _plannedCoursesControllers = [
+    TextEditingController(),
+    TextEditingController(),
+    TextEditingController(),
+  ];
 
   bool _isLoading = false;
   bool _isPasswordVisible = false;
@@ -99,6 +109,8 @@ class _RegisterScreenState extends State<RegisterScreen>
     _schoolController.dispose();
     _courseController.dispose();
     _gpaController.dispose();
+    _plannedUniversityController.dispose();
+    for (final c in _plannedCoursesControllers) { c.dispose(); }
     _heroController.dispose();
     _formController.dispose();
     super.dispose();
@@ -235,8 +247,31 @@ class _RegisterScreenState extends State<RegisterScreen>
     final course = _courseController.text.trim();
     final gpaText = _gpaController.text.trim();
 
-    if (school.isEmpty || course.isEmpty || gpaText.isEmpty || _selectedYearLevel == null) {
-      _showSnackBar('Please fill in all academic profile fields.', isError: true);
+    final bool isIncoming = _selectedEduLevel == 'incoming_college';
+    final bool needsSchoolCourse = !isIncoming;
+
+    if (_selectedEduLevel == null) {
+      _showSnackBar('Please select your education level.', isError: true);
+      return;
+    }
+
+    if (needsSchoolCourse && (school.isEmpty || course.isEmpty)) {
+      _showSnackBar('Please fill in school and course/strand fields.', isError: true);
+      return;
+    }
+
+    if (isIncoming && _plannedUniversityController.text.trim().isEmpty) {
+      _showSnackBar('Please enter your planned university/college.', isError: true);
+      return;
+    }
+
+    if (gpaText.isEmpty) {
+      _showSnackBar('Please fill in your GWA / grade average.', isError: true);
+      return;
+    }
+
+    if (!isIncoming && _selectedYearLevel == null) {
+      _showSnackBar('Please select your year/grade level.', isError: true);
       return;
     }
 
@@ -290,10 +325,18 @@ class _RegisterScreenState extends State<RegisterScreen>
             email: email,
             password: password,
             phone: phone,
+            // For incoming_college: school = SHS school, course = SHS strand
+            // planned_university and planned_courses are saved separately
             school: school,
             course: course,
-            yearLevel: _selectedYearLevel!,
-            gpa: gpa,
+            yearLevel: isIncoming ? null : _selectedYearLevel,
+            gpa: double.tryParse(gpaText) ?? 0.0,
+            eduLevel: _selectedEduLevel ?? 'college',
+            gpaScale: _selectedGpaScale ?? 'scale_5',
+            plannedUniversity: isIncoming ? _plannedUniversityController.text.trim() : null,
+            plannedCourses: isIncoming
+                ? _plannedCoursesControllers.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList()
+                : null,
           ),
           onResendRequested: () async {
             // Regenerate and resend
@@ -320,8 +363,12 @@ class _RegisterScreenState extends State<RegisterScreen>
     required String phone,
     required String school,
     required String course,
-    required int yearLevel,
+    int? yearLevel,
     required double gpa,
+    required String eduLevel,
+    required String gpaScale,
+    String? plannedUniversity,
+    List<String>? plannedCourses,
   }) async {
     setState(() => _isLoading = true);
     try {
@@ -341,6 +388,14 @@ class _RegisterScreenState extends State<RegisterScreen>
         throw const AuthException('Registration authentication failed.');
       }
 
+      // Auto sign-in fallback if signUp does not establish active session automatically
+      if (authResponse.session == null) {
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+      }
+
       // 2. Explicitly insert scholar details into public.scholar table
       await Supabase.instance.client.from('scholar').insert({
         'user_id': userId,
@@ -353,13 +408,17 @@ class _RegisterScreenState extends State<RegisterScreen>
         'phone': phone,
         'school': school,
         'course': course,
-        'year_level': yearLevel,
+        if (yearLevel != null) 'year_level': yearLevel,
         'gpa': gpa,
+        'education_level': eduLevel,
+        'gpa_scale': gpaScale,
+        if (plannedUniversity != null) 'planned_university': plannedUniversity,
+        if (plannedCourses != null && plannedCourses.isNotEmpty) 'planned_courses': plannedCourses,
       });
 
       if (!mounted) return;
-      _showSnackBar('Registration successful! Welcome to IskolarAko.', isError: false);
-      Navigator.pop(context);
+      _showSnackBar('Registration successful! Welcome to IskolarAko, $first.', isError: false);
+      Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false);
     } on AuthException catch (e) {
       _showSnackBar(e.message, isError: true);
     } catch (_) {
@@ -791,14 +850,56 @@ class _RegisterScreenState extends State<RegisterScreen>
     );
   }
 
-  // ── Step 3: Academic details ────────────────────────────────
+  // ── Step 3: Academic details ────────────────────────────────────
+
   Widget _buildStep3() {
+    final isIncoming = _selectedEduLevel == 'incoming_college';
+
+    // Year level options per education level
+    final Map<String, List<Map<String, dynamic>>> yearOptions = {
+      'college':    [1,2,3,4,5].map((y) => {'val': y, 'label': 'Year $y'}).toList(),
+      'graduate':   [1,2,3,4].map((y) => {'val': y, 'label': 'Year $y'}).toList(),
+      'senior_high':[{'val': 11, 'label': 'Grade 11'}, {'val': 12, 'label': 'Grade 12'}],
+      'high_school':[7,8,9,10].map((y) => {'val': y, 'label': 'Grade $y'}).toList(),
+      'elementary': [1,2,3,4,5,6].map((y) => {'val': y, 'label': 'Grade $y'}).toList(),
+      'vocational': [{'val': 1, 'label': 'Semester 1'}, {'val': 2, 'label': 'Semester 2'}, {'val': 3, 'label': 'Semester 3'}],
+      'incoming_college': [],
+    };
+    final currentYearOptions = yearOptions[_selectedEduLevel ?? 'college'] ?? yearOptions['college']!;
+
+    // GWA / grade hints per scale
+    final Map<String, String> gwaHints = {
+      'scale_5':    'e.g. 1.75  (1.00 = Highest)',
+      'scale_4':    'e.g. 3.00  (4.00 = Highest)',
+      'percentage': 'e.g. 88  (out of 100)',
+    };
+    final gwaHint = gwaHints[_selectedGpaScale ?? 'scale_5'] ?? 'e.g. 1.25';
+
+    final Map<String, String> schoolLabel = {
+      'college': 'University / College Name *',
+      'graduate': 'University / Graduate School Name *',
+      'senior_high': 'Senior High School Name *',
+      'high_school': 'Junior High School Name *',
+      'elementary': 'Elementary School Name *',
+      'vocational': 'TVET / Vocational School Name *',
+      'incoming_college': 'Current SHS School Name *',
+    };
+    final Map<String, String> courseLabel = {
+      'college': 'Course / Major *',
+      'graduate': 'Degree Program *',
+      'senior_high': 'Track & Strand * (e.g. STEM, ABM)',
+      'high_school': 'Section / Track (optional)',
+      'elementary': 'Grade Section (optional)',
+      'vocational': 'TVET Program / NC Level *',
+      'incoming_college': 'SHS Strand * (e.g. STEM, ABM, HUMSS)',
+    };
+
     return Column(
       key: const ValueKey(3),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Step 3: Academic Details & GPA',
+          'Step 3: Academic Details',
           style: GoogleFonts.playfairDisplay(
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -806,41 +907,206 @@ class _RegisterScreenState extends State<RegisterScreen>
           ),
         ),
         const SizedBox(height: 18),
+
+        // ── Education Level ──
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Education Level *',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.rule, width: 1),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedEduLevel,
+                  isExpanded: true,
+                  icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
+                  items: const [
+                    DropdownMenuItem(value: 'college',          child: Text('🎓 College / Undergraduate')),
+                    DropdownMenuItem(value: 'graduate',         child: Text('🏛️ Graduate Studies (MA/PhD)')),
+                    DropdownMenuItem(value: 'senior_high',      child: Text('📚 Senior High School (SHS)')),
+                    DropdownMenuItem(value: 'high_school',      child: Text('🏫 High School (JHS)')),
+                    DropdownMenuItem(value: 'elementary',       child: Text('🔖 Elementary')),
+                    DropdownMenuItem(value: 'vocational',       child: Text('🔧 Vocational / TVET')),
+                    DropdownMenuItem(value: 'incoming_college', child: Text('🌟 Incoming College (Graduating SHS)')),
+                  ],
+                  onChanged: (val) => setState(() {
+                    _selectedEduLevel = val;
+                    _selectedYearLevel = null;
+                    // Auto-set grading scale
+                    if (['high_school', 'elementary', 'senior_high', 'incoming_college'].contains(val)) {
+                      _selectedGpaScale = 'percentage';
+                    } else if (val == 'graduate') {
+                      _selectedGpaScale = 'scale_5';
+                    } else {
+                      _selectedGpaScale = 'scale_5';
+                    }
+                  }),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // ── School name (label changes per level) ──
         _buildField(
-          label: 'School / University Name *',
+          label: schoolLabel[_selectedEduLevel] ?? 'School Name *',
           controller: _schoolController,
           icon: LucideIcons.graduationCap,
-          hint: 'State University',
+          hint: isIncoming ? 'e.g. Pasig City Science High School' : 'School / University name',
         ),
         const SizedBox(height: 16),
+
+        // ── Course / Strand / Program (label changes per level) ──
         _buildField(
-          label: 'Course / Major *',
+          label: courseLabel[_selectedEduLevel] ?? 'Course / Strand *',
           controller: _courseController,
           icon: LucideIcons.bookOpen,
-          hint: 'B.S. Information Technology',
+          hint: isIncoming ? 'e.g. STEM' : 'e.g. BS Computer Science',
         ),
         const SizedBox(height: 16),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              flex: 3,
-              child: _buildYearLevelDropdown(),
+
+        // ── Incoming College: Planned University + Course Choices ──
+        if (isIncoming) ...[
+          _buildField(
+            label: 'Planned University / College *',
+            controller: _plannedUniversityController,
+            icon: LucideIcons.mapPin,
+            hint: 'e.g. University of the Philippines Diliman',
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'PREFERRED COURSES (up to 3)',
+            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.5),
+          ),
+          const SizedBox(height: 6),
+          ...List.generate(3, (i) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _buildField(
+              label: 'Choice ${i + 1}${i == 0 ? ' *' : ''}',
+              controller: _plannedCoursesControllers[i],
+              icon: LucideIcons.star,
+              hint: 'e.g. BS Computer Science',
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: _buildField(
-                label: 'GPA / GWA *',
-                controller: _gpaController,
-                icon: LucideIcons.percent,
-                hint: 'e.g. 1.25',
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          )),
+          const SizedBox(height: 4),
+        ],
+
+        // ── Year / Grade Level + GWA row ──
+        if (!isIncoming) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      currentYearOptions.isEmpty ? 'Year / Grade Level' : 'Year / Grade Level *',
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.5),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.rule, width: 1),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          value: _selectedYearLevel,
+                          hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+                          isExpanded: true,
+                          icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
+                          items: currentYearOptions.map((opt) {
+                            return DropdownMenuItem<int>(
+                              value: opt['val'] as int,
+                              child: Text(opt['label'] as String, style: GoogleFonts.inter(fontSize: 13)),
+                            );
+                          }).toList(),
+                          onChanged: (val) => setState(() => _selectedYearLevel = val),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: _buildField(
+                  label: 'GWA / Average *',
+                  controller: _gpaController,
+                  icon: LucideIcons.percent,
+                  hint: gwaHint,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ] else ...[
+          // Incoming college GWA
+          _buildField(
+            label: 'Final SHS Average / GWA *',
+            controller: _gpaController,
+            icon: LucideIcons.percent,
+            hint: 'e.g. 90  (out of 100)',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          const SizedBox(height: 14),
+        ],
+
+        // ── Grading Scale ──
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'GRADING SCALE *',
+              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.5),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.rule, width: 1),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedGpaScale,
+                  isExpanded: true,
+                  icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
+                  items: const [
+                    DropdownMenuItem(value: 'scale_5',    child: Text('Scale 1–5  (1.00 = Highest, UP-style)')),
+                    DropdownMenuItem(value: 'scale_4',    child: Text('Scale 4.0  (4.00 = Highest, DLSU-style)')),
+                    DropdownMenuItem(value: 'percentage', child: Text('Percentage  (60–100 scale)')),
+                  ],
+                  onChanged: (val) => setState(() => _selectedGpaScale = val),
+                ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 24),
+
         // Terms checkbox
         GestureDetector(
           onTap: () => setState(() => _agreedToTerms = !_agreedToTerms),
@@ -1151,53 +1417,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     );
   }
 
-  Widget _buildYearLevelDropdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Year Level *',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.rule, width: 1),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<int>(
-              value: _selectedYearLevel,
-              hint: Text('Select Year', style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13)),
-              icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.textSecondary),
-              isExpanded: true,
-              style: GoogleFonts.inter(fontSize: 13.5, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
-              dropdownColor: AppColors.surface,
-              onChanged: (int? val) {
-                setState(() {
-                  _selectedYearLevel = val;
-                });
-              },
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('1st Year')),
-                DropdownMenuItem(value: 2, child: Text('2nd Year')),
-                DropdownMenuItem(value: 3, child: Text('3rd Year')),
-                DropdownMenuItem(value: 4, child: Text('4th Year')),
-                DropdownMenuItem(value: 5, child: Text('5th Year')),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildPasswordFeedbackPanel() {
     final password = _passwordController.text;

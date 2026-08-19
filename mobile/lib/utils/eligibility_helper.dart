@@ -69,7 +69,30 @@ class EligibilityHelper {
     return missing;
   }
 
+  /// Normalises any GPA/grade value to a 0–100 percentage for cross-scale comparison.
+  static double _normalizeGpa(double value, String scale) {
+    switch (scale) {
+      case 'scale_4':
+        // 4.0 = 100%, 0.0 = 0%
+        return (value / 4.0) * 100.0;
+      case 'percentage':
+        // Already in 0–100
+        return value.clamp(0.0, 100.0);
+      case 'scale_5':
+      default:
+        // 1.0 = 100%, 5.0 = 0%  (inverted scale)
+        return ((5.0 - value) / 4.0) * 100.0;
+    }
+  }
+
   static bool isQualified(Map<String, dynamic> scholar, Map<String, dynamic> program) {
+    // 0. Education Level check — most important pre-filter
+    final targetEduLevel = program['target_education_level']?.toString();
+    if (targetEduLevel != null && targetEduLevel.isNotEmpty) {
+      final scholarEduLevel = scholar['education_level']?.toString() ?? 'college';
+      if (scholarEduLevel != targetEduLevel) return false;
+    }
+
     // 1. Course eligibility check
     final courseEl = program['course_eligibility'];
     if (courseEl != null && courseEl is List && courseEl.isNotEmpty) {
@@ -100,17 +123,20 @@ class EligibilityHelper {
       if (!match) return false;
     }
 
-    // 3. GPA check
+    // 3. GPA / grade check — scale-aware with cross-scale normalization
     final minGwa = program['minimum_gwa'];
     if (minGwa != null) {
-      final scholarGpa = scholar['gpa'] != null ? double.tryParse(scholar['gpa'].toString()) : null;
+      final scholarGpa = scholar['gpa'] != null
+          ? double.tryParse(scholar['gpa'].toString())
+          : null;
       final programMinGwa = double.tryParse(minGwa.toString());
+      final programScale = program['grading_system']?.toString() ?? 'scale_5';
+      final scholarScale = scholar['gpa_scale']?.toString() ?? 'scale_5';
+
       if (scholarGpa != null && programMinGwa != null) {
-        if (programMinGwa <= 5.0) {
-          if (scholarGpa > programMinGwa) return false;
-        } else {
-          if (scholarGpa < programMinGwa) return false;
-        }
+        final scholarPct = _normalizeGpa(scholarGpa, scholarScale);
+        final minPct     = _normalizeGpa(programMinGwa, programScale);
+        if (scholarPct < minPct) return false;
       }
     }
 

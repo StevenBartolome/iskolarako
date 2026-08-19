@@ -138,6 +138,15 @@ export const LoginRegister: React.FC<LoginRegisterProps> = ({ onLogin, onBackToH
       if (authError) throw authError;
       if (!authData.user) throw new Error('User sign up failed.');
 
+      // Auto sign-in fallback if signUp does not return session automatically
+      if (!authData.session) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) throw signInError;
+      }
+
       setIsSubmitting(false);
       setShowVerificationModal(false);
       onLogin('provider');

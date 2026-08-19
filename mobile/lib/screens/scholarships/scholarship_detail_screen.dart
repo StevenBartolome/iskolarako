@@ -22,9 +22,46 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
   bool _isCheckingApp = false;
   Map<String, dynamic>? _existingApp;
   bool _hasCheckedApp = false;
+  RealtimeChannel? _realtimeChannel;
 
-  Future<void> _checkExistingApplication(String scholarId, String cycleId) async {
-    if (_hasCheckedApp) return;
+  @override
+  void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
+    super.dispose();
+  }
+
+  void _subscribeRealtime(String scholarId, String cycleId) {
+    if (_realtimeChannel != null) return;
+
+    _realtimeChannel = Supabase.instance.client
+        .channel('scholarship-detail-$cycleId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_applications',
+          callback: (payload) {
+            if (mounted) {
+              _checkExistingApplication(scholarId, cycleId, force: true);
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_programs',
+          callback: (payload) {
+            if (mounted) {
+              setState(() {});
+            }
+          },
+        );
+    _realtimeChannel?.subscribe();
+  }
+
+  Future<void> _checkExistingApplication(String scholarId, String cycleId, {bool force = false}) async {
+    if (_hasCheckedApp && !force) return;
     setState(() => _isCheckingApp = true);
     try {
       final res = await Supabase.instance.client
@@ -89,6 +126,20 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
     }
 
     final eligibilityList = <String>[];
+    if (program?['target_education_level'] != null) {
+      const eduLabels = {
+        'college': 'College / Undergraduate',
+        'graduate': 'Graduate Studies (MA/PhD)',
+        'senior_high': 'Senior High School (SHS)',
+        'high_school': 'High School (JHS)',
+        'elementary': 'Elementary',
+        'vocational': 'Vocational / TVET',
+        'incoming_college': 'Incoming College (Graduating SHS)',
+      };
+      final level = program?['target_education_level']?.toString() ?? '';
+      final levelLabel = eduLabels[level] ?? level;
+      eligibilityList.add('🎓 Education Level: $levelLabel');
+    }
     if (program?['citizenship_required'] != null) {
       eligibilityList.add('${program?['citizenship_required']} citizenship required');
     }
@@ -96,10 +147,17 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
       eligibilityList.add('Open to: ${(program?['course_eligibility'] as List).join(', ')}');
     }
     if (program?['year_level_eligibility'] != null && (program?['year_level_eligibility'] as List).isNotEmpty) {
-      eligibilityList.add('Year levels: ${(program?['year_level_eligibility'] as List).join(', ')}');
+      eligibilityList.add('Year/Grade levels: ${(program?['year_level_eligibility'] as List).join(', ')}');
     }
     if (program?['minimum_gwa'] != null) {
-      eligibilityList.add('Minimum GWA constraint: ${program?['minimum_gwa']}');
+      const gsLabels = {
+        'scale_5': '(1–5 Scale, lower = better)',
+        'scale_4': '(4.0 Scale, higher = better)',
+        'percentage': '(Percentage, 60–100)',
+      };
+      final gs = program?['grading_system']?.toString() ?? 'scale_5';
+      final gsNote = gsLabels[gs] ?? '';
+      eligibilityList.add('Minimum Grade: ${program?['minimum_gwa']} $gsNote');
     }
     if (eligibilityList.isEmpty) {
       eligibilityList.add('Open to all eligible students');
@@ -117,8 +175,11 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
     final scholarId = scholar?['id']?.toString();
     final cycleId = activeCycle?['id']?.toString();
 
-    if (scholarId != null && cycleId != null && !_hasCheckedApp && !_isCheckingApp) {
-      _checkExistingApplication(scholarId, cycleId);
+    if (scholarId != null && cycleId != null) {
+      if (!_hasCheckedApp && !_isCheckingApp) {
+        _checkExistingApplication(scholarId, cycleId);
+      }
+      _subscribeRealtime(scholarId, cycleId);
     }
 
     int daysLeft = 0;
@@ -210,88 +271,134 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
-          child: CustomButton(
-            text: buttonText,
-            icon: hasApplied ? LucideIcons.clipboardList : LucideIcons.send,
-            onPressed: () {
-              if (hasApplied) {
-                Navigator.pushNamed(context, AppRouter.applicationTracker);
-                return;
-              }
-
-              final isComplete = EligibilityHelper.isProfileComplete(scholar);
-              if (!isComplete) {
-                final missingFields = EligibilityHelper.getMissingFields(scholar);
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    title: Row(
-                      children: [
-                        const Icon(LucideIcons.alertTriangle, color: AppColors.error),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Profile Incomplete',
-                          style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w800),
-                        ),
-                      ],
-                    ),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Before you can apply for this scholarship, you must complete your profile. The following fields are missing:',
-                            style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
-                          ),
-                          const SizedBox(height: 12),
-                          ...missingFields.map((f) => Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Row(
-                              children: [
-                                const Icon(LucideIcons.dot, size: 16, color: AppColors.error),
-                                const SizedBox(width: 6),
-                                Text(
-                                  f,
-                                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                                ),
-                              ],
-                            ),
-                          )),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Please update your profile details to proceed.',
-                            style: GoogleFonts.inter(fontSize: 12, fontStyle: FontStyle.italic, color: AppColors.textMuted),
-                          ),
-                        ],
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!hasApplied && !EligibilityHelper.isProfileComplete(scholar))
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.amber.withAlpha(25),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.amber.withAlpha(80)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.alertCircle, color: AppColors.amberDeep, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
                         child: Text(
-                          'Cancel',
-                          style: GoogleFonts.inter(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                          'Your profile is incomplete. Complete it to unlock application.',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryDark),
                         ),
                       ),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () {
                           Navigator.pushNamed(context, AppRouter.profileEdit);
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
                         child: Text(
-                          'Edit Profile',
-                          style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600),
+                          'Complete Now',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                            decoration: TextDecoration.underline,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                );
+                ),
+              CustomButton(
+                text: hasApplied
+                    ? buttonText
+                    : (!EligibilityHelper.isProfileComplete(scholar) ? 'Complete Profile to Apply' : buttonText),
+                icon: hasApplied
+                    ? LucideIcons.clipboardList
+                    : (!EligibilityHelper.isProfileComplete(scholar) ? LucideIcons.userCheck : LucideIcons.send),
+                onPressed: () {
+                  if (hasApplied) {
+                    Navigator.pushNamed(context, AppRouter.applicationTracker);
+                    return;
+                  }
+
+                  final isComplete = EligibilityHelper.isProfileComplete(scholar);
+                  if (!isComplete) {
+                    final missingFields = EligibilityHelper.getMissingFields(scholar);
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        title: Row(
+                          children: [
+                            const Icon(LucideIcons.alertTriangle, color: AppColors.error),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Profile Incomplete',
+                              style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
+                        content: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Before you can apply for this scholarship, you must complete your profile. The following fields are missing:',
+                                style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+                              ),
+                              const SizedBox(height: 12),
+                              ...missingFields.map((f) => Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Row(
+                                  children: [
+                                    const Icon(LucideIcons.dot, size: 16, color: AppColors.error),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      f,
+                                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                                    ),
+                                  ],
+                                ),
+                              )),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Please update your profile details to proceed.',
+                                style: GoogleFonts.inter(fontSize: 12, fontStyle: FontStyle.italic, color: AppColors.textMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.inter(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              Navigator.pushNamed(context, AppRouter.profileEdit);
+                            },
+                            icon: const Icon(LucideIcons.userCheck, size: 16, color: Colors.white),
+                            label: Text(
+                              'Complete Profile Now',
+                              style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
               } else {
                 Navigator.pushNamed(
                   context,
@@ -305,14 +412,16 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
               }
             },
           ),
-        ),
+        ],
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 
   Widget _buildHeader(BuildContext context, String title, String providerName, Map<String, dynamic>? program) {
     final typeLabel = program?['scholarship_type']?.toString().toUpperCase() ?? 'MERIT-BASED';
-    final providerShort = providerName.length > 20 ? providerName.substring(0, 20) + '...' : providerName;
+    final providerShort = providerName.length > 20 ? '${providerName.substring(0, 20)}...' : providerName;
 
     return CustomHeader(
       height: 240,

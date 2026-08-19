@@ -7,6 +7,17 @@ export type FundingFreq = any;
 export type RenewalPolicy = any;
 export type ScholarshipType = any;
 
+export type EducationLevel =
+  | 'college'
+  | 'graduate'
+  | 'senior_high'
+  | 'high_school'
+  | 'elementary'
+  | 'vocational'
+  | 'incoming_college';
+
+export type GradingSystem = 'scale_5' | 'scale_4' | 'percentage';
+
 export interface Program {
   id?: any;
   title?: any;
@@ -17,6 +28,10 @@ export interface Program {
   fundingFrequency?: any;
   gpa_requirement?: any;
   income_ceiling?: any;
+  target_education_level?: EducationLevel;
+  grading_system?: GradingSystem;
+  targetEducationLevel?: EducationLevel;
+  gradingSystem?: GradingSystem;
   status?: any;
   applicants_count?: any;
   scholars_count?: any;
