@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
-import { sendDecisionNotification } from '@/services/notificationService';
 import { CloseProgramConfirmModal } from './components/CloseProgramConfirmModal';
 import { DeleteCycleConfirmModal } from './components/DeleteCycleConfirmModal';
 import { RenewCycleModal } from './components/RenewCycleModal';
@@ -15,23 +14,19 @@ import { ProviderDisbursementsTab } from './components/ProviderDisbursementsTab'
 import { ProviderAnnouncementsTab } from './components/ProviderAnnouncementsTab';
 import { ProviderReportsTab } from './components/ProviderReportsTab';
 import { ProviderVerificationTab } from './components/ProviderVerificationTab';
+import { ProviderViewApplicationTab } from './components/ProviderViewApplicationTab';
+import { ProviderProgramFormTab } from './components/ProviderProgramFormTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
 import type {
   ProviderPortalProps,
   TabType,
   AnnType,
   ApplicantStatus,
-  FundingFreq,
-  RenewalPolicy,
-  ScholarshipType,
-  AvailabilityScope,
   ApplicationCycle,
   ProgramRequirement,
   Program,
   DisbursementTx,
   ScholarAward,
-  EducationLevel,
-  GradingSystem,
 } from './types';
 export type { ApplicationCycle, ProgramRequirement, Program };
 
@@ -396,7 +391,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   };
 
   // Modal states
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isBigMapModalOpen, setIsBigMapModalOpen] = useState(false);
 
@@ -413,165 +407,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   // Delete Cycle Confirm Modal States
   const [isDeleteCycleConfirmOpen, setIsDeleteCycleConfirmOpen] = useState(false);
   const [cycleToDelete, setCycleToDelete] = useState<{ id: string; name: string } | null>(null);
-
-  // New program form inputs
-  const [formTitle, setFormTitle] = useState('');
-  const [formDesc, setFormDesc] = useState('');
-
-
-  const [formFundingFreq, setFormFundingFreq] = useState<FundingFreq>('Per Semester');
-  const [formRenewalPolicy, setFormRenewalPolicy] = useState<RenewalPolicy>('Semester Renewal');
-  const [formCycleName, setFormCycleName] = useState('AY 2026-2027');
-  // Extended program form fields
-  const [formCategory, setFormCategory] = useState('Merit-Based');
-  const [formScholarshipType, setFormScholarshipType] = useState<ScholarshipType>('merit');
-  const [formCoverstuition, setFormCoverstuition] = useState(false);
-  const [formCoversStipend, setFormCoversStipend] = useState(false);
-  const [formStipendAmount, setFormStipendAmount] = useState('');
-  const [formCoversAllowance, setFormCoversAllowance] = useState(false);
-  const [formAllowanceAmount, setFormAllowanceAmount] = useState('');
-  const [formOtherBenefits, setFormOtherBenefits] = useState('');
-  const [formCourseEligibility, setFormCourseEligibility] = useState<string[]>([]);
-  const [formCourseInput, setFormCourseInput] = useState('');
-  const [formYearLevelEligibility, setFormYearLevelEligibility] = useState<number[]>([]);
-  const [formMinGwa, setFormMinGwa] = useState('');
-  const [formAvailabilityScope, setFormAvailabilityScope] = useState<AvailabilityScope>('nationwide');
-  const [formAvailableRegions, setFormAvailableRegions] = useState('');
-  const [formAvailableSchools, setFormAvailableSchools] = useState('');
-  const [formTotalSlots, setFormTotalSlots] = useState('');
-  const [formBudgetTotal, setFormBudgetTotal] = useState('');
-  const [formRenewalGwa, setFormRenewalGwa] = useState('');
-  const [formCycleStartDate, setFormCycleStartDate] = useState('');
-  const [formCycleEndDate, setFormCycleEndDate] = useState('');
-  const [formRequirements, setFormRequirements] = useState<ProgramRequirement[]>([
-    { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
-    { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
-  ]);
-  const [formReqName, setFormReqName] = useState('');
-  const [formReqDesc, setFormReqDesc] = useState('');
-  const [formReqRequired, setFormReqRequired] = useState(true);
-  const [formDisbursementMode, setFormDisbursementMode] = useState<'online' | 'in_person_cash' | 'hybrid'>('online');
-  const [formBankingPolicy, setFormBankingPolicy] = useState<'specific_bank' | 'any_bank' | 'provider_issued'>('any_bank');
-  const [formRequiredBankName, setFormRequiredBankName] = useState('Landbank of the Philippines');
-  const [formModalStep, setFormModalStep] = useState(1);
-  const [formEduLevel, setFormEduLevel] = useState<EducationLevel>('college');
-  const [formGradingSystem, setFormGradingSystem] = useState<GradingSystem>('scale_5');
-
-  // Year level options per education level
-  const EDU_YEAR_LEVEL_OPTIONS: Record<EducationLevel, { val: number; label: string }[]> = {
-    college:          [1,2,3,4,5].map(y => ({ val: y, label: `Year ${y}` })),
-    graduate:         [1,2,3,4].map(y => ({ val: y, label: `Year ${y}` })),
-    senior_high:      [{ val: 11, label: 'Grade 11' }, { val: 12, label: 'Grade 12' }],
-    high_school:      [7,8,9,10].map(y => ({ val: y, label: `Grade ${y}` })),
-    elementary:       [1,2,3,4,5,6].map(y => ({ val: y, label: `Grade ${y}` })),
-    vocational:       [{ val: 1, label: 'Semester 1' }, { val: 2, label: 'Semester 2' }, { val: 3, label: 'Semester 3' }],
-    incoming_college: [],
-  };
-  const EDU_LEVEL_LABELS: Record<EducationLevel, string> = {
-    college: '🎓 College / Undergraduate',
-    graduate: '🏛️ Graduate Studies (MA/PhD)',
-    senior_high: '📚 Senior High School (SHS)',
-    high_school: '🏫 High School (JHS)',
-    elementary: '🔖 Elementary',
-    vocational: '🔧 Vocational / TVET',
-    incoming_college: '🌟 Incoming College (Graduating SHS)',
-  };
-  const GRADING_SYSTEM_LABELS: Record<GradingSystem, string> = {
-    scale_5: 'Scale 1–5 (1.00 = Highest, UP-style)',
-    scale_4: 'Scale 4.0 (4.00 = Highest, DLSU/Ateneo-style)',
-    percentage: 'Percentage (60–100, SHS/JHS/Elem)',
-  };
-  const GWA_CONFIG: Record<GradingSystem, { min: string; max: string; step: string; placeholder: string; hint: string }> = {
-    scale_5:     { min: '1', max: '5',   step: '0.01', placeholder: 'e.g. 1.75', hint: 'Student GWA must be ≤ this value to qualify.' },
-    scale_4:     { min: '0', max: '4',   step: '0.01', placeholder: 'e.g. 3.00', hint: 'Student GPA must be ≥ this value to qualify.' },
-    percentage:  { min: '60', max: '100', step: '0.5',  placeholder: 'e.g. 85', hint: 'Student average must be ≥ this percentage to qualify.' },
-  };
-
-  // PSGC Geographic Data States & Fetch Effects
-  const [psgcRegions, setPsgcRegions] = useState<{ code: string; name: string }[]>([]);
-  const [psgcProvinces, setPsgcProvinces] = useState<{ code: string; name: string }[]>([]);
-  const [psgcMunicipalities, setPsgcMunicipalities] = useState<{ code: string; name: string }[]>([]);
-  const [psgcBarangays, setPsgcBarangays] = useState<{ code: string; name: string }[]>([]);
-  const [selectedRegionCode, setSelectedRegionCode] = useState('');
-  const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
-  const [selectedMunicipalityCode, setSelectedMunicipalityCode] = useState('');
-  const [selectedBarangayCode, setSelectedBarangayCode] = useState('');
-
-  useEffect(() => {
-    const fetchRegions = async () => {
-      try {
-        const res = await fetch('https://psgc.gitlab.io/api/regions/');
-        if (res.ok) {
-          const data = await res.json();
-          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-          setPsgcRegions(data);
-        }
-      } catch (err) {
-        console.error('Error fetching PSGC regions:', err);
-      }
-    };
-    fetchRegions();
-  }, []);
-
-  useEffect(() => {
-    const fetchProvinces = async () => {
-      if (!selectedRegionCode) {
-        setPsgcProvinces([]);
-        return;
-      }
-      try {
-        const res = await fetch(`https://psgc.gitlab.io/api/regions/${selectedRegionCode}/provinces/`);
-        if (res.ok) {
-          const data = await res.json();
-          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-          setPsgcProvinces(data);
-        }
-      } catch (err) {
-        console.error('Error fetching PSGC provinces:', err);
-      }
-    };
-    fetchProvinces();
-  }, [selectedRegionCode]);
-
-  useEffect(() => {
-    const fetchMunicipalities = async () => {
-      if (!selectedProvinceCode) {
-        setPsgcMunicipalities([]);
-        return;
-      }
-      try {
-        const res = await fetch(`https://psgc.gitlab.io/api/provinces/${selectedProvinceCode}/cities-municipalities/`);
-        if (res.ok) {
-          const data = await res.json();
-          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-          setPsgcMunicipalities(data);
-        }
-      } catch (err) {
-        console.error('Error fetching PSGC municipalities:', err);
-      }
-    };
-    fetchMunicipalities();
-  }, [selectedProvinceCode]);
-
-  useEffect(() => {
-    const fetchBarangays = async () => {
-      if (!selectedMunicipalityCode) {
-        setPsgcBarangays([]);
-        return;
-      }
-      try {
-        const res = await fetch(`https://psgc.gitlab.io/api/cities-municipalities/${selectedMunicipalityCode}/barangays/`);
-        if (res.ok) {
-          const data = await res.json();
-          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-          setPsgcBarangays(data);
-        }
-      } catch (err) {
-        console.error('Error fetching PSGC barangays:', err);
-      }
-    };
-    fetchBarangays();
-  }, [selectedMunicipalityCode]);
 
   // New payout form inputs
   const [selectedPayoutProgram, setSelectedPayoutProgram] = useState('DOST-SEI Undergraduate Scholarship');
@@ -653,29 +488,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }, 3000);
   };
 
-  // Announcements mock state
-  const [announcements, setAnnouncements] = useState<any[]>([
-    {
-      id: 1,
-      title: 'Undergraduate Screening Examination Schedule',
-      body: 'Qualifying exams for new DOST-SEI applicants will be conducted on September 5, 2026. Testing venues and seat assignments have been dispatched to your portal accounts.',
-      type: 'Examination Schedule' as AnnType,
-      audience: 'DOST-SEI Only',
-      date: 'Aug 8, 2026',
-      author: 'Testing Committee',
-      location: 'UP Diliman Examination Hall'
-    },
-    {
-      id: 2,
-      title: '1st Semester Stipend Release Schedule',
-      body: 'Stipends for Tulong Dunong scholars are currently processing. Expect bank transfers to credit by August 18, 2026.',
-      type: 'Release of Funds' as AnnType,
-      audience: 'CHED Only',
-      date: 'Aug 5, 2026',
-      author: 'Finance Unit',
-      location: null
-    }
-  ]);
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<any[]>([]);
 
   const [newAnnTitle, setNewAnnTitle] = useState('');
   const [newAnnBody, setNewAnnBody] = useState('');
@@ -704,6 +518,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   // Programs State (Loaded dynamically from database)
   const [programsList, setProgramsList] = useState<Program[]>([]);
 
+  // Interactive Applicants State (Students in an active application cycle)
+  const [applicantsList, setApplicantsList] = useState<ApplicationDetail[]>([]);
+
+  // Active Scholars (Awarded students under requirements monitoring)
+  const [scholarsList, setScholarsList] = useState<ScholarAward[]>([]);
 
   // Review Application Modal states
   const [selectedAppForReview, setSelectedAppForReview] = useState<ApplicationDetail | null>(null);
@@ -782,6 +601,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
           console.error('[Provider RLS Permission Warning]: RLS Policy blocking access to "scholarship_applications" table.');
         }
+        setApplicantsList([]);
+        setScholarsList([]);
         return;
       }
 
@@ -966,16 +787,20 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   const isResubmitted =
                     (currentDoc.remarks || '').toLowerCase().includes('resubmit') ||
                     (sd.remarks || '').toLowerCase().includes('resubmit') ||
-                    (currentDoc.document_url && sd.document_url && currentDoc.document_url !== sd.document_url) ||
-                    (currentDoc.status === 'Pending' && !currentDoc.aiVerification);
+                    Boolean(currentDoc.document_url && sd.document_url && currentDoc.document_url.trim() !== sd.document_url.trim());
 
-                  // Merge the cached AI verification and status (clear if resubmitted so it auto-scans)
+                  const cachedAiVerif = isResubmitted ? undefined : (sd.aiVerification || currentDoc.aiVerification);
+                  const cachedStatus = isResubmitted
+                    ? 'Pending'
+                    : (cachedAiVerif?.verificationStatus === 'verified' ? 'Verified' : (sd.status || currentDoc.status));
+
+                  // Merge the cached AI verification and status (clear only if actually resubmitted)
                   docs[existingIdx] = {
                     ...currentDoc,
                     id: sd.id || currentDoc.id,
-                    status: isResubmitted ? 'Pending' : (sd.status || currentDoc.status),
+                    status: cachedStatus,
                     remarks: isResubmitted ? (currentDoc.remarks || 'Resubmitted by scholar') : (sd.remarks || currentDoc.remarks),
-                    aiVerification: isResubmitted ? undefined : (sd.aiVerification || currentDoc.aiVerification),
+                    aiVerification: cachedAiVerif,
                     document_url: currentDoc.document_url || sd.document_url,
                     url: currentDoc.url || sd.url,
                   };
@@ -1102,15 +927,19 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   const isResubmitted =
                     (currentDoc.remarks || '').toLowerCase().includes('resubmit') ||
                     (sd.remarks || '').toLowerCase().includes('resubmit') ||
-                    (currentDoc.document_url && sd.document_url && currentDoc.document_url !== sd.document_url) ||
-                    (currentDoc.status === 'Pending' && !currentDoc.aiVerification);
+                    Boolean(currentDoc.document_url && sd.document_url && currentDoc.document_url.trim() !== sd.document_url.trim());
+
+                  const cachedAiVerif = isResubmitted ? undefined : (sd.aiVerification || currentDoc.aiVerification);
+                  const cachedStatus = isResubmitted
+                    ? 'Pending'
+                    : (cachedAiVerif?.verificationStatus === 'verified' ? 'Verified' : (sd.status || currentDoc.status));
 
                   docs[existingIdx] = {
                     ...currentDoc,
                     id: sd.id || currentDoc.id,
-                    status: isResubmitted ? 'Pending' : (sd.status || currentDoc.status),
+                    status: cachedStatus,
                     remarks: isResubmitted ? (currentDoc.remarks || 'Resubmitted by scholar') : (sd.remarks || currentDoc.remarks),
-                    aiVerification: isResubmitted ? undefined : (sd.aiVerification || currentDoc.aiVerification),
+                    aiVerification: cachedAiVerif,
                     document_url: currentDoc.document_url || sd.document_url,
                     url: currentDoc.url || sd.url,
                   };
@@ -1179,12 +1008,15 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             };
           });
 
-          if (mappedScholars.length > 0) {
-            setScholarsList(mappedScholars);
-          }
+          setScholarsList(mappedScholars);
+        } else {
+          setApplicantsList([]);
+          setScholarsList([]);
         }
     } catch (err) {
       console.error('Error fetching applicants:', err);
+      setApplicantsList([]);
+      setScholarsList([]);
     }
   };
 
@@ -1222,75 +1054,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     };
   }, [providerDetails?.id]);
 
-  // Interactive Applicants State (Students in an active application cycle)
-  const [applicantsList, setApplicantsList] = useState<ApplicationDetail[]>([
-    {
-      id: 'app-01',
-      name: 'Juan Dela Cruz',
-      email: 'juan.delacruz@up.edu.ph',
-      phone: '+63 917 123 4567',
-      program: 'DOST-SEI Undergraduate',
-      cycle: '2026 Intake',
-      school: 'Ateneo de Manila University',
-      course: 'BS Computer Science',
-      yearLevel: '3rd Year',
-      grade: '1.40',
-      status: 'Under Review',
-      date: 'Aug 08, 2026',
-      submittedDocuments: [
-        { name: 'Official Transcript of Records (TOR)', filename: 'TOR_GWA_1.40.pdf', filesize: '1.4 MB', status: 'Verified', submitted_at: 'Aug 08, 2026' },
-        { name: 'Certificate of Good Moral Character', filename: 'Good_Moral_ADMU.pdf', filesize: '820 KB', status: 'Verified', submitted_at: 'Aug 08, 2026' }
-      ]
-    },
-    {
-      id: 'app-02',
-      name: 'Ethan Gomez',
-      email: 'ethan.gomez@dlsu.edu.ph',
-      phone: '+63 918 987 6543',
-      program: 'Tulong Dunong Assistance',
-      cycle: 'AY 2026-2027',
-      school: 'De La Salle University',
-      course: 'BS Industrial Engineering',
-      yearLevel: '2nd Year',
-      grade: '1.75',
-      status: 'Pending',
-      date: 'Aug 06, 2026',
-      submittedDocuments: [
-        { name: 'Official Transcript of Records (TOR)', filename: 'DLSU_Grade_Slip.pdf', filesize: '1.1 MB', status: 'Pending', submitted_at: 'Aug 06, 2026' },
-        { name: 'Income Tax Return / Proof of Income', filename: 'ITR_Family_2025.pdf', filesize: '950 KB', status: 'Pending', submitted_at: 'Aug 06, 2026' }
-      ]
-    }
-  ]);
 
-  // Active Scholars (Awarded students under requirements monitoring)
-  const [scholarsList, setScholarsList] = useState<ScholarAward[]>([
-    {
-      id: 'sch-01',
-      scholarName: 'Maria Santos',
-      programTitle: 'DOST-SEI Undergraduate',
-      cycleJoined: '2025 Intake',
-      status: 'Maintaining',
-      gwa: '1.25',
-      dateAwarded: 'Aug 07, 2025',
-      appDetail: {
-        id: 'sch-01',
-        name: 'Maria Santos',
-        email: 'maria.santos@up.edu.ph',
-        phone: '+63 919 555 1234',
-        program: 'DOST-SEI Undergraduate',
-        cycle: '2025 Intake',
-        school: 'University of the Philippines',
-        course: 'BS Chemical Engineering',
-        yearLevel: '3rd Year',
-        grade: '1.25',
-        status: 'Approved',
-        date: 'Aug 07, 2025',
-        submittedDocuments: [
-          { name: 'Official Transcript of Records (TOR)', filename: 'UP_TOR_GWA125.pdf', filesize: '1.6 MB', status: 'Verified', submitted_at: 'Aug 07, 2025' }
-        ]
-      }
-    }
-  ]);
 
   // Handle applicant status and document decision updates
   const handleUpdateStatus = async (
@@ -1483,29 +1247,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       await fetchApplicantsAndScholars();
 
-      // Trigger EmailJS & In-App System Notification for the student
-      const recipientEmail = applicant?.email || applicant?.rawApplication?.scholar?.user?.email || applicant?.rawApplication?.scholar?.email;
-      const recipientName = applicant?.name || 'Scholar Applicant';
-      const progTitle = applicant?.program || applicant?.rawApplication?.cycle?.program?.title || 'Scholarship Program';
-      const pName = providerDetails?.name || 'Scholarship Provider';
-
-      const hasFlaggedDocs = updatedDocs?.some(d => d.status === 'Flagged');
-      const flaggedRemarks = updatedDocs?.find(d => d.status === 'Flagged')?.remarks;
-      let effectiveStatus = nextStatus;
-      if (hasFlaggedDocs && (nextStatus === 'Under Review' || nextStatus === 'Pending')) {
-        effectiveStatus = 'Flagged';
-      }
-
-      sendDecisionNotification({
-        toEmail: recipientEmail,
-        toName: recipientName,
-        programTitle: progTitle,
-        providerName: pName,
-        status: effectiveStatus,
-        remarks: remarks || flaggedRemarks || '',
-        scholarId: scholarId,
-        userId: applicant?.rawApplication?.scholar?.user_id,
-      }).catch(err => console.warn('[Notification Service Call Note]:', err));
     } catch (e) {
       console.error('Error updating application status in Supabase:', e);
     }
@@ -1525,12 +1266,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       setApplicantsList(prev =>
         prev.map(a => (a.id === id ? { ...a, status: 'Approved', remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
       );
-      showToast(`Approved ${applicant.name}! Issued Scholar Award & sent email notification.`);
+      showToast(`Approved application for ${applicant.name}! Scholar record created.`);
     } else {
       setApplicantsList(prev =>
         prev.map(a => (a.id === id ? { ...a, status: nextStatus, remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
       );
-      showToast(`Application updated to ${nextStatus}. Email notification sent to student.`);
+      showToast(`Application updated to ${nextStatus}.`);
     }
   };
 
@@ -1543,15 +1284,16 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     setLoadingDisbursements(true);
     try {
       const { data, error } = await supabase
-        .from('disbursement_transactions')
+        .from('fund_releases')
         .select(`
           *,
           scholar:scholar (
             first_name,
             last_name
           ),
-          program:scholarship_programs (
-            title
+          program:scholarship_programs!inner (
+            title,
+            provider_id
           )
         `)
         .eq('program.provider_id', providerDetails.id)
@@ -1563,11 +1305,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           id: d.id,
           scholar: d.scholar ? `${d.scholar.first_name} ${d.scholar.last_name}` : 'Unknown Scholar',
           program: d.program?.title || 'Unknown Program',
-          method: d.disbursement_channel || 'Bank Transfer',
+          method: d.fund_type ? `${d.fund_type.charAt(0).toUpperCase() + d.fund_type.slice(1)} Release` : 'Bank Transfer',
           amount: `₱${Number(d.amount).toLocaleString()}`,
           numericAmount: Number(d.amount) || 0,
-          status: d.status,
-          date: d.disbursement_date ? new Date(d.disbursement_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'N/A',
+          status: d.status === 'released' ? 'Completed' : (d.status === 'pending' || d.status === 'processing' ? 'Pending' : d.status),
+          date: d.created_at ? new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'N/A',
         }));
         setDisbursementsList(mapped);
       }
@@ -1579,11 +1321,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   };
 
   const totalCredited = disbursementsList
-    .filter(tx => tx.status === 'COMPLETED' || tx.status === 'Completed')
+    .filter(tx => tx.status === 'COMPLETED' || tx.status === 'Completed' || tx.status === 'released')
     .reduce((sum, tx) => sum + tx.numericAmount, 0);
 
   const totalPending = disbursementsList
-    .filter(tx => tx.status === 'PENDING' || tx.status === 'Pending' || tx.status === 'PROCESSING' || tx.status === 'Processing')
+    .filter(tx => tx.status === 'PENDING' || tx.status === 'Pending' || tx.status === 'PROCESSING' || tx.status === 'Processing' || tx.status === 'pending' || tx.status === 'processing')
     .reduce((sum, tx) => sum + tx.numericAmount, 0);
 
   // Fetch disbursements when provider details are loaded
@@ -1602,7 +1344,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         {
           event: '*',
           schema: 'public',
-          table: 'disbursement_transactions'
+          table: 'fund_releases'
         },
         () => {
           fetchDisbursements();
@@ -1629,12 +1371,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         return;
       }
 
-      // Update disbursement transactions for this program that are pending/processing
+      // Update fund releases for this program that are pending/processing
       const { error } = await supabase
-        .from('disbursement_transactions')
-        .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+        .from('fund_releases')
+        .update({ status: 'released', updated_at: new Date().toISOString() })
         .eq('program_id', program.id)
-        .in('status', ['PENDING', 'Pending', 'PROCESSING', 'Processing']);
+        .in('status', ['pending', 'processing', 'PENDING', 'Pending']);
 
       if (error) throw error;
 
@@ -1647,208 +1389,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
-  const handleCreateProgram = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (formModalStep < 4) {
-      setFormModalStep(s => Math.min(4, s + 1));
-      return;
-    }
-    if (!formTitle || !formDesc || !providerDetails?.id) {
-      showToast("Cannot create program: Required title or description missing.");
-      return;
-    }
-
-    const matchedCat = categories.find(c => c.name === formCategory);
-    const categoryId = matchedCat ? matchedCat.id : null;
-
-    // Resolve parent names from selection codes
-    const selectedProvObj = psgcProvinces.find(p => p.code === selectedProvinceCode);
-    const provinceName = selectedProvObj ? selectedProvObj.name : '';
-    const selectedMuniObj = psgcMunicipalities.find(m => m.code === selectedMunicipalityCode);
-    const municipalityName = selectedMuniObj ? selectedMuniObj.name : '';
-    const selectedBrgyObj = psgcBarangays.find(b => b.code === selectedBarangayCode);
-    const barangayName = selectedBrgyObj ? selectedBrgyObj.name : '';
-
-    try {
-      // 1. Insert into scholarship_programs
-      const { data: progData, error: progErr } = await supabase
-        .from('scholarship_programs')
-        .insert({
-          provider_id: providerDetails.id,
-          title: formTitle,
-          description: formDesc,
-          category_id: categoryId,
-          scholarship_type: formScholarshipType,
-          covers_tuition: formCoverstuition,
-          covers_stipend: formCoversStipend,
-          stipend_amount: formStipendAmount ? parseFloat(formStipendAmount) : null,
-          covers_allowance: formCoversAllowance,
-          allowance_amount: formAllowanceAmount ? parseFloat(formAllowanceAmount) : null,
-          other_benefits: formOtherBenefits ? formOtherBenefits.split(',').map(s => s.trim()).filter(Boolean) : [],
-          course_eligibility: formCourseEligibility.length > 0 ? formCourseEligibility : ['All Courses'],
-          year_level_eligibility: formYearLevelEligibility,
-          minimum_gwa: formMinGwa ? parseFloat(formMinGwa) : null,
-          availability_scope: formAvailabilityScope,
-          available_regions: formAvailableRegions ? formAvailableRegions.split(',').map(s => s.trim()) : [],
-          available_provinces: (formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && provinceName ? [provinceName] : [],
-          available_municipalities: (formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && municipalityName ? [municipalityName] : [],
-          available_barangays: formAvailabilityScope === 'barangay' && barangayName ? [barangayName] : [],
-          available_schools: formAvailabilityScope === 'specific_schools' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
-          application_requirements: formRequirements,
-          total_slots: formTotalSlots ? parseInt(formTotalSlots, 10) : null,
-          budget_total: formBudgetTotal ? parseFloat(formBudgetTotal) : null,
-          funding_frequency: formFundingFreq,
-          renewal_policy: formRenewalPolicy,
-          renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
-          disbursement_mode: formDisbursementMode,
-          banking_policy: formBankingPolicy,
-          target_education_level: formEduLevel,
-          grading_system: formGradingSystem,
-          status: 'pending'
-        })
-        .select()
-        .single();
-
-      if (progErr || !progData) {
-        console.error('Error inserting program:', progErr);
-        showToast('Error creating scholarship program.');
-        return;
-      }
-
-      // 2. Insert initial application cycle
-      const cycleStatus = formCycleStartDate && parseLocalMidnight(formCycleStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
-      const { error: cycleErr } = await supabase
-        .from('application_cycles')
-        .insert({
-          program_id: progData.id,
-          cycle_name: formCycleName,
-          application_start_date: formCycleStartDate || new Date().toISOString().split('T')[0],
-          application_end_date: formCycleEndDate || new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
-          status: cycleStatus
-        });
-
-      if (cycleErr) {
-        console.error('Error inserting application cycle:', cycleErr);
-        showToast('Program created, but error creating cycle.');
-      } else {
-        showToast(`Created program: "${formTitle}" with cycle "${formCycleName}"!`);
-      }
-
-      // Reload programs from DB
-      await fetchPrograms();
-
-      // Reset Form State
-      setIsCreateModalOpen(false);
-      setFormTitle('');
-      setFormDesc('');
-      setFormCategory('Merit-Based');
-      setFormScholarshipType('merit');
-      setFormCoverstuition(false);
-      setFormCoversStipend(false);
-      setFormStipendAmount('');
-      setFormCoversAllowance(false);
-      setFormAllowanceAmount('');
-      setFormOtherBenefits('');
-      setFormCourseEligibility([]);
-      setFormCourseInput('');
-      setFormYearLevelEligibility([]);
-      setFormMinGwa('');
-      setFormAvailabilityScope('nationwide');
-      setFormAvailableRegions('');
-      setFormAvailableSchools('');
-      setFormTotalSlots('');
-      setFormBudgetTotal('');
-      setFormRenewalGwa('');
-      setFormRenewalPolicy('Semester Renewal');
-      setFormCycleName('AY 2026-2027');
-      setFormCycleStartDate('');
-      setFormCycleEndDate('');
-      setFormRequirements([
-        { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
-        { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
-      ]);
-      setFormEduLevel('college');
-      setFormGradingSystem('scale_5');
-      setFormModalStep(1);
-
-    } catch (err) {
-      console.error('Failed to create program:', err);
-      showToast('An unexpected error occurred.');
-    }
-  };
-
   // ── Program Action State ──────────────────────────────────────────────
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const [programToClose, setProgramToClose] = useState<Program | null>(null);
-  const [isEditMode, setIsEditMode] = useState(false);
-
-  // Auto pre-select PSGC dropdowns in edit mode when cascading PSGC data finishes loading
-  useEffect(() => {
-    if (isEditMode && selectedProgram && psgcRegions.length > 0 && !selectedRegionCode) {
-      const regionName = selectedProgram.availableRegions[0];
-      if (regionName) {
-        const matched = psgcRegions.find(
-          r => r.name.toLowerCase() === regionName.toLowerCase() ||
-               r.name.toLowerCase().includes(regionName.toLowerCase()) ||
-               regionName.toLowerCase().includes(r.name.toLowerCase()) ||
-               r.code === regionName
-        );
-        if (matched) {
-          setSelectedRegionCode(matched.code);
-        }
-      }
-    }
-  }, [isEditMode, selectedProgram, psgcRegions, selectedRegionCode]);
-
-  useEffect(() => {
-    if (isEditMode && selectedProgram && psgcProvinces.length > 0 && !selectedProvinceCode) {
-      const targetName = selectedProgram.availableSchools;
-      if (targetName) {
-        const matched = psgcProvinces.find(
-          p => p.name.toLowerCase() === targetName.toLowerCase() ||
-               p.name.toLowerCase().includes(targetName.toLowerCase()) ||
-               targetName.toLowerCase().includes(p.name.toLowerCase())
-        );
-        if (matched) {
-          setSelectedProvinceCode(matched.code);
-        }
-      }
-    }
-  }, [isEditMode, selectedProgram, psgcProvinces, selectedProvinceCode]);
-
-  useEffect(() => {
-    if (isEditMode && selectedProgram && psgcMunicipalities.length > 0 && !selectedMunicipalityCode) {
-      const targetName = selectedProgram.availableSchools;
-      if (targetName) {
-        const matched = psgcMunicipalities.find(
-          m => m.name.toLowerCase() === targetName.toLowerCase() ||
-               m.name.toLowerCase().includes(targetName.toLowerCase()) ||
-               targetName.toLowerCase().includes(m.name.toLowerCase())
-        );
-        if (matched) {
-          setSelectedMunicipalityCode(matched.code);
-        }
-      }
-    }
-  }, [isEditMode, selectedProgram, psgcMunicipalities, selectedMunicipalityCode]);
-
-  useEffect(() => {
-    if (isEditMode && selectedProgram && psgcBarangays.length > 0 && !selectedBarangayCode) {
-      const targetName = selectedProgram.availableSchools;
-      if (targetName) {
-        const matched = psgcBarangays.find(
-          b => b.name.toLowerCase() === targetName.toLowerCase() ||
-               b.name.toLowerCase().includes(targetName.toLowerCase()) ||
-               targetName.toLowerCase().includes(b.name.toLowerCase())
-        );
-        if (matched) {
-          setSelectedBarangayCode(matched.code);
-        }
-      }
-    }
-  }, [isEditMode, selectedProgram, psgcBarangays, selectedBarangayCode]);
 
   const handleViewDetails = (prog: Program) => {
     setSelectedProgram(prog);
@@ -1856,212 +1401,13 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   };
 
   const handleOpenCreateProgram = () => {
-    setIsEditMode(false);
     setSelectedProgram(null);
-    setFormTitle('');
-    setFormDesc('');
-    setFormCategory('Merit-Based');
-    setFormScholarshipType('merit');
-    setFormCoverstuition(false);
-    setFormCoversStipend(false);
-    setFormStipendAmount('');
-    setFormCoversAllowance(false);
-    setFormAllowanceAmount('');
-    setFormOtherBenefits('');
-    setFormCourseEligibility([]);
-    setFormCourseInput('');
-    setFormYearLevelEligibility([]);
-    setFormMinGwa('');
-    setFormAvailabilityScope('nationwide');
-    setFormAvailableRegions('');
-    setFormAvailableSchools('');
-    setSelectedRegionCode('');
-    setSelectedProvinceCode('');
-    setSelectedMunicipalityCode('');
-    setSelectedBarangayCode('');
-    setFormTotalSlots('');
-    setFormBudgetTotal('');
-    setFormRenewalGwa('');
-    setFormRenewalPolicy('Semester Renewal');
-    setFormCycleName('AY 2026-2027');
-    setFormCycleStartDate('');
-    setFormCycleEndDate('');
-    setFormRequirements([
-      { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
-      { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
-    ]);
-    setFormEduLevel('college');
-    setFormGradingSystem('scale_5');
-    setFormModalStep(1);
-    setIsCreateModalOpen(true);
+    setActiveTab('create-program');
   };
 
   const handleEditProgram = (prog: Program) => {
-    // Pre-fill all form fields from the selected program
-    setFormTitle(prog.title);
-    setFormDesc(prog.description);
-    setFormCategory(prog.category);
-    setFormScholarshipType(prog.scholarshipType);
-    setFormCoverstuition(prog.coverstuition);
-    setFormCoversStipend(prog.coversStipend);
-    setFormStipendAmount(prog.stipendAmount);
-    setFormCoversAllowance(prog.coversAllowance);
-    setFormAllowanceAmount(prog.allowanceAmount);
-    setFormOtherBenefits(prog.otherBenefits.join(', '));
-    setFormCourseEligibility(prog.courseEligibility);
-    setFormYearLevelEligibility(prog.yearLevelEligibility);
-    setFormMinGwa(prog.minimumGwa);
-    setFormAvailabilityScope(prog.availabilityScope);
-    setFormAvailableRegions(prog.availableRegions.join(', '));
-    setFormAvailableSchools(prog.availableSchools);
-    setFormTotalSlots(prog.totalSlots);
-    setFormBudgetTotal(prog.budgetTotal.replace(/[₱,]/g, '').replace('M', '000000'));
-    setFormRenewalPolicy(prog.renewalPolicy);
-    setFormFundingFreq(prog.fundingFrequency);
-    setFormRenewalGwa(prog.renewalGwa);
-    setFormRequirements(prog.applicationRequirements);
-    setFormDisbursementMode(prog.disbursement_mode || prog.disbursementMode || 'online');
-    setFormBankingPolicy(prog.banking_policy || prog.bankingPolicy || 'any_bank');
-    setFormRequiredBankName(prog.required_bank_name || prog.requiredBankName || 'Landbank of the Philippines');
-    setFormCycleName(prog.cycles[0]?.name || 'AY 2026-2027');
-    setFormCycleStartDate(prog.cycles[0]?.startDate || '');
-    setFormCycleEndDate(prog.cycles[0]?.endDate || '');
-    setFormEduLevel((prog.targetEducationLevel || prog.target_education_level || 'college') as EducationLevel);
-    setFormGradingSystem((prog.gradingSystem || prog.grading_system || 'scale_5') as GradingSystem);
-    setFormModalStep(1);
     setSelectedProgram(prog);
-    setIsEditMode(true);
-
-    // Pre-select PSGC region code if available
-    const regionName = prog.availableRegions[0];
-    if (regionName && psgcRegions.length > 0) {
-      const matchedRegion = psgcRegions.find(
-        r => r.name.toLowerCase() === regionName.toLowerCase() ||
-             r.name.toLowerCase().includes(regionName.toLowerCase()) ||
-             regionName.toLowerCase().includes(r.name.toLowerCase()) ||
-             r.code === regionName
-      );
-      if (matchedRegion) {
-        setSelectedRegionCode(matchedRegion.code);
-      } else {
-        setSelectedRegionCode('');
-      }
-    } else {
-      setSelectedRegionCode('');
-    }
-    setSelectedProvinceCode('');
-    setSelectedMunicipalityCode('');
-    setSelectedBarangayCode('');
-
-    setIsCreateModalOpen(true);
-  };
-
-  const handleUpdateProgram = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (formModalStep < 4) {
-      setFormModalStep(s => Math.min(4, s + 1));
-      return;
-    }
-    if (!selectedProgram || !formTitle || !formDesc) return;
-
-    const matchedCat = categories.find(c => c.name === formCategory);
-    const categoryId = matchedCat ? matchedCat.id : null;
-
-    // Resolve parent names from selection codes
-    const selectedProvObj = psgcProvinces.find(p => p.code === selectedProvinceCode);
-    const provinceName = selectedProvObj ? selectedProvObj.name : '';
-    const selectedMuniObj = psgcMunicipalities.find(m => m.code === selectedMunicipalityCode);
-    const municipalityName = selectedMuniObj ? selectedMuniObj.name : '';
-    const selectedBrgyObj = psgcBarangays.find(b => b.code === selectedBarangayCode);
-    const barangayName = selectedBrgyObj ? selectedBrgyObj.name : '';
-
-    try {
-      const { error } = await supabase
-        .from('scholarship_programs')
-        .update({
-          title: formTitle,
-          description: formDesc,
-          category_id: categoryId,
-          scholarship_type: formScholarshipType,
-          covers_tuition: formCoverstuition,
-          covers_stipend: formCoversStipend,
-          stipend_amount: formStipendAmount ? parseFloat(formStipendAmount) : null,
-          covers_allowance: formCoversAllowance,
-          allowance_amount: formAllowanceAmount ? parseFloat(formAllowanceAmount) : null,
-          other_benefits: formOtherBenefits ? formOtherBenefits.split(',').map(s => s.trim()).filter(Boolean) : [],
-          course_eligibility: formCourseEligibility.length > 0 ? formCourseEligibility : ['All Courses'],
-          year_level_eligibility: formYearLevelEligibility,
-          minimum_gwa: formMinGwa ? parseFloat(formMinGwa) : null,
-          availability_scope: formAvailabilityScope,
-          available_regions: formAvailableRegions ? formAvailableRegions.split(',').map(s => s.trim()) : [],
-          available_provinces: (formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && provinceName ? [provinceName] : [],
-          available_municipalities: (formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && municipalityName ? [municipalityName] : [],
-          available_barangays: formAvailabilityScope === 'barangay' && barangayName ? [barangayName] : [],
-          available_schools: formAvailabilityScope === 'specific_schools' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
-          application_requirements: formRequirements,
-          total_slots: formTotalSlots ? parseInt(formTotalSlots, 10) : null,
-          budget_total: formBudgetTotal ? parseFloat(formBudgetTotal) : null,
-          funding_frequency: formFundingFreq,
-          renewal_policy: formRenewalPolicy,
-          renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
-          disbursement_mode: formDisbursementMode,
-          banking_policy: formBankingPolicy,
-          target_education_level: formEduLevel,
-          grading_system: formGradingSystem,
-        })
-        .eq('id', selectedProgram.id);
-
-      if (error) {
-        console.error('Error updating program:', error);
-        showToast('Error updating scholarship program.');
-        return;
-      }
-
-      // Update or insert the active application cycle
-      if (selectedProgram.cycles && selectedProgram.cycles.length > 0) {
-        const activeCycle = selectedProgram.cycles[0];
-        const cycleStatus = formCycleStartDate && parseLocalMidnight(formCycleStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
-        const { error: cycleErr } = await supabase
-          .from('application_cycles')
-          .update({
-            cycle_name: formCycleName,
-            application_start_date: formCycleStartDate,
-            application_end_date: formCycleEndDate,
-            status: cycleStatus
-          })
-          .eq('id', activeCycle.id);
-
-        if (cycleErr) {
-          console.error('Error updating cycle:', cycleErr);
-        }
-      } else {
-        const cycleStatus = formCycleStartDate && parseLocalMidnight(formCycleStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
-        const { error: cycleErr } = await supabase
-          .from('application_cycles')
-          .insert({
-            program_id: selectedProgram.id,
-            cycle_name: formCycleName,
-            application_start_date: formCycleStartDate || new Date().toISOString().split('T')[0],
-            application_end_date: formCycleEndDate || new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
-            status: cycleStatus
-          });
-
-        if (cycleErr) {
-          console.error('Error inserting cycle on edit:', cycleErr);
-        }
-      }
-
-      showToast(`"${formTitle}" updated successfully!`);
-      await fetchPrograms();
-
-      setIsCreateModalOpen(false);
-      setIsEditMode(false);
-      setSelectedProgram(null);
-      setFormModalStep(1);
-    } catch (err) {
-      console.error('Failed to update program:', err);
-      showToast('An unexpected error occurred.');
-    }
+    setActiveTab('create-program');
   };
 
   const handleCloseProgram = async () => {
@@ -2484,704 +1830,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         </div>
       )}
 
-      {/* Program Creation Modal */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm px-4 py-6 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl w-full max-w-3xl relative animate-fade-in my-auto">
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-white rounded-t-3xl z-10 px-8 pt-7 pb-5 border-b border-[#D9D2C5]/50">
-              <button
-                type="button"
-                onClick={() => { setIsCreateModalOpen(false); setFormModalStep(1); setIsEditMode(false); setSelectedProgram(null); }}
-                className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
-              >✕</button>
-              <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">
-                {isEditMode ? 'Edit Scholarship Program' : 'Create Scholarship Program'}
-              </h3>
-              <p className="text-xs text-[#6C6C70] mt-1">
-                {isEditMode
-                  ? 'Update program details below. Changes are saved immediately to the database.'
-                  : 'Fill in all program details. You can manage cycles and update requirements after creation.'}
-              </p>
-              {/* Step indicator */}
-              <div className="flex gap-2 mt-4">
-                {['Basic Info', 'Benefits & Eligibility', 'Requirements', 'Application Cycle'].map((step, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setFormModalStep(i + 1)}
-                    className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg transition-all cursor-pointer border-0 ${
-                      formModalStep === i + 1
-                        ? 'bg-[#1A3C2E] text-white'
-                        : 'bg-[#F9F5EF] text-[#6C6C70] hover:bg-[#EDE8DE]'
-                    }`}
-                  >
-                    {i + 1}. {step}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <form onSubmit={isEditMode ? handleUpdateProgram : handleCreateProgram}>
-              <div className="px-8 py-6 space-y-5">
-
-                {/* ─── STEP 1: Basic Info ─── */}
-                {formModalStep === 1 && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Program Title *</label>
-                        <input
-                          type="text" required placeholder="e.g. DOST-SEI Undergraduate Scholarship"
-                          value={formTitle} onChange={(e) => setFormTitle(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Scholarship Category *</label>
-                        <select
-                          value={formCategory} onChange={(e) => setFormCategory(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                        >
-                          <option>Merit-Based</option>
-                          <option>Need-Based</option>
-                          <option>Merit and Need</option>
-                          <option>STEM</option>
-                          <option>Graduate / Fellowship</option>
-                          <option>Vocational / TVET</option>
-                          <option>Indigenous Peoples</option>
-                          <option>Persons with Disability</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Education Level */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Target Education Level *</label>
-                      <select
-                        value={formEduLevel}
-                        onChange={(e) => {
-                          setFormEduLevel(e.target.value as EducationLevel);
-                          setFormYearLevelEligibility([]);
-                          // Auto-set grading system for HS/Elem
-                          if (['high_school', 'elementary', 'senior_high'].includes(e.target.value)) {
-                            setFormGradingSystem('percentage');
-                          } else if (e.target.value === 'incoming_college') {
-                            setFormGradingSystem('percentage');
-                          } else {
-                            setFormGradingSystem('scale_5');
-                          }
-                        }}
-                        className="w-full px-3 py-2.5 rounded-xl border border-[#1A3C2E]/40 focus:outline-none text-xs font-semibold cursor-pointer bg-[#F9F5EF]"
-                      >
-                        <option value="college">🎓 College / Undergraduate</option>
-                        <option value="graduate">🏛️ Graduate Studies (MA / PhD)</option>
-                        <option value="senior_high">📚 Senior High School (SHS)</option>
-                        <option value="high_school">🏫 High School (JHS)</option>
-                        <option value="elementary">🔖 Elementary</option>
-                        <option value="vocational">🔧 Vocational / TVET</option>
-                        <option value="incoming_college">🌟 Incoming College (Graduating SHS)</option>
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Scholarship Type *</label>
-                        <select
-                          value={formScholarshipType} onChange={(e) => setFormScholarshipType(e.target.value as ScholarshipType)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                        >
-                          <option value="merit">Merit-Based</option>
-                          <option value="need_based">Need-Based</option>
-                          <option value="merit_and_need">Merit and Need</option>
-                          <option value="grant">Grant</option>
-                          <option value="fellowship">Fellowship / Graduate</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Funding Frequency *</label>
-                        <select
-                          value={formFundingFreq} onChange={(e) => setFormFundingFreq(e.target.value as FundingFreq)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                        >
-                          <option value="Per Semester">Per Semester</option>
-                          <option value="Once a Year">Once a Year</option>
-                          <option value="One-time">One-time Grant</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Program Description *</label>
-                      <textarea
-                        required rows={3} placeholder="Describe the scholarship, its goals, and who it supports..."
-                        value={formDesc} onChange={(e) => setFormDesc(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm resize-none"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Renewal Policy</label>
-                        <select
-                          value={formRenewalPolicy} onChange={(e) => setFormRenewalPolicy(e.target.value as RenewalPolicy)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                        >
-                          <option value="Semester Renewal">Semester Renewal</option>
-                          <option value="No Renewal">No Renewal</option>
-                          <option value="Annual Reapplication">Annual Reapplication</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Renewal Min. GWA</label>
-                        <input
-                          type="number" step="0.01" min="1" max="5" placeholder="e.g. 1.75"
-                          value={formRenewalGwa} onChange={(e) => setFormRenewalGwa(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Total Slots</label>
-                        <input
-                          type="number" min="1" placeholder="Leave blank for unlimited"
-                          value={formTotalSlots} onChange={(e) => setFormTotalSlots(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Total Budget (₱)</label>
-                        <input
-                          type="number" min="0" placeholder="e.g. 5000000"
-                          value={formBudgetTotal} onChange={(e) => setFormBudgetTotal(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ─── STEP 2: Benefits & Eligibility ─── */}
-                {formModalStep === 2 && (
-                  <div className="space-y-5">
-                    {/* Benefits */}
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-3">Coverage / Benefits</h4>
-                      <div className="space-y-3">
-                        <label className="flex items-center gap-3 p-3 rounded-xl border border-[#D9D2C5] cursor-pointer hover:bg-[#F9F5EF]">
-                          <input type="checkbox" checked={formCoverstuition} onChange={(e) => setFormCoverstuition(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
-                          <span className="text-sm font-semibold text-[#1C1C1E]">Full Tuition Coverage</span>
-                        </label>
-                        <div className="p-3 rounded-xl border border-[#D9D2C5] space-y-2">
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input type="checkbox" checked={formCoversStipend} onChange={(e) => setFormCoversStipend(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
-                            <span className="text-sm font-semibold text-[#1C1C1E]">Monthly Stipend</span>
-                          </label>
-                          {formCoversStipend && (
-                            <input
-                              type="number" min="0" placeholder="Monthly amount in ₱ e.g. 7000"
-                              value={formStipendAmount} onChange={(e) => setFormStipendAmount(e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg border border-[#D9D2C5] text-xs font-semibold focus:outline-none"
-                            />
-                          )}
-                        </div>
-                        <div className="p-3 rounded-xl border border-[#D9D2C5] space-y-2">
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input type="checkbox" checked={formCoversAllowance} onChange={(e) => setFormCoversAllowance(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
-                            <span className="text-sm font-semibold text-[#1C1C1E]">Living / Book Allowance</span>
-                          </label>
-                          {formCoversAllowance && (
-                            <input
-                              type="number" min="0" placeholder="Allowance amount in ₱ e.g. 3000"
-                              value={formAllowanceAmount} onChange={(e) => setFormAllowanceAmount(e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg border border-[#D9D2C5] text-xs font-semibold focus:outline-none"
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Other Benefits (comma-separated)</label>
-                          <input
-                            type="text" placeholder="e.g. Research grant, Laptop allowance, Housing subsidy"
-                            value={formOtherBenefits} onChange={(e) => setFormOtherBenefits(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-[#D9D2C5]/50 pt-5">
-                      <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-3">Eligibility Criteria</h4>
-                      <div className="space-y-4">
-                        {/* Course Eligibility */}
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Courses (leave empty for all)</label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text" placeholder="e.g. BSCS, BSECE, BSME"
-                              value={formCourseInput} onChange={(e) => setFormCourseInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                if ((e.key === 'Enter' || e.key === ',') && formCourseInput.trim()) {
-                                  e.preventDefault();
-                                  setFormCourseEligibility(prev => [...prev, formCourseInput.trim()]);
-                                  setFormCourseInput('');
-                                }
-                              }}
-                              className="flex-1 px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (formCourseInput.trim()) {
-                                  setFormCourseEligibility(prev => [...prev, formCourseInput.trim()]);
-                                  setFormCourseInput('');
-                                }
-                              }}
-                              className="px-4 py-2.5 bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] rounded-xl text-xs font-bold border-0 cursor-pointer"
-                            >+ Add</button>
-                          </div>
-                          {formCourseEligibility.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {formCourseEligibility.map((c, i) => (
-                                <span key={i} className="flex items-center gap-1.5 text-xs font-bold bg-[#EBF5EE] text-[#2D5941] px-2.5 py-1 rounded-lg">
-                                  {c}
-                                  <button type="button" onClick={() => setFormCourseEligibility(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600 font-bold border-0 bg-transparent cursor-pointer leading-none">×</button>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Year Level — dynamic per education level */}
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Year / Grade Levels (check all that apply)</label>
-                          {formEduLevel === 'incoming_college' ? (
-                            <p className="text-xs text-[#8E8E93] italic">Not applicable — incoming college students have not yet enrolled.</p>
-                          ) : (
-                            <div className="flex flex-wrap gap-3">
-                              {EDU_YEAR_LEVEL_OPTIONS[formEduLevel].map(opt => (
-                                <label key={opt.val} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={formYearLevelEligibility.includes(opt.val)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) setFormYearLevelEligibility(prev => [...prev, opt.val].sort((a,b)=>a-b));
-                                      else setFormYearLevelEligibility(prev => prev.filter(y => y !== opt.val));
-                                    }}
-                                    className="w-4 h-4 text-[#2D5941] rounded cursor-pointer"
-                                  />
-                                  {opt.label}
-                                </label>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Grading System + GWA — dynamic */}
-                        <div className="space-y-3">
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide">Grading System</label>
-                          <div className="grid grid-cols-1 gap-2">
-                            {(['scale_5', 'scale_4', 'percentage'] as GradingSystem[]).map(gs => (
-                              <label key={gs} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                                formGradingSystem === gs
-                                  ? 'border-[#2D5941] bg-[#EBF5EE]'
-                                  : 'border-[#D9D2C5] hover:bg-[#F9F5EF]'
-                              }`}>
-                                <input
-                                  type="radio"
-                                  name="gradingSystem"
-                                  value={gs}
-                                  checked={formGradingSystem === gs}
-                                  onChange={() => { setFormGradingSystem(gs); setFormMinGwa(''); }}
-                                  className="w-4 h-4 text-[#2D5941] cursor-pointer"
-                                />
-                                <span className="text-xs font-semibold text-[#1C1C1E]">{GRADING_SYSTEM_LABELS[gs]}</span>
-                              </label>
-                            ))}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Minimum Grade Required</label>
-                            <input
-                              type="number"
-                              step={GWA_CONFIG[formGradingSystem].step}
-                              min={GWA_CONFIG[formGradingSystem].min}
-                              max={GWA_CONFIG[formGradingSystem].max}
-                              placeholder={GWA_CONFIG[formGradingSystem].placeholder + ' (blank = no minimum)'}
-                              value={formMinGwa}
-                              onChange={(e) => setFormMinGwa(e.target.value)}
-                              className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                            />
-                            {formMinGwa && (
-                              <p className="text-[11px] text-[#2D5941] font-medium mt-1.5">
-                                💡 {GWA_CONFIG[formGradingSystem].hint}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Availability */}
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Geographic Availability</label>
-                          <select
-                            value={formAvailabilityScope}
-                            onChange={(e) => {
-                              setFormAvailabilityScope(e.target.value as AvailabilityScope);
-                              setSelectedRegionCode('');
-                              setSelectedProvinceCode('');
-                              setSelectedMunicipalityCode('');
-                              setSelectedBarangayCode('');
-                              setFormAvailableRegions('');
-                              setFormAvailableSchools('');
-                            }}
-                            className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                          >
-                            <option value="nationwide">Nationwide (All regions)</option>
-                            <option value="regional">Regional (Specific region only)</option>
-                            <option value="provincial">Provincial (Specific province only)</option>
-                            <option value="municipality">Town / Municipality (Specific town only)</option>
-                            <option value="barangay">Barangay (Specific barangay only)</option>
-                            <option value="specific_schools">Specific Schools Only</option>
-                          </select>
-                        </div>
-
-                        {/* Region Selector */}
-                        {(formAvailabilityScope === 'regional' || formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Region *</label>
-                            <select
-                              value={selectedRegionCode}
-                              onChange={(e) => {
-                                const code = e.target.value;
-                                setSelectedRegionCode(code);
-                                const regionObj = psgcRegions.find(r => r.code === code);
-                                setFormAvailableRegions(regionObj ? regionObj.name : '');
-                                setSelectedProvinceCode('');
-                                setSelectedMunicipalityCode('');
-                                setSelectedBarangayCode('');
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                            >
-                              <option value="">-- Choose Region --</option>
-                              {psgcRegions.map(r => (
-                                <option key={r.code} value={r.code}>{r.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {/* Province Selector */}
-                        {(formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Province *</label>
-                            <select
-                              value={selectedProvinceCode}
-                              disabled={!selectedRegionCode}
-                              onChange={(e) => {
-                                const code = e.target.value;
-                                setSelectedProvinceCode(code);
-                                const provObj = psgcProvinces.find(p => p.code === code);
-                                setFormAvailableSchools(provObj ? provObj.name : '');
-                                setSelectedMunicipalityCode('');
-                                setSelectedBarangayCode('');
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
-                            >
-                              <option value="">-- Choose Province --</option>
-                              {psgcProvinces.map(p => (
-                                <option key={p.code} value={p.code}>{p.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {/* Town/Municipality Selector */}
-                        {(formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Town / Municipality *</label>
-                            <select
-                              value={selectedMunicipalityCode}
-                              disabled={!selectedProvinceCode}
-                              onChange={(e) => {
-                                const code = e.target.value;
-                                setSelectedMunicipalityCode(code);
-                                const munObj = psgcMunicipalities.find(m => m.code === code);
-                                setFormAvailableSchools(munObj ? munObj.name : '');
-                                setSelectedBarangayCode('');
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
-                            >
-                              <option value="">-- Choose Town/Municipality --</option>
-                              {psgcMunicipalities.map(m => (
-                                <option key={m.code} value={m.code}>{m.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {/* Barangay Selector */}
-                        {formAvailabilityScope === 'barangay' && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Barangay *</label>
-                            <select
-                              value={selectedBarangayCode}
-                              disabled={!selectedMunicipalityCode}
-                              onChange={(e) => {
-                                const code = e.target.value;
-                                setSelectedBarangayCode(code);
-                                const brgyObj = psgcBarangays.find(b => b.code === code);
-                                setFormAvailableSchools(brgyObj ? brgyObj.name : '');
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
-                            >
-                              <option value="">-- Choose Barangay --</option>
-                              {psgcBarangays.map(b => (
-                                <option key={b.code} value={b.code}>{b.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {formAvailabilityScope === 'specific_schools' && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Schools (comma-separated) *</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. UP Diliman, DLSU Manila, Ateneo"
-                              value={formAvailableSchools} onChange={(e) => setFormAvailableSchools(e.target.value)}
-                              className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Disbursement Method & Banking Policy */}
-                    <div className="border-t border-[#D9D2C5]/50 pt-5 space-y-4">
-                      <div>
-                        <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider">
-                          Disbursement Method & Banking Policy
-                        </h4>
-                        <p className="text-xs text-[#6C6C70] mt-0.5">
-                          Specify how funds are transferred to approved scholars and whether a specific bank is required.
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
-                            Disbursement Mode *
-                          </label>
-                          <select
-                            value={formDisbursementMode}
-                            onChange={(e) => setFormDisbursementMode(e.target.value as any)}
-                            className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                          >
-                            <option value="online">🌐 Online Transfer (Bank / E-Wallet via Gateway)</option>
-                            <option value="in_person_cash">💵 In-Person Cash / Personal Distribution</option>
-                            <option value="hybrid">🔄 Hybrid (Online or Cash)</option>
-                          </select>
-                        </div>
-
-                        {formDisbursementMode !== 'in_person_cash' && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
-                              Banking Policy *
-                            </label>
-                            <select
-                              value={formBankingPolicy}
-                              onChange={(e) => setFormBankingPolicy(e.target.value as any)}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                            >
-                              <option value="any_bank">Any Philippine Bank Account (Personal)</option>
-                              <option value="specific_bank">Specific Partner Bank Only (e.g. Landbank)</option>
-                              <option value="provider_issued">Provider-Issued / Payroll Account</option>
-                            </select>
-                          </div>
-                        )}
-                      </div>
-
-                      {formDisbursementMode !== 'in_person_cash' && formBankingPolicy === 'specific_bank' && (
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
-                            Required Bank Name *
-                          </label>
-                          <input
-                            type="text"
-                            value={formRequiredBankName}
-                            onChange={(e) => setFormRequiredBankName(e.target.value)}
-                            placeholder="e.g. Landbank of the Philippines"
-                            className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm font-semibold text-[#2D5941]"
-                          />
-                          <p className="text-[11px] text-[#6C6C70] mt-1">
-                            Scholars will be required to upload their ATM card scan for this specific bank upon approval.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* ─── STEP 3: Application Requirements ─── */}
-                {formModalStep === 3 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-bold text-[#1C1C1E]">Document Requirements</h4>
-                        <p className="text-xs text-[#6C6C70] mt-0.5">Add the documents scholars must submit when applying.</p>
-                      </div>
-                    </div>
-
-                    {/* Existing requirements */}
-                    <div className="space-y-2">
-                      {formRequirements.map((req, idx) => (
-                        <div key={idx} className="flex items-start gap-3 p-3.5 rounded-xl border border-[#D9D2C5]/70 bg-[#F9F5EF]/50">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-[#1C1C1E]">{req.name}</span>
-                              {req.required
-                                ? <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQUIRED</span>
-                                : <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">OPTIONAL</span>
-                              }
-                            </div>
-                            <p className="text-xs text-[#6C6C70] mt-0.5">{req.description}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setFormRequirements(prev => prev.filter((_, i) => i !== idx))}
-                            className="text-red-400 hover:text-red-600 font-bold text-base border-0 bg-transparent cursor-pointer shrink-0"
-                          >×</button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Add new requirement */}
-                    <div className="p-4 rounded-2xl border border-dashed border-[#2D5941]/30 bg-[#EBF5EE]/30 space-y-3">
-                      <h5 className="text-xs font-bold text-[#2D5941] uppercase tracking-wide">+ Add New Requirement</h5>
-                      <div className="grid grid-cols-2 gap-3">
-                        <input
-                          type="text" placeholder="Requirement name"
-                          value={formReqName} onChange={(e) => setFormReqName(e.target.value)}
-                          className="px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold"
-                        />
-                        <input
-                          type="text" placeholder="Short description"
-                          value={formReqDesc} onChange={(e) => setFormReqDesc(e.target.value)}
-                          className="px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                          <input
-                            type="checkbox" checked={formReqRequired} onChange={(e) => setFormReqRequired(e.target.checked)}
-                            className="w-4 h-4 text-[#2D5941] rounded cursor-pointer"
-                          />
-                          Mark as Required
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!formReqName.trim()) return;
-                            setFormRequirements(prev => [...prev, { name: formReqName.trim(), description: formReqDesc.trim(), required: formReqRequired }]);
-                            setFormReqName('');
-                            setFormReqDesc('');
-                            setFormReqRequired(true);
-                          }}
-                          className="px-4 py-2 bg-[#2D5941] hover:bg-[#1A3C2E] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all"
-                        >Add Requirement</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ─── STEP 4: Application Cycle ─── */}
-                {formModalStep === 4 && (
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-bold text-[#1C1C1E]">Initial Application Cycle</h4>
-                      <p className="text-xs text-[#6C6C70] mt-0.5">Set the first cycle's name and application window. You can add more cycles after creation.</p>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Cycle Name *</label>
-                      <input
-                        type="text" required placeholder="e.g. AY 2026-2027"
-                        value={formCycleName} onChange={(e) => setFormCycleName(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Application Start Date *</label>
-                        <input
-                          type="date" required
-                          value={formCycleStartDate} onChange={(e) => setFormCycleStartDate(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm cursor-pointer"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Application End Date *</label>
-                        <input
-                          type="date" required
-                          value={formCycleEndDate} onChange={(e) => setFormCycleEndDate(e.target.value)}
-                          min={formCycleStartDate}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm cursor-pointer"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Preview summary */}
-                    <div className="bg-[#F9F5EF] rounded-2xl border border-[#D9D2C5]/50 p-5 space-y-3">
-                      <h5 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wider">Program Summary</h5>
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                        <div><span className="text-[#6C6C70]">Title: </span><span className="font-semibold text-[#1C1C1E]">{formTitle || '—'}</span></div>
-                        <div><span className="text-[#6C6C70]">Category: </span><span className="font-semibold text-[#1C1C1E]">{formCategory}</span></div>
-                        <div><span className="text-[#6C6C70]">Education Level: </span><span className="font-semibold text-[#1C1C1E]">{EDU_LEVEL_LABELS[formEduLevel]}</span></div>
-                        <div><span className="text-[#6C6C70]">Type: </span><span className="font-semibold text-[#1C1C1E] capitalize">{formScholarshipType.replace('_', ' ')}</span></div>
-                        <div><span className="text-[#6C6C70]">Funding: </span><span className="font-semibold text-[#1C1C1E]">{formFundingFreq}</span></div>
-                        <div><span className="text-[#6C6C70]">Renewal: </span><span className="font-semibold text-[#1C1C1E]">{formRenewalPolicy}</span></div>
-                        <div><span className="text-[#6C6C70]">Availability: </span><span className="font-semibold text-[#1C1C1E] capitalize">{formAvailabilityScope}</span></div>
-                        <div><span className="text-[#6C6C70]">Slots: </span><span className="font-semibold text-[#1C1C1E]">{formTotalSlots || 'Unlimited'}</span></div>
-                        <div><span className="text-[#6C6C70]">Budget: </span><span className="font-semibold text-[#1C1C1E]">{formBudgetTotal ? `₱${Number(formBudgetTotal).toLocaleString()}` : '—'}</span></div>
-                        <div><span className="text-[#6C6C70]">Min Grade: </span><span className="font-semibold text-[#1C1C1E]">{formMinGwa ? `${formMinGwa} (${GRADING_SYSTEM_LABELS[formGradingSystem]})` : 'None'}</span></div>
-                        <div><span className="text-[#6C6C70]">Requirements: </span><span className="font-semibold text-[#1C1C1E]">{formRequirements.length} docs</span></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              <div className="px-8 pb-7 flex gap-3 justify-between border-t border-[#D9D2C5]/40 pt-5">
-                <button
-                  type="button"
-                  onClick={() => setFormModalStep(s => Math.max(1, s - 1))}
-                  disabled={formModalStep === 1}
-                  className="px-6 py-2.5 rounded-xl border border-solid border-[#D9D2C5] text-[#6C6C70] text-xs font-bold cursor-pointer bg-transparent hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  ← Back
-                </button>
-                {formModalStep < 4 ? (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); setFormModalStep(s => Math.min(4, s + 1)); }}
-                    className="px-8 py-2.5 bg-[#2D5941] hover:bg-[#1A3C2E] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all"
-                  >
-                    Next →
-                  </button>
-                ) : (
-                  <button type="submit" className="px-8 py-2.5 bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all shadow-md">
-                    {isEditMode ? '💾 Save & Update Program' : '🎓 Create Scholarship Program'}
-                  </button>
-                )}
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Disbursements Payout Release Modal */}
       {isPayoutModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
@@ -3469,6 +2117,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             applicantsList={applicantsList}
             totalCredited={totalCredited}
             totalPending={totalPending}
+            setActiveTab={setActiveTab}
+            onOpenCreateProgram={handleOpenCreateProgram}
           />
         )}
 
@@ -3486,7 +2136,170 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             filteredScholars={filteredScholars}
             setSelectedAppForReview={setSelectedAppForReview}
             setIsReviewModalOpen={setIsReviewModalOpen}
+            onOpenViewTab={(app) => {
+              setSelectedAppForReview(app);
+              setActiveTab('view-application');
+            }}
             handleUpdateStatus={handleUpdateStatus}
+          />
+        )}
+
+        {activeTab === 'view-application' && (
+          <ProviderViewApplicationTab
+            application={selectedAppForReview}
+            onBack={() => setActiveTab('applicants')}
+            onUpdateStatus={handleUpdateStatus}
+          />
+        )}
+
+        {activeTab === 'create-program' && (
+          <ProviderProgramFormTab
+            programToEdit={selectedProgram}
+            onCancel={() => {
+              setSelectedProgram(null);
+              setActiveTab('programs');
+            }}
+            onSubmit={async (formData, isEdit) => {
+              const matchedCat = categories.find(c => c.name === formData.category);
+              const categoryId = matchedCat ? matchedCat.id : null;
+
+              const parseYearLevels = (raw: any): number[] => {
+                if (!raw) return [1];
+                const list = Array.isArray(raw) ? raw : String(raw).split(',');
+                const numbers: number[] = [];
+                for (const item of list) {
+                  if (typeof item === 'number') {
+                    if (!isNaN(item) && !numbers.includes(Math.round(item))) {
+                      numbers.push(Math.round(item));
+                    }
+                  } else if (typeof item === 'string') {
+                    const match = item.match(/\d+/);
+                    if (match) {
+                      const num = parseInt(match[0], 10);
+                      if (!isNaN(num) && !numbers.includes(num)) {
+                        numbers.push(num);
+                      }
+                    }
+                  }
+                }
+                return numbers.length > 0 ? numbers : [1];
+              };
+
+              const parseStringArray = (raw: any): string[] => {
+                if (!raw) return [];
+                if (Array.isArray(raw)) return raw.map(String).map((s: string) => s.trim()).filter(Boolean);
+                return String(raw).split(',').map((s: string) => s.trim()).filter(Boolean);
+              };
+
+              const mapFundingFreq = (freq: string): string => {
+                if (!freq) return 'Per Semester';
+                const lower = freq.toLowerCase();
+                if (lower.includes('sem')) return 'Per Semester';
+                if (lower.includes('year') || lower.includes('annual')) return 'Once a Year';
+                if (lower.includes('one') || lower.includes('grant')) return 'One-time';
+                return 'Per Semester';
+              };
+
+              const mapScholarshipType = (cat: string): string => {
+                if (!cat) return 'merit';
+                const lower = cat.toLowerCase();
+                if (lower.includes('need') && lower.includes('merit')) return 'merit_and_need';
+                if (lower.includes('need')) return 'need_based';
+                if (lower.includes('fellowship') || lower.includes('graduate')) return 'fellowship';
+                if (lower.includes('vocational') || lower.includes('grant') || lower.includes('tvet')) return 'grant';
+                return 'merit';
+              };
+
+              if (isEdit) {
+                // Update program
+                const updatePayload: any = {
+                  title: formData.title,
+                  description: formData.description,
+                  scholarship_type: mapScholarshipType(formData.category),
+                  target_education_level: formData.target_education_level || 'college',
+                  grading_system: formData.grading_system || 'scale_5',
+                  minimum_gwa: formData.minimumGwa ? parseFloat(formData.minimumGwa) : null,
+                  total_slots: formData.total_slots ? parseInt(formData.total_slots, 10) : null,
+                  budget_total: formData.amount ? parseFloat(formData.amount) : null,
+                  funding_frequency: mapFundingFreq(formData.funding_frequency),
+                  covers_tuition: formData.coverstuition ?? false,
+                  covers_stipend: formData.coversStipend ?? false,
+                  stipend_amount: formData.stipendAmount ? parseFloat(formData.stipendAmount) : null,
+                  covers_allowance: formData.coversAllowance ?? false,
+                  allowance_amount: formData.allowanceAmount ? parseFloat(formData.allowanceAmount) : null,
+                  other_benefits: parseStringArray(formData.otherBenefits),
+                  course_eligibility: parseStringArray(formData.eligible_courses).length > 0 ? parseStringArray(formData.eligible_courses) : ['All Degree Programs'],
+                  year_level_eligibility: parseYearLevels(formData.eligible_year_levels),
+                  application_requirements: formData.applicationRequirements || [],
+                };
+                if (categoryId) {
+                  updatePayload.category_id = categoryId;
+                }
+                const { error } = await supabase
+                  .from('scholarship_programs')
+                  .update(updatePayload)
+                  .eq('id', selectedProgram?.id);
+                if (error) {
+                  console.error('Error updating program:', error);
+                  showToast(`Error updating program: ${error.message || 'Check fields'}`);
+                } else {
+                  showToast('Program updated successfully');
+                  await fetchPrograms();
+                  setSelectedProgram(null);
+                  setActiveTab('programs');
+                }
+              } else {
+                // Create program
+                const insertPayload: any = {
+                  provider_id: providerDetails?.id,
+                  title: formData.title,
+                  description: formData.description,
+                  category_id: categoryId,
+                  scholarship_type: mapScholarshipType(formData.category),
+                  target_education_level: formData.target_education_level || 'college',
+                  grading_system: formData.grading_system || 'scale_5',
+                  minimum_gwa: formData.minimumGwa ? parseFloat(formData.minimumGwa) : null,
+                  total_slots: formData.total_slots ? parseInt(formData.total_slots, 10) : null,
+                  budget_total: formData.amount ? parseFloat(formData.amount) : null,
+                  funding_frequency: mapFundingFreq(formData.funding_frequency),
+                  covers_tuition: formData.coverstuition ?? false,
+                  covers_stipend: formData.coversStipend ?? false,
+                  stipend_amount: formData.stipendAmount ? parseFloat(formData.stipendAmount) : null,
+                  covers_allowance: formData.coversAllowance ?? false,
+                  allowance_amount: formData.allowanceAmount ? parseFloat(formData.allowanceAmount) : null,
+                  other_benefits: parseStringArray(formData.otherBenefits),
+                  course_eligibility: parseStringArray(formData.eligible_courses).length > 0 ? parseStringArray(formData.eligible_courses) : ['All Degree Programs'],
+                  year_level_eligibility: parseYearLevels(formData.eligible_year_levels),
+                  application_requirements: formData.applicationRequirements || [],
+                  status: 'pending',
+                };
+                const { data: progData, error } = await supabase
+                  .from('scholarship_programs')
+                  .insert([insertPayload])
+                  .select()
+                  .single();
+                if (error || !progData) {
+                  console.error('Error creating program:', error);
+                  showToast(`Error creating program: ${error?.message || 'Check fields'}`);
+                } else {
+                  // Create default cycle
+                  await supabase
+                    .from('application_cycles')
+                    .insert({
+                      program_id: progData.id,
+                      cycle_name: 'AY 2026-2027',
+                      application_start_date: new Date().toISOString().split('T')[0],
+                      application_end_date: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
+                      status: 'open'
+                    });
+                  showToast('Program created successfully!');
+                  await fetchPrograms();
+                  setSelectedProgram(null);
+                  setActiveTab('programs');
+                }
+              }
+            }}
+            providerDetails={providerDetails}
           />
         )}
 
@@ -3495,7 +2308,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             providerDetails={providerDetails}
             programsList={programsList}
             showToast={showToast}
-            setIsCreateModalOpen={(open) => open ? handleOpenCreateProgram() : setIsCreateModalOpen(false)}
+            onOpenCreateProgram={handleOpenCreateProgram}
             setActiveTab={setActiveTab}
             handleViewDetails={handleViewDetails}
             handleEditProgram={handleEditProgram}

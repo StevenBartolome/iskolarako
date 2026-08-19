@@ -6,7 +6,7 @@ interface ProviderProgramsTabProps {
   providerDetails: ProviderDetails | null;
   programsList: Program[];
   showToast: (msg: string) => void;
-  setIsCreateModalOpen: (open: boolean) => void;
+  onOpenCreateProgram: () => void;
   setActiveTab: (tab: any) => void;
   handleViewDetails: (prog: Program) => void;
   handleEditProgram: (prog: Program) => void;
@@ -20,7 +20,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
   providerDetails,
   programsList,
   showToast,
-  setIsCreateModalOpen,
+  onOpenCreateProgram,
   setActiveTab,
   handleViewDetails,
   handleEditProgram,
@@ -41,7 +41,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
             if (providerDetails?.verificationStatus !== 'verified') {
               showToast('Create locked: Your organization is not verified. Please submit documents in the Verification Org tab.');
             } else {
-              setIsCreateModalOpen(true);
+              onOpenCreateProgram();
             }
           }}
           disabled={providerDetails?.verificationStatus !== 'verified'}

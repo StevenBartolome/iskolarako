@@ -169,6 +169,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
         updated_at: new Date().toISOString(),
       };
 
+      // 1. Update scholar_documents table
       if (doc.id && typeof doc.id === 'string' && doc.id.includes('-') && doc.id.length > 20) {
         await supabase
           .from('scholar_documents')
@@ -204,6 +205,33 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
               ...aiPayload,
             });
         }
+      }
+
+      // 2. Update scholarship_applications table submitted_documents cache
+      if (application?.id) {
+        const currentDocs = application.submittedDocuments || [];
+        const updatedDocsJson = currentDocs.map(d => {
+          const isMatch = (d.id && doc.id && d.id === doc.id) ||
+            (d.name && doc.name && d.name.toLowerCase().trim() === doc.name.toLowerCase().trim()) ||
+            (d.document_url && doc.document_url && d.document_url.trim() === doc.document_url.trim());
+          if (isMatch) {
+            return {
+              ...d,
+              status: result.verificationStatus === 'verified' ? 'Verified' : 'Flagged',
+              remarks: docRemarks,
+              aiVerification: result,
+            };
+          }
+          return d;
+        });
+
+        await supabase
+          .from('scholarship_applications')
+          .update({
+            submitted_documents: { documents: updatedDocsJson },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', application.id);
       }
     } catch (err) {
       console.warn('[Doc AI Cache Persist Note]:', err);
@@ -463,14 +491,14 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
       setDocumentsList(docs);
 
-      // Trigger automatic scan if any scannable documents lack AI verification or were recently resubmitted
-      const unscanned = docs.filter(d => 
-        (d.document_url || d.url) && (
-          !d.aiVerification || 
-          (d.remarks || '').toLowerCase().includes('resubmit') ||
-          (d.status === 'Pending' && !d.aiVerification)
-        )
-      );
+      // Trigger automatic scan only if any scannable documents lack AI verification or were recently resubmitted
+      const unscanned = docs.filter(d => {
+        const hasUrl = Boolean(d.document_url || d.url);
+        if (!hasUrl) return false;
+        const isResubmitted = (d.remarks || '').toLowerCase().includes('resubmit');
+        const isAlreadyScanned = Boolean(d.aiVerification && d.aiVerification.verificationStatus);
+        return isResubmitted || !isAlreadyScanned;
+      });
 
       if (unscanned.length > 0) {
         handleScanAllDocs(docs, true);
@@ -482,7 +510,100 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
   if (!isOpen || !application) return null;
 
+  const saveDocStatusToDb = async (doc: SubmittedDocItem, newDocStatus: 'Verified' | 'Flagged' | 'Pending') => {
+    try {
+      const scholarId = application?.scholarId || application?.rawApplication?.scholar_id || application?.rawApplication?.scholar?.id;
+      const dbStatus = newDocStatus === 'Verified' ? 'verified' : newDocStatus === 'Flagged' ? 'rejected' : 'pending';
+      const docRemarks = newDocStatus === 'Verified' ? 'Approved by provider' : newDocStatus === 'Flagged' ? (doc.remarks || 'Flagged for review') : '';
+
+      // 1. Update scholar_documents table
+      if (doc.id && typeof doc.id === 'string' && doc.id.includes('-') && doc.id.length > 20) {
+        await supabase
+          .from('scholar_documents')
+          .update({
+            verification_status: dbStatus,
+            remarks: docRemarks,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', doc.id);
+      } else if (scholarId) {
+        const docName = doc.name || doc.filename || 'Submitted Document';
+        const docUrl = doc.document_url || doc.url || '';
+
+        const { data: existingRecords } = await supabase
+          .from('scholar_documents')
+          .select('id, document_name, document_url')
+          .eq('scholar_id', scholarId);
+
+        const match = existingRecords?.find((r: any) =>
+          (r.document_name && r.document_name.toLowerCase().trim() === docName.toLowerCase().trim()) ||
+          (r.document_url && docUrl && r.document_url.trim() === docUrl.trim())
+        );
+
+        if (match) {
+          await supabase
+            .from('scholar_documents')
+            .update({
+              verification_status: dbStatus,
+              remarks: docRemarks,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', match.id);
+        } else if (docUrl) {
+          await supabase
+            .from('scholar_documents')
+            .insert({
+              scholar_id: scholarId,
+              document_name: docName,
+              document_url: docUrl,
+              verification_status: dbStatus,
+              remarks: docRemarks,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+        }
+      }
+
+      // 2. Update scholarship_applications table submitted_documents JSON
+      if (application?.id) {
+        const currentDocs = documentsList;
+        const updatedDocsJson = currentDocs.map(d => {
+          const isMatch = (d.id && doc.id && d.id === doc.id) ||
+            (d.name && doc.name && d.name.toLowerCase().trim() === doc.name.toLowerCase().trim()) ||
+            (d.document_url && doc.document_url && d.document_url.trim() === doc.document_url.trim());
+          if (isMatch) {
+            return {
+              ...d,
+              status: newDocStatus,
+              remarks: docRemarks,
+            };
+          }
+          return d;
+        });
+
+        await supabase
+          .from('scholarship_applications')
+          .update({
+            submitted_documents: { documents: updatedDocsJson },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', application.id);
+
+        if (application) {
+          application.submittedDocuments = updatedDocsJson;
+        }
+      }
+    } catch (err) {
+      console.warn('[Save Doc Status Note]:', err);
+    }
+  };
+
   const toggleDocStatus = (index: number, newDocStatus: 'Verified' | 'Flagged' | 'Pending') => {
+    const targetDoc = documentsList[index];
+    if (targetDoc) {
+      saveDocStatusToDb(targetDoc, newDocStatus);
+    }
+
     setDocumentsList(prev => {
       const next = prev.map((doc, idx) =>
         idx === index ? { ...doc, status: newDocStatus } : doc
@@ -495,6 +616,41 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
       }
       return next;
     });
+  };
+
+  const handleApproveAllDocs = async () => {
+    const allApproved = documentsList.map(d => ({ ...d, status: 'Verified' as const, remarks: '' }));
+    setDocumentsList(allApproved);
+    setSelectedStatus((prev: ApplicantStatus) => (prev === 'For Exam' ? 'For Exam' : 'Approved'));
+    if (application) {
+      application.submittedDocuments = allApproved;
+    }
+
+    try {
+      if (application?.id) {
+        await supabase
+          .from('scholarship_applications')
+          .update({
+            submitted_documents: { documents: allApproved },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', application.id);
+      }
+
+      const scholarId = application?.scholarId || application?.rawApplication?.scholar_id || application?.rawApplication?.scholar?.id;
+      if (scholarId) {
+        await supabase
+          .from('scholar_documents')
+          .update({
+            verification_status: 'verified',
+            remarks: 'Approved by provider',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('scholar_id', scholarId);
+      }
+    } catch (err) {
+      console.warn('[Approve All Docs Note]:', err);
+    }
   };
 
   const handleSaveDecision = async (e: React.FormEvent) => {
@@ -702,16 +858,13 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setDocumentsList(prev => prev.map(d => ({ ...d, status: 'Verified', remarks: '' })));
-                      setSelectedStatus((prev: ApplicantStatus) => (prev === 'For Exam' ? 'For Exam' : 'Approved'));
-                    }}
+                    onClick={handleApproveAllDocs}
                     className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-[11px] font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1 transition-all"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span>Mark All Verified</span>
+                    <span>Approve All Documents</span>
                   </button>
                 </div>
               </div>
@@ -859,12 +1012,15 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                     <div
                       key={idx}
                       className={`p-4 rounded-2xl bg-white border transition-all shadow-xs flex flex-col gap-3 ${
-                        docStatus === 'Verified' ? 'border-[#2D5941]/40 bg-[#EBF5EE]/10' :
-                        docStatus === 'Flagged' ? 'border-[#B34040]/40 bg-red-50/20' :
-                        'border-[#D9D2C5]/70'
+                        docStatus === 'Verified'
+                          ? 'border-[#2D5941]/40 bg-[#EBF5EE]/10'
+                          : docStatus === 'Flagged'
+                          ? 'border-[#B34040]/40 bg-red-50/20'
+                          : 'border-[#D9D2C5]/70 hover:border-[#D9D2C5]'
                       }`}
                     >
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      {/* Top Row: File Info & Badges */}
+                      <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0 flex-1">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base shrink-0 ${
                             docStatus === 'Verified' ? 'bg-[#EBF5EE] text-[#2D5941]' :
@@ -876,23 +1032,23 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             </svg>
                           </div>
 
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h5 className="font-bold text-[#1C1C1E] text-xs">{doc.name}</h5>
                               
                               {/* Status Badge */}
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 docStatus === 'Verified' ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20' :
                                 docStatus === 'Flagged' ? 'bg-red-50 text-[#B34040] border border-[#B34040]/20' :
                                 'bg-amber-50 text-[#C97B2E] border border-[#C97B2E]/20'
                               }`}>
-                                {docStatus === 'Verified' ? '✓ Verified' : docStatus === 'Flagged' ? '🚩 Flagged' : 'Pending'}
+                                {docStatus === 'Verified' ? '✓ Approved' : docStatus === 'Flagged' ? '🚩 Flagged' : '⏳ Pending'}
                               </span>
 
                               {/* AI Verification Badge */}
                               {aiRes ? (
                                 <span
-                                  className={`px-2 py-0.5 rounded-full text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all ${
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all ${
                                     aiRes.verificationStatus === 'verified'
                                       ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
                                       : aiRes.verificationStatus === 'rejected'
@@ -902,7 +1058,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                       : 'bg-[#FFF8EE] text-[#C97B2E] border border-[#C97B2E]/40 hover:bg-[#C97B2E] hover:text-white'
                                   }`}
                                   onClick={() => toggleExpandDoc(idx)}
-                                  title="Click to view AI forensic comparison"
+                                  title="Click to toggle AI forensic breakdown"
                                 >
                                   {aiRes.verificationStatus === 'verified' ? (
                                     <>
@@ -924,26 +1080,48 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   )}
                                 </span>
                               ) : doc.isAiScanning ? (
-                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
                                   ⏳ AI Scanning...
                                 </span>
                               ) : null}
                             </div>
 
-                            <p className="text-[10px] text-[#8E8E93] mt-0.5 truncate">
+                            <p className="text-[10px] text-[#8E8E93] mt-1 truncate">
                               File: {doc.filename || doc.name} {doc.filesize ? `• ${doc.filesize}` : ''} {doc.submitted_at ? `• Submitted ${doc.submitted_at}` : ''}
                             </p>
                           </div>
                         </div>
 
-                        {/* Action Buttons Toolbar */}
-                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                        {(doc.is_additional || !docUrl) && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDoc(idx)}
+                            title="Remove requirement"
+                            className="w-7 h-7 rounded-xl bg-gray-100 hover:bg-red-100 text-gray-500 hover:text-red-600 flex items-center justify-center transition-colors border-0 cursor-pointer text-xs shrink-0"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Remarks Pill if flagged or noted */}
+                      {doc.remarks && (
+                        <div className="px-3 py-1.5 rounded-xl bg-[#F9F5EF] border border-[#D9D2C5]/70 text-[11px] text-[#6C6C70] flex items-center gap-2">
+                          <span className="font-semibold text-[#1A3C2E] shrink-0">Note:</span>
+                          <span className="truncate">{doc.remarks}</span>
+                        </div>
+                      )}
+
+                      {/* Clean Dedicated Action Toolbar */}
+                      <div className="pt-2 border-t border-[#D9D2C5]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        {/* Left Group: Tools & Previews */}
+                        <div className="flex items-center gap-2 flex-wrap">
                           {docUrl && (
                             <a
                               href={docUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="px-2.5 py-1.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[11px] font-bold border-0 cursor-pointer inline-flex items-center gap-1 transition-colors no-underline"
+                              className="px-3 py-1.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-xs font-bold border-0 cursor-pointer inline-flex items-center justify-center gap-1.5 transition-colors no-underline min-w-[90px]"
                             >
                               <svg className="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -958,16 +1136,17 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                               type="button"
                               disabled={doc.isAiScanning}
                               onClick={() => handleScanSingleDoc(idx)}
-                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#C97B2E] text-[11px] font-bold border border-amber-300/60 cursor-pointer inline-flex items-center gap-1 transition-all disabled:opacity-50"
+                              className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#C97B2E] text-xs font-bold border border-amber-300/60 cursor-pointer inline-flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 min-w-[96px]"
                             >
                               {doc.isAiScanning ? (
                                 <>
                                   <span className="animate-spin text-xs">⏳</span>
-                                  <span>Scanning...</span>
+                                  <span>Scanning</span>
                                 </>
                               ) : (
                                 <>
-                                  <span>{aiRes ? '🔄 Re-scan AI' : '⚡ Run AI Scan'}</span>
+                                  <span>⚡</span>
+                                  <span>{aiRes ? 'Re-scan' : 'Scan AI'}</span>
                                 </>
                               )}
                             </button>
@@ -977,50 +1156,44 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             <button
                               type="button"
                               onClick={() => toggleExpandDoc(idx)}
-                              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer transition-colors border ${
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-colors border inline-flex items-center justify-center gap-1 min-w-[104px] ${
                                 isExpanded
                                   ? 'bg-[#1A3C2E] text-white border-[#1A3C2E]'
                                   : 'bg-white text-[#1A3C2E] border-[#D9D2C5] hover:bg-[#F9F5EF]'
                               }`}
                             >
-                              <span>{isExpanded ? '▲ Hide Forensic' : '▼ AI Report'}</span>
+                              <span>{isExpanded ? '▲ Hide Analysis' : '📊 AI Report'}</span>
                             </button>
                           )}
+                        </div>
 
+                        {/* Right Group: Review Decisions (Approve / Flag) */}
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
                           <button
                             type="button"
                             onClick={() => toggleDocStatus(idx, docStatus === 'Verified' ? 'Pending' : 'Verified')}
-                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer transition-colors border-0 ${
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[98px] ${
                               docStatus === 'Verified'
-                                ? 'bg-[#2D5941] text-white shadow-xs'
-                                : 'bg-[#EBF5EE] text-[#2D5941] hover:bg-[#2D5941] hover:text-white'
+                                ? 'bg-[#2D5941] text-white border-[#2D5941]'
+                                : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
                             }`}
                           >
-                            {docStatus === 'Verified' ? '✓ Verified' : 'Mark Verified'}
+                            <span>✓</span>
+                            <span>{docStatus === 'Verified' ? 'Approved' : 'Approve'}</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => toggleDocStatus(idx, docStatus === 'Flagged' ? 'Pending' : 'Flagged')}
-                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer transition-colors border-0 ${
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[84px] ${
                               docStatus === 'Flagged'
-                                ? 'bg-[#B34040] text-white shadow-xs'
-                                : 'bg-red-50 text-[#B34040] hover:bg-[#B34040] hover:text-white'
+                                ? 'bg-[#B34040] text-white border-[#B34040]'
+                                : 'bg-red-50 text-[#B34040] border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
                             }`}
                           >
-                            {docStatus === 'Flagged' ? '🚩 Flagged' : 'Flag Issue'}
+                            <span>🚩</span>
+                            <span>{docStatus === 'Flagged' ? 'Flagged' : 'Flag'}</span>
                           </button>
-
-                          {(doc.is_additional || !docUrl) && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveDoc(idx)}
-                              title="Remove requirement"
-                              className="w-7 h-7 rounded-xl bg-gray-100 hover:bg-red-100 text-gray-500 hover:text-red-600 flex items-center justify-center transition-colors border-0 cursor-pointer text-xs"
-                            >
-                              ✕
-                            </button>
-                          )}
                         </div>
                       </div>
 

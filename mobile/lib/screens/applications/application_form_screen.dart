@@ -16,6 +16,14 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
   int _currentStep = 0;
   final int _totalSteps = 4;
 
+  String _selectedYearLevel = '1st Year / Incoming Freshmen';
+  final TextEditingController _currentSchoolController = TextEditingController();
+  final TextEditingController _intendedSchoolController = TextEditingController();
+  final TextEditingController _intendedCourseController = TextEditingController();
+
+  final TextEditingController _enrolledSchoolController = TextEditingController();
+  final TextEditingController _enrolledCourseController = TextEditingController();
+
   // Track uploaded documents
   final Map<String, String?> _uploadedFiles = {
     'grades': null,
@@ -166,6 +174,8 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
   }
 
   Widget _buildStep2({Key? key}) {
+    final isFreshman = _selectedYearLevel.contains('1st') || _selectedYearLevel.contains('Freshmen');
+
     return Column(
       key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,15 +190,130 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Tell us about your educational background.',
+          'Select your year level and fill in your school information.',
           style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
         ),
-        const SizedBox(height: 24),
-        const CustomTextField(label: 'University/School', hint: 'Enter institution name', prefixIcon: LucideIcons.school),
-        const SizedBox(height: 16),
-        const CustomTextField(label: 'Course/Degree', hint: 'BS Computer Science', prefixIcon: LucideIcons.bookOpen),
-        const SizedBox(height: 16),
-        const CustomTextField(label: 'Current Year Level', hint: 'e.g. 3rd Year', prefixIcon: LucideIcons.barChart2),
+        const SizedBox(height: 20),
+
+        // Year Level Selector
+        Text(
+          'TARGET YEAR LEVEL',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: AppColors.primaryDark,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.textSecondary.withAlpha(50)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedYearLevel,
+              isExpanded: true,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryDark,
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: '1st Year / Incoming Freshmen',
+                  child: Text('🎓 1st Year / Incoming Freshmen'),
+                ),
+                DropdownMenuItem(
+                  value: '2nd Year College',
+                  child: Text('🏛️ 2nd Year College'),
+                ),
+                DropdownMenuItem(
+                  value: '3rd Year College',
+                  child: Text('🏛️ 3rd Year College'),
+                ),
+                DropdownMenuItem(
+                  value: '4th Year / Graduating',
+                  child: Text('🏛️ 4th Year / Graduating'),
+                ),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _selectedYearLevel = val;
+                  });
+                }
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        if (isFreshman) ...[
+          // Incoming Freshmen Banner
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withAlpha(15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primary.withAlpha(40)),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.graduationCap, color: AppColors.primary, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Incoming Freshmen Mode: Enter your high school, intended target college, and option course.',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          CustomTextField(
+            label: 'Current / High School Name',
+            hint: 'e.g. Manila Science High School',
+            prefixIcon: LucideIcons.building,
+            controller: _currentSchoolController,
+          ),
+          const SizedBox(height: 14),
+          CustomTextField(
+            label: 'Intended / Target School to Apply',
+            hint: 'e.g. UP Diliman / UST / DLSU',
+            prefixIcon: LucideIcons.school,
+            controller: _intendedSchoolController,
+          ),
+          const SizedBox(height: 14),
+          CustomTextField(
+            label: 'Intended / Option Course',
+            hint: 'e.g. BS Computer Science (Option 1)',
+            prefixIcon: LucideIcons.bookOpen,
+            controller: _intendedCourseController,
+          ),
+        ] else ...[
+          CustomTextField(
+            label: 'University / School Enrolled',
+            hint: 'e.g. Technological University of the Philippines',
+            prefixIcon: LucideIcons.school,
+            controller: _enrolledSchoolController,
+          ),
+          const SizedBox(height: 14),
+          CustomTextField(
+            label: 'Course / Degree',
+            hint: 'e.g. BS Civil Engineering',
+            prefixIcon: LucideIcons.bookOpen,
+            controller: _enrolledCourseController,
+          ),
+        ],
       ],
     );
   }

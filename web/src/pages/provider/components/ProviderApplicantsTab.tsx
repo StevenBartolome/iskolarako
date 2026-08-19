@@ -14,6 +14,7 @@ interface ProviderApplicantsTabProps {
   filteredScholars: ScholarAward[];
   setSelectedAppForReview: (app: any) => void;
   setIsReviewModalOpen: (open: boolean) => void;
+  onOpenViewTab?: (app: any) => void;
   handleUpdateStatus: (id: any, newStatus: ApplicantStatus) => void;
 }
 
@@ -30,6 +31,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
   filteredScholars,
   setSelectedAppForReview,
   setIsReviewModalOpen,
+  onOpenViewTab,
   handleUpdateStatus,
 }) => {
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>('All');
@@ -263,7 +265,24 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-              {processedApplicants.map((app) => {
+              {processedApplicants.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-[#8E8E93]">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-12 h-12 bg-[#EDE8DE] rounded-full flex items-center justify-center text-[#2D5941] text-xl mb-1">
+                        📋
+                      </div>
+                      <p className="font-bold text-sm text-[#1C1C1E] font-serif">No cycle applicants found</p>
+                      <p className="text-xs text-[#8E8E93] max-w-sm">
+                        {applicantsList.length === 0
+                          ? 'No student applications have been submitted for your active intake cycles yet.'
+                          : 'No applicants match your current search and filter criteria.'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                processedApplicants.map((app) => {
                 const isRenewal = app.cycle_type === 'renewal' || (app.cycle && app.cycle.toLowerCase().includes('renewal'));
                 return (
                   <tr key={app.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
@@ -326,7 +345,11 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                           type="button"
                           onClick={() => {
                             setSelectedAppForReview(app);
-                            setIsReviewModalOpen(true);
+                            if (onOpenViewTab) {
+                              onOpenViewTab(app);
+                            } else {
+                              setIsReviewModalOpen(true);
+                            }
                           }}
                           className="bg-[#1A3C2E] hover:bg-[#2D5941] text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-sm hover:shadow cursor-pointer border-0 inline-flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98]"
                         >
@@ -360,7 +383,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>
@@ -380,7 +403,24 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-              {processedScholars.map((sch) => (
+              {processedScholars.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-[#8E8E93]">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-12 h-12 bg-[#EDE8DE] rounded-full flex items-center justify-center text-[#2D5941] text-xl mb-1">
+                        🎓
+                      </div>
+                      <p className="font-bold text-sm text-[#1C1C1E] font-serif">No awarded scholars found</p>
+                      <p className="text-xs text-[#8E8E93] max-w-sm">
+                        {scholarsList.length === 0
+                          ? 'Once you approve applicants, they will automatically be enrolled into scholar monitoring.'
+                          : 'No scholars match your current search and filter criteria.'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                processedScholars.map((sch) => (
                 <tr key={sch.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
                   <td className="px-6 py-4 flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-[#C97B2E] text-white flex items-center justify-center font-bold text-xs uppercase">
@@ -435,7 +475,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                     </button>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

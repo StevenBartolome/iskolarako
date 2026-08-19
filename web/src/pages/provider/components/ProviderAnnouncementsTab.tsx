@@ -202,7 +202,18 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
         <div className="lg:col-span-2 space-y-6">
           <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Active Broadcast Board</h3>
           <div className="space-y-4">
-            {announcements.map((ann) => (
+            {announcements.length === 0 ? (
+              <div className="bg-[#F9F5EF]/60 rounded-3xl border border-dashed border-[#D9D2C5] p-12 text-center space-y-3">
+                <div className="w-12 h-12 bg-[#EDE8DE] rounded-full flex items-center justify-center mx-auto text-[#2D5941] text-xl">
+                  📢
+                </div>
+                <h4 className="font-bold text-[#1A3C2E] font-serif text-base">No Broadcasts Yet</h4>
+                <p className="text-xs text-[#6C6C70] max-w-xs mx-auto">
+                  Use the form on the left to broadcast exam schedules, stipend releases, or notices to scholars.
+                </p>
+              </div>
+            ) : (
+              announcements.map((ann) => (
               <div key={ann.id} className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-4 animate-fade-in">
                 <div className="flex justify-between items-start gap-4">
                   <div>
@@ -237,7 +248,7 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   </div>
                 )}
               </div>
-            ))}
+            )))}
           </div>
         </div>
       </div>

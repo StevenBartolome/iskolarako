@@ -7,6 +7,8 @@ interface ProviderDashboardTabProps {
   applicantsList: any[];
   totalCredited: number;
   totalPending: number;
+  setActiveTab?: (tab: any) => void;
+  onOpenCreateProgram?: () => void;
 }
 
 export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
@@ -15,6 +17,8 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
   applicantsList,
   totalCredited,
   totalPending,
+  setActiveTab,
+  onOpenCreateProgram,
 }) => {
   return (
     <div className="space-y-8 animate-fade-in">
@@ -71,6 +75,13 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
             accentColor="#2D5941"
             hoverBorder="#2D5941"
             delay={0}
+            onClick={() => {
+              if (onOpenCreateProgram) {
+                onOpenCreateProgram();
+              } else if (setActiveTab) {
+                setActiveTab('create-program');
+              }
+            }}
           />
           <ProviderQuickActionCard
             title="Review Applications"
@@ -81,6 +92,9 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
             accentColor="#C97B2E"
             hoverBorder="#C97B2E"
             delay={50}
+            onClick={() => {
+              if (setActiveTab) setActiveTab('applicants');
+            }}
           />
           <ProviderQuickActionCard
             title="Manage Scholars"
@@ -91,6 +105,9 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
             accentColor="#1A3C2E"
             hoverBorder="#1A3C2E"
             delay={100}
+            onClick={() => {
+              if (setActiveTab) setActiveTab('applicants');
+            }}
           />
           <ProviderQuickActionCard
             title="Release Funds"
@@ -101,6 +118,9 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
             accentColor="#C97B2E"
             hoverBorder="#C97B2E"
             delay={150}
+            onClick={() => {
+              if (setActiveTab) setActiveTab('disbursements');
+            }}
           />
         </div>
       </div>
@@ -159,6 +179,7 @@ interface ProviderQuickActionCardProps {
   accentColor: string;
   hoverBorder: string;
   delay: number;
+  onClick?: () => void;
 }
 
 const ProviderQuickActionCard: React.FC<ProviderQuickActionCardProps> = ({
@@ -170,9 +191,11 @@ const ProviderQuickActionCard: React.FC<ProviderQuickActionCardProps> = ({
   accentColor,
   hoverBorder,
   delay,
+  onClick,
 }) => {
   return (
     <button
+      onClick={onClick}
       className="group relative p-5 rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden animate-fade-slide-up"
       style={{
         borderColor: '#D9D2C5',
