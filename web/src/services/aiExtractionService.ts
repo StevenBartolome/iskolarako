@@ -833,3 +833,1103 @@ export async function extractBankDetailsFromImage(
     rawResponse: { errors },
   };
 }
+
+export interface ScholarAgreementParams {
+  scholarName: string;
+  programTitle: string;
+  providerName: string;
+  school?: string;
+  course?: string;
+  yearLevel?: string;
+  maintainingGwa?: string | number;
+  stipendAmount?: number | string;
+  tuitionCovered?: boolean;
+  allowanceAmount?: number | string;
+  renewalPolicy?: string;
+  additionalRequirements?: string[];
+  customNotes?: string;
+  templateType?: 'merit' | 'need' | 'stem' | 'corporate' | 'general';
+}
+
+/**
+ * Generate a professional, comprehensive Scholar Agreement / Rules & Maintaining Guidelines Letter using AI
+ */
+export async function generateScholarAgreementWithAi(
+  params: ScholarAgreementParams,
+  onStatusUpdate?: (status: string) => void
+): Promise<{ content: string; aiModelUsed: string }> {
+  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+  const openRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+
+  const todayStr = new Date().toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  const prompt = `You are an expert Educational Policy and Legal Scholarship Agreement Drafting Assistant for the Philippine Scholarship Platform "IskoAko".
+Draft an official, comprehensive, formal Scholarship Award & Maintaining Guidelines Agreement letter.
+
+Scholar & Program Information:
+- Scholar Name: ${params.scholarName}
+- Scholarship Program: ${params.programTitle}
+- Scholarship Provider / Grantor: ${params.providerName}
+- University / College: ${params.school || 'Partner Academic Institution'}
+- Degree Program / Course: ${params.course || 'Enrolled Degree Program'}
+- Year Level: ${params.yearLevel || 'Undergraduate'}
+- Maintaining GWA Requirement: ${params.maintainingGwa || '1.75 / 85% or better with no failing or incomplete grades'}
+- Financial Grant Benefits:
+  * Tuition Coverage: ${params.tuitionCovered ? '100% Fully Covered / Subsidized' : 'N/A or Separate Allowance'}
+  * Monthly Educational Stipend: ${params.stipendAmount ? `₱${Number(params.stipendAmount).toLocaleString()} / month` : 'Prescribed Program Amount'}
+  * Book / Living Allowance: ${params.allowanceAmount ? `₱${Number(params.allowanceAmount).toLocaleString()} / semester` : 'Included in grant'}
+- Renewal Policy: ${params.renewalPolicy || 'Semestral re-evaluation upon submission of Certificate of Registration (COR) and Official Grade Slips'}
+- Additional Requirements / Obligations: ${params.additionalRequirements?.join(', ') || 'Attendance at scholar orientations, adherence to university code of conduct'}
+- Custom Notes / Instructions: ${params.customNotes || 'None'}
+- Policy Type: ${params.templateType || 'General Merit Scholarship'}
+- Date of Issuance: ${todayStr}
+
+Draft the complete formal letter in clean, readable Markdown format with:
+1. Formal Header & Salutation
+2. Grant Scope & Financial Coverage Breakdown
+3. Academic Maintaining Standards (Specific GWA, No Failing Grades, Regular Load)
+4. Semestral Renewal & Document Submission Procedures (Submission via IskoAko mobile app)
+5. Scholar Code of Ethics & Termination Conditions
+6. Formal Concluding Message & Signatures Block.
+
+Keep it professional, encouraging, clear, and legally compliant with Philippine academic standards. Do not include markdown code block backticks (like \`\`\`markdown) around the entire output.`;
+
+  // 1. Try Gemini
+  if (geminiKey && geminiKey.startsWith('AIzaSy')) {
+    try {
+      onStatusUpdate?.('Drafting agreement with Google Gemini AI...');
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.4 },
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const letter = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (letter && letter.length > 100) {
+          return { content: letter.trim(), aiModelUsed: 'Google Gemini 2.0 Flash' };
+        }
+      }
+    } catch (e) {
+      console.warn('Gemini agreement generation fallback:', e);
+    }
+  }
+
+  // 2. Try Groq Llama
+  if (groqKey) {
+    try {
+      onStatusUpdate?.('Drafting agreement with Groq AI...');
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.4,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const letter = data?.choices?.[0]?.message?.content;
+        if (letter && letter.length > 100) {
+          return { content: letter.trim(), aiModelUsed: 'Groq Llama 3.3 70B' };
+        }
+      }
+    } catch (e) {
+      console.warn('Groq agreement generation fallback:', e);
+    }
+  }
+
+  // 3. Try OpenRouter
+  if (openRouterKey) {
+    try {
+      onStatusUpdate?.('Drafting agreement with OpenRouter AI...');
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`,
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-3.3-70b-instruct',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const letter = data?.choices?.[0]?.message?.content;
+        if (letter && letter.length > 100) {
+          return { content: letter.trim(), aiModelUsed: 'OpenRouter Llama 3.3' };
+        }
+      }
+    } catch (e) {
+      console.warn('OpenRouter agreement generation fallback:', e);
+    }
+  }
+
+  // 4. Built-in Structured Legal Template Fallback
+  onStatusUpdate?.('Generating structured academic agreement template...');
+  const gwaText = params.maintainingGwa ? String(params.maintainingGwa) : '1.75 (or 85% equivalent)';
+  const stipendText = params.stipendAmount ? `₱${Number(params.stipendAmount).toLocaleString()} / month` : 'Prescribed Grant Amount';
+  const tuitionText = params.tuitionCovered ? '100% Tuition & Miscellaneous Fees Covered' : 'Educational Grant Allowance';
+
+  const defaultTemplate = `# OFFICIAL SCHOLARSHIP AWARD & MAINTAINING AGREEMENT
+
+**Granting Institution:** ${params.providerName}  
+**Scholarship Program:** ${params.programTitle}  
+**Date of Award:** ${todayStr}  
+**Awardee:** ${params.scholarName}  
+**Institution:** ${params.school || 'Enrolled University / College'} (${params.course || 'Degree Program'})  
+
+---
+
+### DEAR ${params.scholarName.toUpperCase()},
+
+Congratulations! On behalf of **${params.providerName}**, we are delighted to officially confer upon you the **${params.programTitle}** award. Through your exemplary academic merit, dedication, and character, you have earned this scholarship.
+
+---
+
+### 1. SCHOLARSHIP BENEFITS & FINANCIAL COVERAGE
+During your tenure as an active scholar, you are entitled to the following grant entitlements:
+- **Tuition & Institutional Fees:** ${tuitionText}
+- **Monthly Living & Educational Stipend:** ${stipendText}
+- **Book & Learning Support:** ${params.allowanceAmount ? `₱${Number(params.allowanceAmount).toLocaleString()} per academic term` : 'Provided as scheduled'}
+- **Disbursement Mechanism:** Direct digital transfer via the verified payment account registered in your IskoAko portal.
+
+---
+
+### 2. ACADEMIC MAINTAINING STANDARDS
+To maintain active scholar status and ensure uninterrupted fund releases, you agree to fulfill the following standards:
+1. **General Weighted Average (GWA):** Maintain a minimum semester GWA of **${gwaText}** or better.
+2. **No Incomplete or Failing Marks:** Must have no grades of 5.00 (Failed), Incomplete (INC), or Unauthorized Dropped (UD) in any enrolled course.
+3. **Prescribed Academic Load:** Enroll in full regular units per semester according to your curriculum. Underloading is not permitted without prior written approval.
+
+---
+
+### 3. SEMESTRAL RENEWAL & DOCUMENT SUBMISSIONS
+At the conclusion of each academic term, you must submit renewal credentials through the **IskoAko Mobile App** within **30 days** of the semester closing:
+- **Official Certificate of Registration (COR) / Enrollment Form** for the upcoming term.
+- **Certified True Copy of Grades / Transcript of Records (TOR)** from the completed term.
+- Renewal evaluation is conducted automatically to approve continuous disbursements.
+
+---
+
+### 4. CODE OF ETHICS & CONDUCT
+As an ambassador of **${params.providerName}**, you are expected to:
+- Uphold high moral and ethical integrity in all academic and personal pursuits.
+- Promptly notify the scholarship coordinator through IskoAko regarding any changes in contact details, academic standing, or shifting of degree programs.
+- Participate in scheduled scholar community mentorship sessions and orientations.
+
+---
+
+### 5. ACKNOWLEDGMENT & ACCEPTANCE
+By continuing in this program, you confirm your acceptance of the terms, rights, and obligations stipulated herein.
+
+*Wishing you utmost success in your educational journey. Welcome to the ${params.providerName} Scholar Family!*
+
+Sincerely,  
+**Scholarship Committee**  
+${params.providerName}  
+*Platform Verification by IskoAko*`;
+
+  return { content: defaultTemplate, aiModelUsed: 'IskoAko Policy Engine (Local)' };
+}
+
+export interface GenerateLetterParams {
+  providerName: string;
+  programTitle: string;
+  templateType: string;
+  userPrompt: string;
+  programDetails?: {
+    stipendAmount?: number | null;
+    allowanceAmount?: number | null;
+    maintainingGwa?: string | number | null;
+    renewalPolicy?: string | null;
+    coversTuition?: boolean | null;
+    benefitsSummary?: string | null;
+  };
+}
+
+export interface GeneratedLetterResult {
+  title: string;
+  salutation: string;
+  bodyParagraphs: string[];
+  terms: { label: string; value: string }[];
+  signatoryTitle: string;
+  signatorySubtitle: string;
+  aiModelUsed: string;
+}
+
+/**
+ * Generate a customized, structured scholarship letter based on the provider's custom text prompt and program details.
+ */
+export async function generateCustomLetterWithAi(
+  params: GenerateLetterParams,
+  onStatusUpdate?: (status: string) => void
+): Promise<GeneratedLetterResult> {
+  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+
+  const gwa = params.programDetails?.maintainingGwa || '1.75';
+  const stipend = params.programDetails?.stipendAmount ? `₱${Number(params.programDetails.stipendAmount).toLocaleString()} / month` : 'Prescribed Grant Amount';
+  const tuition = params.programDetails?.coversTuition ? 'Full Tuition & Institutional Fees' : 'Standard Grant Coverage';
+
+  const systemInstruction = `You are an elite academic scholarship administration and legal drafting AI for the Philippine scholarship platform "IskoAko".
+Your task is to draft a comprehensive, official scholarship letter tailored precisely to the Provider's instructions.
+
+Context:
+- Granting Organization / Provider: "${params.providerName}"
+- Scholarship Program: "${params.programTitle}"
+- Base Category: "${params.templateType}"
+- Minimum GWA: ${gwa}
+- Monthly Stipend: ${stipend}
+- Tuition Coverage: ${tuition}
+
+Provider's Specific Prompt & Custom Requirements:
+"${params.userPrompt || 'Draft an official award letter with clear maintaining terms and an encouraging tone.'}"
+
+Output Rules:
+1. You may use dynamic placeholders where appropriate: {{scholar_name}}, {{program_name}}, {{school}}, {{course}}, {{stipend_amount}}, {{gwa}}, {{cycle_name}}, {{application_id}}, {{date}}.
+2. Return ONLY a valid, raw JSON object with NO surrounding markdown backticks (no \`\`\`json or \`\`\`).
+3. Follow this exact JSON schema:
+{
+  "title": "OFFICIAL LETTER TITLE / SUBJECT BANNER IN UPPERCASE",
+  "salutation": "Formal Salutation e.g. Dear {{scholar_name}},",
+  "bodyParagraphs": [
+    "First paragraph: Official greeting, purpose, congratulations, and grant overview.",
+    "Second paragraph: Detailed explanation of benefits, stipends, and obligations.",
+    "Third paragraph: Evaluation criteria, deadlines, submission instructions, and closing encouragement."
+  ],
+  "terms": [
+    { "label": "General Weighted Average (GWA)", "value": "Maintain minimum ${gwa} each semester with no failing grades" },
+    { "label": "Financial Entitlement", "value": "${stipend} disbursed directly via IskoAko wallet" },
+    { "label": "Semestral Renewal Submission", "value": "Submit Certificate of Registration & Grades within 30 days of term completion" }
+  ],
+  "signatoryTitle": "Scholarship Committee & Program Secretariat",
+  "signatorySubtitle": "${params.providerName}"
+}`;
+
+  // 1. Try OpenRouter Multi-Model (Google Gemini 2.0 Flash / Llama 3.3)
+  const openRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+  if (openRouterKey) {
+    try {
+      onStatusUpdate?.('Drafting custom letter with OpenRouter AI...');
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`,
+          'HTTP-Referer': 'https://iskoako.edu.ph',
+          'X-Title': 'IskoAko Letter Studio',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.0-flash-001',
+          messages: [{ role: 'user', content: systemInstruction }],
+          temperature: 0.3,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawContent = data?.choices?.[0]?.message?.content;
+        if (rawContent) {
+          const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(cleanJson);
+          if (parsed.bodyParagraphs && Array.isArray(parsed.bodyParagraphs) && parsed.bodyParagraphs.length > 0) {
+            const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : Array.isArray(parsed.keyTerms) ? parsed.keyTerms : [];
+            const mappedTerms = rawTerms.map((t: any) => ({
+              label: t.label || t.term || 'Provision',
+              value: t.value || t.requirement || '',
+            }));
+
+            return {
+              title: parsed.title || `OFFICIAL SCHOLARSHIP NOTICE — ${params.programTitle.toUpperCase()}`,
+              salutation: parsed.salutation || 'Dear {{scholar_name}},',
+              bodyParagraphs: parsed.bodyParagraphs,
+              terms: mappedTerms,
+              signatoryTitle: parsed.signatoryTitle || 'Scholarship Committee',
+              signatorySubtitle: parsed.signatorySubtitle || params.providerName,
+              aiModelUsed: 'OpenRouter Gemini 2.0 Flash',
+            };
+          }
+        }
+      }
+    } catch (openRouterErr) {
+      console.warn('OpenRouter custom letter fallback error:', openRouterErr);
+    }
+  }
+
+  // 2. Try Groq Llama
+  if (groqKey) {
+    try {
+      onStatusUpdate?.('Drafting custom letter with Groq Llama AI...');
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: systemInstruction }],
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawContent = data?.choices?.[0]?.message?.content;
+        if (rawContent) {
+          const parsed = JSON.parse(rawContent.trim());
+          if (parsed.bodyParagraphs && Array.isArray(parsed.bodyParagraphs) && parsed.bodyParagraphs.length > 0) {
+            const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : Array.isArray(parsed.keyTerms) ? parsed.keyTerms : [];
+            const mappedTerms = rawTerms.map((t: any) => ({
+              label: t.label || t.term || 'Provision',
+              value: t.value || t.requirement || '',
+            }));
+
+            return {
+              title: parsed.title || `OFFICIAL SCHOLARSHIP NOTICE — ${params.programTitle.toUpperCase()}`,
+              salutation: parsed.salutation || 'Dear {{scholar_name}},',
+              bodyParagraphs: parsed.bodyParagraphs,
+              terms: mappedTerms,
+              signatoryTitle: parsed.signatoryTitle || 'Scholarship Committee',
+              signatorySubtitle: parsed.signatorySubtitle || params.providerName,
+              aiModelUsed: 'Groq Llama 3.3 70B',
+            };
+          }
+        }
+      }
+    } catch (groqErr) {
+      console.warn('Groq custom letter error fallback:', groqErr);
+    }
+  }
+
+  // 3. Try Direct Gemini (Only if key starts with AIzaSy)
+  if (geminiKey && geminiKey.startsWith('AIzaSy')) {
+    try {
+      onStatusUpdate?.('Drafting custom letter with Google Gemini AI...');
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: systemInstruction }] }],
+            generationConfig: {
+              temperature: 0.3,
+              responseMimeType: 'application/json',
+            },
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawJson = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson.replace(/```json/g, '').replace(/```/g, '').trim());
+          if (parsed.bodyParagraphs && Array.isArray(parsed.bodyParagraphs) && parsed.bodyParagraphs.length > 0) {
+            const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : Array.isArray(parsed.keyTerms) ? parsed.keyTerms : [];
+            const mappedTerms = rawTerms.map((t: any) => ({
+              label: t.label || t.term || 'Provision',
+              value: t.value || t.requirement || '',
+            }));
+
+            return {
+              title: parsed.title || `OFFICIAL SCHOLARSHIP NOTICE — ${params.programTitle.toUpperCase()}`,
+              salutation: parsed.salutation || 'Dear {{scholar_name}},',
+              bodyParagraphs: parsed.bodyParagraphs,
+              terms: mappedTerms,
+              signatoryTitle: parsed.signatoryTitle || 'Scholarship Selection Board',
+              signatorySubtitle: parsed.signatorySubtitle || params.providerName,
+              aiModelUsed: 'Google Gemini 2.0 Flash',
+            };
+          }
+        }
+      }
+    } catch (geminiErr) {
+      console.warn('Gemini custom letter error fallback:', geminiErr);
+    }
+  }
+
+  // 4. Smart Local Heuristic Fallback (Offline / Zero-AI Safe Mode)
+  onStatusUpdate?.('Synthesizing prompt into structured legal letter...');
+  const promptNotes = params.userPrompt ? `in accordance with: "${params.userPrompt}"` : 'under the official provisions established for this award';
+
+  return {
+    title: `OFFICIAL NOTICE OF SCHOLARSHIP AWARD & TERMS — ${params.programTitle.toUpperCase()}`,
+    salutation: 'Dear {{scholar_name}},',
+    bodyParagraphs: [
+      `On behalf of ${params.providerName}, we are pleased to issue this official communication regarding your qualification and status under the ${params.programTitle} for the active academic period.`,
+      `Your scholarship grant confers essential educational support ${params.programDetails?.stipendAmount ? `including a monthly financial stipend of ₱${Number(params.programDetails.stipendAmount).toLocaleString()}` : ''} ${params.programDetails?.coversTuition ? 'as well as institutional tuition and mandatory fees coverage' : ''}. This grant has been structured ${promptNotes}.`,
+      `To ensure uninterrupted release of entitlements and maintain good standing, you are required to uphold a minimum General Weighted Average (GWA) of ${gwa} or equivalent, observe the code of conduct, and submit all semestral grade validation reports through the IskoAko portal in a timely manner.`,
+      `We congratulate you on this milestone and look forward to your continued excellence in your academic journey.`
+    ],
+    terms: [
+      { label: 'Academic Standard (GWA)', value: `Maintain a semester GWA of ${gwa} or higher with no failing marks` },
+      { label: 'Financial Entitlement', value: stipend },
+      { label: 'Tuition & Fees', value: tuition },
+      { label: 'Semestral Renewal', value: 'Submit Official COR and Certified True Copy of Grades via IskoAko within 30 days of term close' },
+      { label: 'Provider Mandate', value: params.userPrompt || 'Comply with all attendance, mentorship check-ins, and institutional guidelines' }
+    ],
+    signatoryTitle: 'Scholarship Committee & Board of Trustees',
+    signatorySubtitle: params.providerName,
+    aiModelUsed: 'IskoAko Policy Engine (Local)',
+  };
+}
+
+export interface ExtractedReferenceLetterResult {
+  letterheadOrg?: string;
+  letterheadSubtitle?: string;
+  title: string;
+  referencePrefix?: string;
+  salutation: string;
+  bodyParagraphs: string[];
+  terms: { label: string; value: string }[];
+  closingText?: string;
+  signatoryTitle?: string;
+  signatorySubtitle?: string;
+  aiModelUsed: string;
+  sourceFileName: string;
+}
+
+/**
+ * Extract raw text from PDF bytecode stream (zero-dependency in-browser fallback)
+ */
+function extractRawPdfBytecodeText(bytes: Uint8Array): string {
+  try {
+    const decoder = new TextDecoder('latin1');
+    const pdfString = decoder.decode(bytes);
+
+    const extractedChunks: string[] = [];
+
+    // Find all text blocks between BT (Begin Text) and ET (End Text)
+    const btEtRegex = /BT[\s\S]*?ET/g;
+    let match;
+    while ((match = btEtRegex.exec(pdfString)) !== null) {
+      const block = match[0];
+      // Match (text) strings inside Tj, ', or "
+      const textRegex = /\(([^)]+)\)\s*(?:Tj|'|")/g;
+      let textMatch;
+      while ((textMatch = textRegex.exec(block)) !== null) {
+        extractedChunks.push(textMatch[1]);
+      }
+
+      // Match array strings in TJ: [(text) 20 (more text)] TJ
+      const tjArrayRegex = /\[([^\]]+)\]\s*TJ/g;
+      let arrayMatch;
+      while ((arrayMatch = tjArrayRegex.exec(block)) !== null) {
+        const inner = arrayMatch[1];
+        const innerTextRegex = /\(([^)]+)\)/g;
+        let innerMatch;
+        let line = '';
+        while ((innerMatch = innerTextRegex.exec(inner)) !== null) {
+          line += innerMatch[1];
+        }
+        if (line.trim()) {
+          extractedChunks.push(line);
+        }
+      }
+    }
+
+    if (extractedChunks.length > 0) {
+      return extractedChunks
+        .map(s => s.replace(/\\([()\\])/g, '$1'))
+        .join(' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    // Secondary fallback: Extract printable ASCII sequences
+    const asciiMatches = pdfString.match(/[A-Za-z0-9 ,.\-:;!?'"()\/]{6,}/g);
+    if (asciiMatches && asciiMatches.length > 0) {
+      return asciiMatches
+        .filter(m => !m.includes('/Type') && !m.includes('/Font') && !m.includes('/Page') && !m.includes('/Filter') && !m.includes('/Root'))
+        .join(' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+  } catch (e) {
+    console.warn('Raw PDF bytecode decoding error:', e);
+  }
+  return '';
+}
+
+/**
+ * Dynamically load JSZip from cdnjs in the browser
+ */
+async function loadJSZip(): Promise<any> {
+  if ((window as any).JSZip) {
+    return (window as any).JSZip;
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    script.onload = () => {
+      resolve((window as any).JSZip);
+    };
+    script.onerror = () => {
+      reject(new Error('Failed to load JSZip from CDN'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * Extracts plain text paragraphs from DOCX document in browser
+ */
+async function extractTextFromDocx(file: File): Promise<string> {
+  try {
+    const JSZip = await loadJSZip();
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    
+    // Find word/document.xml
+    const docXmlFile = zip.file('word/document.xml');
+    if (!docXmlFile) return '';
+    
+    const docXmlText = await docXmlFile.async('text');
+    
+    // Parse XML
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(docXmlText, 'application/xml');
+    const paragraphs = xmlDoc.getElementsByTagName('w:p');
+    
+    const textLines: string[] = [];
+    for (let i = 0; i < paragraphs.length; i++) {
+      const p = paragraphs[i];
+      const textRuns = p.getElementsByTagName('w:t');
+      let pText = '';
+      for (let j = 0; j < textRuns.length; j++) {
+        pText += textRuns[j].textContent || '';
+      }
+      if (pText.trim()) {
+        textLines.push(pText.trim());
+      }
+    }
+    
+    return textLines.join('\n\n');
+  } catch (err) {
+    console.error('JSZip docx extraction error:', err);
+    return '';
+  }
+}
+
+/**
+ * Upload & extract a reference document (PDF, Image, Text, Word) to clone/copy into an editable letter template
+ */
+export async function extractLetterFromReferenceFile(
+  file: File,
+  context: { providerName: string; programTitle?: string },
+  onStatusUpdate?: (status: string) => void
+): Promise<ExtractedReferenceLetterResult> {
+  const fileName = file.name;
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(fileName);
+  const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|tiff)$/i.test(fileName);
+  const isText = file.type.startsWith('text/') || /\.(txt|md|csv|rtf|json|html|htm)$/i.test(fileName);
+  const isDocx = fileName.toLowerCase().endsWith('.docx') || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  onStatusUpdate?.(`Reading reference file "${fileName}"...`);
+
+  let extractedRawText = '';
+  let imageDataUrl = '';
+
+  if (isText) {
+    try {
+      extractedRawText = await file.text();
+    } catch (err) {
+      console.warn('Text file read error:', err);
+    }
+  } else if (isDocx) {
+    try {
+      onStatusUpdate?.('Parsing Word document layout & text...');
+      extractedRawText = await extractTextFromDocx(file);
+    } catch (err) {
+      console.warn('Word document read error:', err);
+    }
+  } else if (isPdf) {
+    try {
+      onStatusUpdate?.('Extracting PDF text layer & rendering layout...');
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+
+      try {
+        const loadingTask = pdfjsLib.getDocument({
+          data: bytes,
+          disableFontFace: true,
+        });
+        const pdf = await loadingTask.promise;
+
+        let pagesText = '';
+        const totalPages = Math.min(pdf.numPages, 10);
+        for (let p = 1; p <= totalPages; p++) {
+          try {
+            const page = await pdf.getPage(p);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => item.str).join(' ');
+            if (pageText.trim()) {
+              pagesText += `\n\n--- PAGE ${p} ---\n` + pageText;
+            }
+          } catch (pageErr) {
+            console.warn(`PDF page ${p} extraction warning:`, pageErr);
+          }
+        }
+        extractedRawText = pagesText.trim();
+
+        // Rasterize page 1 for Vision OCR models
+        try {
+          const page1 = await pdf.getPage(1);
+          const viewport = page1.getViewport({ scale: 1.5 });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            await (page1.render({ canvasContext: ctx, viewport } as any)).promise;
+            imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          }
+        } catch (renderErr) {
+          console.warn('PDF visual rendering warning:', renderErr);
+        }
+      } catch (pdfJsErr) {
+        console.warn('pdfjsLib failed, using bytecode stream parser:', pdfJsErr);
+        extractedRawText = extractRawPdfBytecodeText(bytes);
+      }
+    } catch (pdfErr) {
+      console.warn('PDF reading warning:', pdfErr);
+    }
+  } else if (isImage) {
+    onStatusUpdate?.('Processing image for AI Vision OCR...');
+    try {
+      imageDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    } catch (imgErr) {
+      console.warn('Image read error:', imgErr);
+    }
+  } else {
+    // Other formats (e.g. legacy .doc)
+    try {
+      const raw = await file.text();
+      extractedRawText = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{2,}/g, ' ');
+    } catch {
+      // continue
+    }
+  }
+
+  const promptText = `
+You are an expert Legal Document Analyst and Scholarship Template Reconstructor for the Philippine Scholarship Monorepo Platform "IskoAko".
+The user has uploaded an official reference document: "${fileName}".
+Your task is to analyze this reference letter, memorandum, award notice, or scholarship contract and copy/reconstruct its EXACT structure, phrasing, tone, and wording into an editable template.
+
+Context:
+- Platform: IskoAko Philippine Scholarship Monorepo
+- Provider Organization: "${context.providerName}"
+- Scholarship Program: "${context.programTitle || 'Scholarship Program'}"
+
+${extractedRawText ? `Digital Extracted Content from Document:\n"""\n${extractedRawText.slice(0, 10000)}\n"""\n` : ''}
+
+Analysis & Conversion Rules:
+1. COPY the exact document structure, letterhead, formal greetings, paragraphs, terms, and closing from the reference document.
+2. Replace recipient-specific student details or ANY generic bracketed placeholders (like "[Phone Number]", "[Email Address]", "[Response Deadline]", "[ORGANIZATION/INSTITUTION NAME]", or "[Street Address, City, State, ZIP]") with dynamic template tags:
+   - Scholar / Student Name: {{scholar_name}}
+   - Program Name: {{program_name}}
+   - Provider Name: {{provider_name}}
+   - University / School: {{school}}
+   - Course / Degree: {{course}}
+   - Year Level: {{year_level}}
+   - GWA / Maintaining Grade: {{gwa}}
+   - Monthly Stipend / Grant: {{stipend_amount}}
+   - Cycle / Intake: {{cycle_name}}
+   - Application ID / Reference Number: {{application_id}}
+   - Date: {{date}}
+   - Email Address: {{email}}
+   - Phone / Contact / Deadline: Convert them to appropriate double-curly-brace template tags or descriptive text. NEVER leave literal brackets like "[Response Deadline]", "[Phone Number]", or "[Street Address]" in the output. Convert them to the appropriate template tags (like {{date}} or {{provider_name}}) or write them out fully.
+3. For bodyParagraphs: Provide every paragraph as a separate string element in the array, preserving all sentences, requirements, and wording from the uploaded document.
+4. If there are key conditions, maintenance rules, or grant entitlements, extract them into the "terms" array as { "label": "...", "value": "..." }.
+5. Output MUST be ONLY valid, parseable raw JSON (NO markdown backticks, NO commentary) matching this schema:
+{
+  "letterheadOrg": "Letterhead Organization / Board name (e.g. DOST-SEI, ${context.providerName.toUpperCase()})",
+  "letterheadSubtitle": "Department or Subtitle (e.g. Office of Scholarship Grants)",
+  "title": "Document Title / Subject Banner (e.g. NOTICE OF SCHOLARSHIP AWARD)",
+  "referencePrefix": "Reference prefix (e.g. NOA, MEMO, REF)",
+  "salutation": "Salutation line (e.g. Dear {{scholar_name}}, or TO WHOM IT MAY CONCERN:)",
+  "bodyParagraphs": [
+    "Full paragraph 1 from document...",
+    "Full paragraph 2 from document..."
+  ],
+  "terms": [
+    { "label": "Provision / Obligation", "value": "Details of term" }
+  ],
+  "closingText": "Closing phrase (e.g. Sincerely, or Very truly yours,)",
+  "signatoryTitle": "Signatory Title (e.g. Executive Director, Scholarship Committee)",
+  "signatorySubtitle": "${context.providerName}"
+}
+`;
+
+  // 1. Try OpenRouter (High Reliability Multi-Model with Vision)
+  const openRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+  if (openRouterKey) {
+    try {
+      onStatusUpdate?.('Analyzing reference template with OpenRouter AI...');
+      const userContent: any[] = [{ type: 'text', text: promptText }];
+
+      if (imageDataUrl && imageDataUrl.includes(',')) {
+        userContent.push({
+          type: 'image_url',
+          image_url: { url: imageDataUrl },
+        });
+      }
+
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`,
+          'HTTP-Referer': 'https://iskoako.edu.ph',
+          'X-Title': 'IskoAko Letter Studio',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.0-flash-001',
+          messages: [{ role: 'user', content: userContent }],
+          temperature: 0.2,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawContent = data?.choices?.[0]?.message?.content;
+        if (rawContent) {
+          const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(cleanJson);
+          if (parsed.bodyParagraphs && Array.isArray(parsed.bodyParagraphs) && parsed.bodyParagraphs.length > 0) {
+            const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
+            return {
+              letterheadOrg: parsed.letterheadOrg || context.providerName.toUpperCase(),
+              letterheadSubtitle: parsed.letterheadSubtitle || 'Office of Scholarship Grants & Student Support',
+              title: parsed.title || `OFFICIAL SCHOLARSHIP LETTER — ${(context.programTitle || 'PROGRAM').toUpperCase()}`,
+              referencePrefix: parsed.referencePrefix || 'REF',
+              salutation: parsed.salutation || 'Dear {{scholar_name}},',
+              bodyParagraphs: parsed.bodyParagraphs,
+              terms: rawTerms.map((t: any) => ({ label: t.label || 'Provision', value: t.value || '' })),
+              closingText: parsed.closingText || 'Very truly yours,',
+              signatoryTitle: parsed.signatoryTitle || 'Scholarship Selection Committee',
+              signatorySubtitle: parsed.signatorySubtitle || context.providerName,
+              aiModelUsed: 'OpenRouter Gemini 2.0 Flash (Vision OCR)',
+              sourceFileName: fileName,
+            };
+          }
+        }
+      }
+    } catch (openRouterErr) {
+      console.warn('OpenRouter reference extraction error:', openRouterErr);
+    }
+  }
+
+  // 2. Try Mistral Pixtral Vision
+  const mistralKey = import.meta.env.VITE_MISTRAL_API_KEY;
+  if (mistralKey && imageDataUrl && imageDataUrl.includes(',')) {
+    try {
+      onStatusUpdate?.('Analyzing document visuals with Mistral Pixtral Vision...');
+      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${mistralKey}`,
+        },
+        body: JSON.stringify({
+          model: 'pixtral-12b-2409',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: promptText },
+                { type: 'image_url', image_url: imageDataUrl },
+              ],
+            },
+          ],
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawContent = data?.choices?.[0]?.message?.content;
+        if (rawContent) {
+          const parsed = JSON.parse(rawContent.replace(/```json/g, '').replace(/```/g, '').trim());
+          if (parsed.bodyParagraphs && Array.isArray(parsed.bodyParagraphs) && parsed.bodyParagraphs.length > 0) {
+            const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
+            return {
+              letterheadOrg: parsed.letterheadOrg || context.providerName.toUpperCase(),
+              letterheadSubtitle: parsed.letterheadSubtitle || 'Office of Scholarship Grants',
+              title: parsed.title || `OFFICIAL SCHOLARSHIP LETTER — ${(context.programTitle || 'PROGRAM').toUpperCase()}`,
+              referencePrefix: parsed.referencePrefix || 'REF',
+              salutation: parsed.salutation || 'Dear {{scholar_name}},',
+              bodyParagraphs: parsed.bodyParagraphs,
+              terms: rawTerms.map((t: any) => ({ label: t.label || 'Provision', value: t.value || '' })),
+              closingText: parsed.closingText || 'Sincerely,',
+              signatoryTitle: parsed.signatoryTitle || 'Scholarship Committee',
+              signatorySubtitle: parsed.signatorySubtitle || context.providerName,
+              aiModelUsed: 'Mistral Pixtral 12B Vision',
+              sourceFileName: fileName,
+            };
+          }
+        }
+      }
+    } catch (mistralErr) {
+      console.warn('Mistral Pixtral extraction fallback:', mistralErr);
+    }
+  }
+
+  // 3. Try Google Gemini (Only if key is valid Google AI Studio key format)
+  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (geminiKey && geminiKey.startsWith('AIzaSy')) {
+    try {
+      onStatusUpdate?.('Analyzing document with Google Gemini AI...');
+      const parts: any[] = [{ text: promptText }];
+
+      if (imageDataUrl && imageDataUrl.includes(',')) {
+        const mime = imageDataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+        const base64Data = imageDataUrl.split(',')[1];
+        parts.push({
+          inline_data: {
+            mime_type: mime,
+            data: base64Data,
+          },
+        });
+      }
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: 'application/json',
+            },
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawJson = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson.replace(/```json/g, '').replace(/```/g, '').trim());
+          if (parsed.bodyParagraphs && Array.isArray(parsed.bodyParagraphs) && parsed.bodyParagraphs.length > 0) {
+            const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
+            return {
+              letterheadOrg: parsed.letterheadOrg || context.providerName.toUpperCase(),
+              letterheadSubtitle: parsed.letterheadSubtitle || 'Office of Scholarship Grants & Student Support',
+              title: parsed.title || `OFFICIAL SCHOLARSHIP LETTER — ${(context.programTitle || 'PROGRAM').toUpperCase()}`,
+              referencePrefix: parsed.referencePrefix || 'REF',
+              salutation: parsed.salutation || 'Dear {{scholar_name}},',
+              bodyParagraphs: parsed.bodyParagraphs,
+              terms: rawTerms.map((t: any) => ({ label: t.label || 'Provision', value: t.value || '' })),
+              closingText: parsed.closingText || 'Very truly yours,',
+              signatoryTitle: parsed.signatoryTitle || 'Scholarship Committee',
+              signatorySubtitle: parsed.signatorySubtitle || context.providerName,
+              aiModelUsed: 'Google Gemini 2.0 Flash (Vision OCR)',
+              sourceFileName: fileName,
+            };
+          }
+        }
+      }
+    } catch (geminiErr) {
+      console.warn('Gemini reference template extraction fallback:', geminiErr);
+    }
+  }
+
+  // 4. Try Groq Llama 3.3 70B (Fast Text Analysis)
+  const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+  if (groqKey && (extractedRawText || fileName)) {
+    try {
+      onStatusUpdate?.('Analyzing document text with Groq Llama 3.3 70B...');
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: promptText }],
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawContent = data?.choices?.[0]?.message?.content;
+        if (rawContent) {
+          const parsed = JSON.parse(rawContent.trim());
+          if (parsed.bodyParagraphs && Array.isArray(parsed.bodyParagraphs) && parsed.bodyParagraphs.length > 0) {
+            const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
+            return {
+              letterheadOrg: parsed.letterheadOrg || context.providerName.toUpperCase(),
+              letterheadSubtitle: parsed.letterheadSubtitle || 'Office of Scholarship Grants',
+              title: parsed.title || `OFFICIAL SCHOLARSHIP NOTICE — ${(context.programTitle || 'PROGRAM').toUpperCase()}`,
+              referencePrefix: parsed.referencePrefix || 'REF',
+              salutation: parsed.salutation || 'Dear {{scholar_name}},',
+              bodyParagraphs: parsed.bodyParagraphs,
+              terms: rawTerms.map((t: any) => ({ label: t.label || 'Provision', value: t.value || '' })),
+              closingText: parsed.closingText || 'Sincerely,',
+              signatoryTitle: parsed.signatoryTitle || 'Scholarship Selection Committee',
+              signatorySubtitle: parsed.signatorySubtitle || context.providerName,
+              aiModelUsed: 'Groq Llama 3.3 70B',
+              sourceFileName: fileName,
+            };
+          }
+        }
+      }
+    } catch (groqErr) {
+      console.warn('Groq reference extraction error fallback:', groqErr);
+    }
+  }
+
+  // 5. Intelligent Local OCR & Text Layer Parser (Zero-AI Offline Mode)
+  onStatusUpdate?.('Reconstructing template structure from document text...');
+  const cleanedText = (extractedRawText || '').trim();
+
+  if (cleanedText.length > 10) {
+    const lines = cleanedText
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(Boolean)
+      .filter(l => !l.startsWith('--- PAGE'));
+
+    let detectedOrg = context.providerName.toUpperCase();
+    let detectedSubtitle = 'Office of Scholarship Grants & Student Support';
+    let detectedTitle = `OFFICIAL SCHOLARSHIP MEMORANDUM — ${(context.programTitle || 'PROGRAM').toUpperCase()}`;
+    let detectedRef = 'REF';
+    let detectedSalutation = 'Dear {{scholar_name}},';
+    let detectedClosing = 'Respectfully yours,';
+    let detectedSignatory = 'Scholarship Selection Board';
+
+    const collectedParagraphs: string[] = [];
+    let currentParagraph = '';
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Check for Reference code
+      if (/^(ref(\.|erence)?\s*(no\.?|code|#)?)\s*[:\-]?\s*([A-Za-z0-9\-_]+)/i.test(line)) {
+        const match = line.match(/^(ref(\.|erence)?\s*(no\.?|code|#)?)\s*[:\-]?\s*([A-Za-z0-9\-_]+)/i);
+        if (match && match[4]) detectedRef = match[4].trim().split('-')[0] || 'REF';
+        continue;
+      }
+
+      // Check for Salutation
+      if (/^(dear|to\s+whom|to\s*:|attn\s*:|greetings|for\s*:)/i.test(line)) {
+        detectedSalutation = line.replace(/dear\s+[A-Za-z\s,.\-]+/i, 'Dear {{scholar_name}},');
+        if (!detectedSalutation.includes('{{scholar_name}}') && /^dear/i.test(detectedSalutation)) {
+          detectedSalutation = 'Dear {{scholar_name}},';
+        }
+        continue;
+      }
+
+      // Check for Title/Subject
+      if (/^(subject|re|notice|memorandum|letter|contract|agreement)\s*[:\-]?\s*(.+)/i.test(line) || /^(notice\s+of\s+award|certificate\s+of|scholarship\s+agreement)/i.test(line)) {
+        detectedTitle = line.toUpperCase();
+        continue;
+      }
+
+      // Check for Closing
+      if (/^(sincerely|respectfully|very\s+truly\s+yours|warm\s+regards|in\s+service|best\s+regards|truly\s+yours),?/i.test(line)) {
+        detectedClosing = line;
+        if (i + 1 < lines.length) {
+          detectedSignatory = lines[i + 1];
+        }
+        break;
+      }
+
+      // Accumulate body paragraphs
+      if (line.length > 0) {
+        if (currentParagraph.length + line.length > 250) {
+          collectedParagraphs.push(currentParagraph.trim());
+          currentParagraph = line;
+        } else {
+          currentParagraph = currentParagraph ? `${currentParagraph} ${line}` : line;
+        }
+      }
+    }
+
+    if (currentParagraph.trim()) {
+      collectedParagraphs.push(currentParagraph.trim());
+    }
+
+    const processedBody = (collectedParagraphs.length > 0 ? collectedParagraphs : [cleanedText]).map(p =>
+      p.replace(/PHP\s*[\d,]+(\.\d{2})?/gi, '{{stipend_amount}}')
+       .replace(/₱\s*[\d,]+(\.\d{2})?/gi, '{{stipend_amount}}')
+    );
+
+    return {
+      letterheadOrg: detectedOrg,
+      letterheadSubtitle: detectedSubtitle,
+      title: detectedTitle,
+      referencePrefix: detectedRef,
+      salutation: detectedSalutation,
+      bodyParagraphs: processedBody,
+      terms: [
+        { label: 'Document Source', value: `Imported from ${fileName}` },
+        { label: 'Compliance Standard', value: 'Maintain designated academic and program requirements' }
+      ],
+      closingText: detectedClosing,
+      signatoryTitle: detectedSignatory,
+      signatorySubtitle: context.providerName,
+      aiModelUsed: 'IskoAko Intelligent OCR Text Parser',
+      sourceFileName: fileName,
+    };
+  }
+
+  // Pure fallback
+  return {
+    letterheadOrg: context.providerName.toUpperCase(),
+    letterheadSubtitle: 'Office of Scholarship Grants & Student Support',
+    title: `COPIED TEMPLATE: ${fileName.replace(/\.[^/.]+$/, '').toUpperCase()}`,
+    referencePrefix: 'REF',
+    salutation: 'Dear {{scholar_name}},',
+    bodyParagraphs: [
+      `This letter template was imported from reference document "${fileName}".`,
+      `You can edit and customize this body text directly inside the single text box editor. All formatting and line breaks will be preserved when exported to official PDF.`
+    ],
+    terms: [
+      { label: 'Document Reference', value: `Imported from ${fileName}` },
+      { label: 'Scholarship Standard', value: 'Maintain minimum required semester GWA' }
+    ],
+    closingText: 'Respectfully yours,',
+    signatoryTitle: 'Scholarship Program Secretariat',
+    signatorySubtitle: context.providerName,
+    aiModelUsed: 'IskoAko Local Document Parser',
+    sourceFileName: fileName,
+  };
+}
+
+

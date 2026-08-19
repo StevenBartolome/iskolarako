@@ -2510,6 +2510,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             </div>
 
             <div className="p-7 border-t border-[#D9D2C5]/50 flex justify-end gap-3">
+
               <button
                 onClick={() => setIsViewModalOpen(false)}
                 className="px-5 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"

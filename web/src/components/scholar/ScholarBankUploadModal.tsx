@@ -28,7 +28,7 @@ const PH_BANKS = [
   'Other Bank',
 ];
 
-export function matchPhilippineBank(rawBankName: string): string {
+function matchPhilippineBank(rawBankName: string): string {
   if (!rawBankName) return 'Landbank of the Philippines';
   const clean = rawBankName.toLowerCase().replace(/[^a-z0-9]/g, '');
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { ApplicantStatus } from '../types';
+import { ScholarGuidelinesModal } from './ScholarGuidelinesModal';
 import {
   verifyDocumentAuthenticity,
   type DocVerificationResult,
@@ -73,6 +74,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
   const [remarks, setRemarks] = useState('');
   const [documentsList, setDocumentsList] = useState<SubmittedDocItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGuidelinesModalOpen, setIsGuidelinesModalOpen] = useState(false);
 
   // AI Verification states
   const [isBatchScanning, setIsBatchScanning] = useState(false);
@@ -1446,21 +1448,32 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-2">
+                <div className="flex justify-between items-center gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={onClose}
-                    className="px-5 py-2.5 rounded-xl border border-[#D9D2C5] hover:bg-white text-xs font-bold text-[#6C6C70] bg-transparent cursor-pointer"
+                    onClick={() => setIsGuidelinesModalOpen(true)}
+                    className="px-4 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-xs font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center gap-1.5"
+                    title="Draft and optionally send official maintaining guidelines and renewal terms with AI"
                   >
-                    Cancel
+                    <span>📜</span> Scholar Guidelines (AI)
                   </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="px-7 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white text-xs font-bold shadow-md cursor-pointer border-0 disabled:opacity-50"
-                  >
-                    {isSubmitting ? 'Saving Decision...' : 'Save Decision & Notify Student'}
-                  </button>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="px-5 py-2.5 rounded-xl border border-[#D9D2C5] hover:bg-white text-xs font-bold text-[#6C6C70] bg-transparent cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="px-7 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white text-xs font-bold shadow-md cursor-pointer border-0 disabled:opacity-50"
+                    >
+                      {isSubmitting ? 'Saving Decision...' : 'Save Decision & Notify Student'}
+                    </button>
+                  </div>
                 </div>
               </form>
             );
@@ -1468,6 +1481,13 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
         </div>
       </div>
+
+      {/* Optional Scholar Guidelines Modal */}
+      <ScholarGuidelinesModal
+        isOpen={isGuidelinesModalOpen}
+        onClose={() => setIsGuidelinesModalOpen(false)}
+        application={application}
+      />
     </div>
   );
 };

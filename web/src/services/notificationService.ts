@@ -140,3 +140,109 @@ export const sendDecisionNotification = async (params: DecisionNotificationParam
     console.warn('[System Notification Exception]:', sysNotifErr);
   }
 };
+
+export interface ScholarAgreementNotificationParams {
+  toEmail?: string;
+  toName: string;
+  programTitle: string;
+  providerName: string;
+  agreementContent: string;
+  maintainingGwa?: string | number;
+  scholarId?: string;
+  userId?: string;
+  applicationId?: string | number;
+}
+
+export const sendScholarAgreementNotification = async (params: ScholarAgreementNotificationParams) => {
+  const {
+    toEmail,
+    toName,
+    programTitle,
+    providerName,
+    agreementContent,
+    scholarId,
+    userId,
+    applicationId,
+  } = params;
+
+  const emailSubject = `Official Scholar Agreement & Guidelines: ${programTitle}`;
+  const emailHeadline = 'Scholar Agreement & Maintaining Rules 📜';
+  const emailBody = `Dear ${toName},\n\nYour scholarship guidelines, maintaining academic standards, and renewal terms for "${programTitle}" have been issued by ${providerName}.\n\nPlease review your complete award agreement in your IskoAko portal to stay informed about maintaining GWA requirements and submission deadlines.\n\nSummary Preview:\n${agreementContent.slice(0, 400)}...`;
+
+  // 1. EmailJS send
+  const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+  const templateId = import.meta.env.VITE_EMAILJS_NOTIF_TEMPLATE_ID || import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+  const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+  if (toEmail && toEmail !== 'N/A' && toEmail.includes('@')) {
+    if (serviceId && templateId && publicKey) {
+      try {
+        await emailjs.send(
+          serviceId,
+          templateId,
+          {
+            to_name: toName,
+            to_email: toEmail,
+            subject: emailSubject,
+            headline: emailHeadline,
+            message: emailBody,
+            body: emailBody,
+            content: emailBody,
+            verification_code: 'SCHOLAR AGREEMENT',
+            program_name: programTitle,
+            provider_name: providerName,
+            status_text: 'Agreement Issued',
+            status: 'Agreement Issued',
+            remarks: 'Please see attached guidelines and maintaining terms.',
+          },
+          publicKey
+        );
+      } catch (err) {
+        console.warn('[EmailJS Error]: Failed to send agreement email:', err);
+      }
+    }
+  }
+
+  // 2. In-App Notification & DB Persistence
+  try {
+    let targetUserId = userId;
+    if (!targetUserId && scholarId) {
+      const { data: scholarRow } = await supabase
+        .from('scholar')
+        .select('user_id')
+        .eq('id', scholarId)
+        .maybeSingle();
+      if (scholarRow?.user_id) targetUserId = scholarRow.user_id;
+    }
+
+    if (targetUserId) {
+      await supabase.from('notifications').insert({
+        user_id: targetUserId,
+        title: emailHeadline,
+        message: `Your maintaining rules and guidelines for ${programTitle} have been published. Review your agreement in IskoAko.`,
+        type: 'info',
+        is_read: false,
+        created_at: new Date().toISOString(),
+        metadata: {
+          program_title: programTitle,
+          provider_name: providerName,
+          application_id: applicationId,
+          agreement_content: agreementContent,
+        },
+      });
+    }
+
+    // Also persist agreement in application / remarks or documents if possible
+    if (applicationId) {
+      await supabase
+        .from('scholarship_applications')
+        .update({
+          remarks: `[AGREEMENT ISSUED]: Maintaining guidelines sent on ${new Date().toLocaleDateString()}`,
+        })
+        .eq('id', applicationId);
+    }
+  } catch (err) {
+    console.warn('[Agreement Notification DB Exception]:', err);
+  }
+};
+

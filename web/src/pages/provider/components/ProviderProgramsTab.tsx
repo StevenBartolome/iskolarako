@@ -95,7 +95,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
           {programsList.map((prog) => (
             <div
               key={prog.id}
-              className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-7 shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-[340px] animate-fade-in"
+              className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-7 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[380px] animate-fade-in"
             >
               <div className="space-y-3.5">
                 <div className="flex justify-between items-center">
@@ -148,34 +148,47 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
 
               {/* Rejection Banner */}
               {prog.status === 'Rejected' && prog.rejectionRemarks && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 mb-2">
+                <div className="bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 my-2">
                   <span className="text-[9px] uppercase font-bold text-[#B34040] tracking-wider block mb-0.5">Rejection Remarks</span>
                   <p className="text-[11px] text-[#B34040] leading-snug line-clamp-2">{prog.rejectionRemarks}</p>
                 </div>
               )}
-              <div className="border-t border-[#D9D2C5]/50 pt-4 flex justify-between items-center text-xs">
-                <div>
-                  <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
-                  <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency}</span>
+
+              {/* Footer Meta & Structured Action Button Grid */}
+              <div className="border-t border-[#D9D2C5]/50 pt-4 mt-4 space-y-3">
+                {/* Meta stats bar */}
+                <div className="flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
+                    <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency || 'Per Semester'}</span>
+                  </div>
+                  {prog.budgetTotal && (
+                    <div className="text-right">
+                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Total Allocation</span>
+                      <span className="text-[#1A3C2E] font-bold text-xs mt-0.5 block">{prog.budgetTotal}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
+
+                {/* Action Buttons Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
                   <button
                     onClick={() => handleViewDetails(prog)}
-                    className="px-3 py-1.5 rounded-lg bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[10px] font-bold border-0 cursor-pointer transition-all"
+                    className="py-2 px-3 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[11px] font-bold border-0 cursor-pointer transition-all text-center shadow-2xs flex items-center justify-center gap-1.5"
                   >
-                    View Details
+                    <span>👁️</span> View
                   </button>
                   <button
                     onClick={() => handleEditProgram(prog)}
-                    className="px-3 py-1.5 rounded-lg bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[10px] font-bold border-0 cursor-pointer transition-all"
+                    className="py-2 px-3 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[11px] font-bold border-0 cursor-pointer transition-all text-center shadow-2xs flex items-center justify-center gap-1.5"
                   >
-                    Edit
+                    <span>✏️</span> Edit
                   </button>
                   <button
                     onClick={() => handleOpenRenewModal(prog)}
-                    className="px-3 py-1.5 rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-[10px] font-bold border border-[#D9D2C5] cursor-pointer transition-all"
+                    className="py-2 px-3 rounded-xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-[11px] font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-2xs"
                   >
-                    Renew / Add Cycle
+                    <span>🔄</span> Renew
                   </button>
                   {prog.status === 'Rejected' ? (
                     <button
@@ -197,16 +210,16 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                           showToast('An unexpected error occurred.');
                         }
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-[#FFF8EE] hover:bg-amber-100 text-[#C97B2E] text-[10px] font-bold border border-amber-200 cursor-pointer transition-all"
+                      className="col-span-2 sm:col-span-2 py-2 px-3 rounded-xl bg-[#FFF8EE] hover:bg-amber-100 text-[#C97B2E] text-[11px] font-bold border border-amber-200 cursor-pointer transition-all text-center flex items-center justify-center gap-1.5 shadow-2xs"
                     >
-                      Resubmit
+                      <span>🔄</span> Resubmit for Review
                     </button>
                   ) : prog.status !== 'Closed' && prog.status !== 'closed' ? (
                     <button
                       onClick={() => { setProgramToClose(prog); setIsCloseConfirmOpen(true); }}
-                      className="px-3 py-1.5 rounded-lg bg-[#FDF2F2] hover:bg-red-100 text-[#B34040] text-[10px] font-bold border border-red-200 cursor-pointer transition-all"
+                      className="col-span-2 sm:col-span-2 py-2 px-3 rounded-xl bg-[#FDF2F2] hover:bg-red-100 text-[#B34040] text-[11px] font-bold border border-red-200 cursor-pointer transition-all text-center flex items-center justify-center gap-1.5 shadow-2xs"
                     >
-                      Close
+                      <span>🔒</span> Close Program
                     </button>
                   ) : (
                     <button
@@ -228,9 +241,9 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                           showToast('An unexpected error occurred.');
                         }
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-[#EBF5EE] hover:bg-green-100 text-[#2D5941] text-[10px] font-bold border border-green-200 cursor-pointer transition-all"
+                      className="col-span-2 sm:col-span-2 py-2 px-3 rounded-xl bg-[#EBF5EE] hover:bg-green-100 text-[#2D5941] text-[11px] font-bold border border-green-200 cursor-pointer transition-all text-center flex items-center justify-center gap-1.5 shadow-2xs"
                     >
-                      Re-open
+                      <span>🔓</span> Re-open Program
                     </button>
                   )}
                 </div>

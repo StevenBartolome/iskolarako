@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { ApplicationDetail, SubmittedDocItem, ApplicantStatus } from './ReviewApplicationModal';
+import { ScholarGuidelinesModal } from './ScholarGuidelinesModal';
 import {
   verifyDocumentAuthenticity,
   type DocVerificationResult,
@@ -23,27 +24,12 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
   onBack,
   onUpdateStatus,
 }) => {
-  if (!application) {
-    return (
-      <div className="p-12 text-center bg-white rounded-3xl border border-[#D9D2C5]/60 shadow-sm my-6">
-        <div className="text-4xl mb-3">📄</div>
-        <h3 className="text-xl font-bold text-[#1A3C2E]">No Application Selected</h3>
-        <p className="text-sm text-[#6C6C70] mt-1 mb-6">Select an applicant from the cycle intake list to view details.</p>
-        <button
-          onClick={onBack}
-          className="px-6 py-2.5 rounded-xl bg-[#1A3C2E] text-white text-sm font-bold border-0 cursor-pointer hover:bg-[#2D5941] transition-all"
-        >
-          Return to Applicants
-        </button>
-      </div>
-    );
-  }
-
-  const [selectedStatus, setSelectedStatus] = useState<ApplicantStatus>(application.status || 'Pending');
-  const [remarks, setRemarks] = useState(application.remarks || '');
-  const [documentsList, setDocumentsList] = useState<SubmittedDocItem[]>(application.submittedDocuments || []);
+  const [selectedStatus, setSelectedStatus] = useState<ApplicantStatus>(application?.status || 'Pending');
+  const [remarks, setRemarks] = useState(application?.remarks || '');
+  const [documentsList, setDocumentsList] = useState<SubmittedDocItem[]>(application?.submittedDocuments || []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activePreviewDoc, setActivePreviewDoc] = useState<SubmittedDocItem | null>(null);
+  const [isGuidelinesModalOpen, setIsGuidelinesModalOpen] = useState(false);
 
   // AI Verification states
   const [isBatchScanning, setIsBatchScanning] = useState(false);
@@ -189,16 +175,16 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
     }
   }, [application]);
 
-  const raw = application.rawApplication || {};
+  const raw = application?.rawApplication || {};
   const isFreshman =
-    (application.yearLevel && application.yearLevel.toLowerCase().includes('1st')) ||
-    (application.yearLevel && application.yearLevel.toLowerCase().includes('freshm')) ||
+    (application?.yearLevel && application.yearLevel.toLowerCase().includes('1st')) ||
+    (application?.yearLevel && application.yearLevel.toLowerCase().includes('freshm')) ||
     (raw.is_incoming_freshman === true) ||
     Boolean(raw.current_school || raw.intended_school || raw.intended_course);
 
-  const currentSchool = raw.current_school || raw.high_school || (isFreshman ? application.school : null);
-  const intendedSchool = raw.intended_school || raw.target_school || (isFreshman ? (application.school !== currentSchool ? application.school : 'Pending Admission') : null);
-  const intendedCourse = raw.intended_course || raw.option_course || (isFreshman ? application.course : null);
+  const currentSchool = raw.current_school || raw.high_school || (isFreshman ? application?.school : null);
+  const intendedSchool = raw.intended_school || raw.target_school || (isFreshman ? (application?.school !== currentSchool ? application?.school : 'Pending Admission') : null);
+  const intendedCourse = raw.intended_course || raw.option_course || (isFreshman ? application?.course : null);
 
   const toggleExpandDoc = (idx: number) => {
     setExpandedDocIndices(prev => ({ ...prev, [idx]: !prev[idx] }));
@@ -206,14 +192,14 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
   const getApplicantContext = (): ApplicantVerificationContext => {
     return {
-      scholarName: application.name || '',
-      school: application.school || '',
-      course: application.course || '',
-      yearLevel: application.yearLevel || '',
-      gwa: application.grade || '',
-      email: application.email || '',
-      phone: application.phone || '',
-      programTitle: application.program || '',
+      scholarName: application?.name || '',
+      school: application?.school || '',
+      course: application?.course || '',
+      yearLevel: application?.yearLevel || '',
+      gwa: application?.grade || '',
+      email: application?.email || '',
+      phone: application?.phone || '',
+      programTitle: application?.program || '',
     };
   };
 
@@ -459,11 +445,16 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
   };
 
   const handleSaveStatus = async (overrideStatus?: ApplicantStatus) => {
+    if (!application) return;
     const statusToApply = overrideStatus || selectedStatus;
     setIsSubmitting(true);
     try {
       await onUpdateStatus(application.id, statusToApply, remarks, documentsList);
-      onBack();
+      if (statusToApply === 'Approved') {
+        setIsGuidelinesModalOpen(true);
+      } else {
+        onBack();
+      }
     } catch (error) {
       console.error('Failed to update application status:', error);
     } finally {
@@ -494,69 +485,122 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
       case 'Rejected': return 'bg-rose-100 text-rose-800 border-rose-300';
       case 'Additional Info Required': return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'Flagged': return 'bg-red-100 text-red-800 border-red-300';
+      case 'For Exam': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
       default: return 'bg-blue-100 text-blue-800 border-blue-300';
     }
   };
 
+  if (!application) {
+    return (
+      <div className="p-12 text-center bg-white rounded-3xl border border-[#D9D2C5]/60 shadow-sm my-6">
+        <div className="text-4xl mb-3">📄</div>
+        <h3 className="text-xl font-bold text-[#1A3C2E]">No Application Selected</h3>
+        <p className="text-sm text-[#6C6C70] mt-1 mb-6">Select an applicant from the cycle intake list to view details.</p>
+        <button
+          onClick={onBack}
+          className="px-6 py-2.5 rounded-xl bg-[#1A3C2E] text-white text-sm font-bold border-0 cursor-pointer hover:bg-[#2D5941] transition-all"
+        >
+          Return to Applicants
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in pb-12">
-      {/* Top Header & Breadcrumb */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#D9D2C5]/60 shadow-sm">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="p-2.5 rounded-2xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] font-bold text-sm border-0 cursor-pointer transition-all flex items-center gap-2"
-          >
-            <span>←</span> Back
-          </button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-extrabold text-[#1A3C2E] font-serif">{application.name}</h2>
-              <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${getStatusBadgeClass(application.status)}`}>
-                {application.status}
+      {/* Top Header Card */}
+      <div className="bg-white p-6 rounded-3xl border border-[#D9D2C5]/60 shadow-sm space-y-4">
+        {/* Navigation & Status Breadcrumb Row */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-[#EDE8DE]">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBack}
+              className="px-3.5 py-1.5 rounded-xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] font-bold text-xs border border-[#D9D2C5]/60 cursor-pointer transition-all flex items-center gap-2 shadow-2xs group"
+            >
+              <span className="group-hover:-translate-x-0.5 transition-transform">←</span>
+              <span>Back to Applicants</span>
+            </button>
+            <span className="text-xs text-[#8E8E93] hidden sm:inline">/</span>
+            <span className="text-xs font-semibold text-[#6C6C70] hidden sm:inline truncate max-w-xs md:max-w-md">
+              {application.program}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-mono text-[#6C6C70] bg-[#F9F5EF] px-2.5 py-1 rounded-lg border border-[#D9D2C5]/50">
+              ID: <strong className="text-[#1A3C2E]">#{application.id}</strong>
+            </span>
+            <span className={`px-3 py-1 rounded-full text-xs font-extrabold border shadow-2xs ${getStatusBadgeClass(application.status)}`}>
+              {application.status}
+            </span>
+            {isFreshman && (
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#E6F4EA] text-[#137333] border border-[#CEEAD6] flex items-center gap-1 shadow-2xs">
+                🎓 Freshmen Intake
               </span>
-              {isFreshman && (
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#E6F4EA] text-[#137333] border border-[#CEEAD6] flex items-center gap-1">
-                  🎓 Freshmen Intake
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-[#6C6C70] mt-1 font-medium">
-              Application ID: <span className="font-mono text-[#1A3C2E] font-bold">#{application.id}</span> • Program: <span className="font-bold text-[#1A3C2E]">{application.program}</span> ({application.cycle || 'Active Intake'})
-            </p>
+            )}
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => handleSaveStatus('Approved')}
-            disabled={isSubmitting}
-            className="px-5 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-md flex items-center gap-1.5"
-          >
-            <span>✓</span> Approve Scholar
-          </button>
-          <button
-            onClick={() => handleSaveStatus('Under Review')}
-            disabled={isSubmitting}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-md"
-          >
-            Mark Under Review
-          </button>
-          <button
-            onClick={() => handleSaveStatus('Additional Info Required')}
-            disabled={isSubmitting}
-            className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-md"
-          >
-            Request Docs
-          </button>
-          <button
-            onClick={() => handleSaveStatus('Rejected')}
-            disabled={isSubmitting}
-            className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-md"
-          >
-            Reject
-          </button>
+        {/* Title & Action Controls Row */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-1">
+          {/* Applicant Info */}
+          <div className="min-w-0 flex-1">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-[#1A3C2E] font-serif tracking-tight leading-tight">
+              {application.name}
+            </h2>
+            <div className="flex items-center gap-2 flex-wrap text-xs text-[#6C6C70] mt-1.5 font-medium">
+              <span>Program: <strong className="text-[#1A3C2E]">{application.program}</strong></span>
+              <span>•</span>
+              <span>Cycle: <strong className="text-[#1A3C2E]">{application.cycle || 'Active Intake'}</strong></span>
+              {application.yearLevel && (
+                <>
+                  <span>•</span>
+                  <span>Year Level: <strong className="text-[#1A3C2E]">{application.yearLevel}</strong></span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap lg:justify-end shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsGuidelinesModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-xs font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs"
+              title="Draft and optionally send official maintaining guidelines and renewal terms with AI"
+            >
+              <span>📜</span> Scholar Guidelines (AI)
+            </button>
+
+            <button
+              onClick={() => handleSaveStatus('Approved')}
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-sm flex items-center gap-1.5"
+            >
+              <span>✓</span> Approve Scholar
+            </button>
+            <button
+              onClick={() => handleSaveStatus('Under Review')}
+              disabled={isSubmitting}
+              className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold cursor-pointer transition-all shadow-2xs"
+            >
+              Mark Under Review
+            </button>
+            <button
+              onClick={() => handleSaveStatus('Additional Info Required')}
+              disabled={isSubmitting}
+              className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-300 text-xs font-bold cursor-pointer transition-all shadow-2xs"
+            >
+              Request Docs
+            </button>
+            <button
+              onClick={() => handleSaveStatus('Rejected')}
+              disabled={isSubmitting}
+              className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 text-xs font-bold cursor-pointer transition-all shadow-2xs"
+            >
+              Reject
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1044,6 +1088,17 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
         </div>
 
       </div>
+
+      {/* Optional Scholar Guidelines / Maintaining Agreement Modal */}
+      <ScholarGuidelinesModal
+        isOpen={isGuidelinesModalOpen}
+        onClose={() => {
+          setIsGuidelinesModalOpen(false);
+          onBack();
+        }}
+        application={application}
+        providerName={application.program ? undefined : 'Scholarship Provider'}
+      />
     </div>
   );
 };

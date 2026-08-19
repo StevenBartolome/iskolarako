@@ -8,6 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/widgets/bank_account_modal.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AppliedScholarship {
   final String? applicationId;
@@ -979,6 +980,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     );
   }
 
+
   Widget _buildDocumentsSection(AppliedScholarship scholarship) {
     final hasFlagged = scholarship.submittedDocuments.any((d) =>
         d['status']?.toString().toLowerCase() == 'flagged' ||
@@ -1188,191 +1190,239 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
             final isFlagged = rawStatus == 'flagged' || rawStatus == 'rejected';
             final isAdditional = doc['is_additional'] == true || doc['document_url'] == null || doc['document_url'].toString().isEmpty;
             final remarks = doc['remarks']?.toString();
+            final isOfficialLetter = doc['is_official_letter'] == true;
 
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isVerified
-                    ? AppColors.successBg.withAlpha(50)
-                    : isFlagged
-                        ? const Color(0xFFFDF2F2)
-                        : AppColors.surfaceAlt,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isVerified
-                      ? AppColors.primary.withAlpha(40)
-                      : isFlagged
-                          ? const Color(0xFFB34040).withAlpha(50)
-                          : AppColors.rule,
-                  width: 0.8,
+            return InkWell(
+              onTap: () async {
+                final docUrl = doc['document_url']?.toString();
+                if (docUrl != null && docUrl.isNotEmpty && docUrl != '#') {
+                  final uri = Uri.parse(docUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } else {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Could not open document link.')),
+                      );
+                    }
+                  }
+                } else {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Document file is not yet available for view.')),
+                    );
+                  }
+                }
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isOfficialLetter
+                      ? AppColors.primary.withAlpha(25)
+                      : (isVerified
+                          ? AppColors.successBg.withAlpha(50)
+                          : isFlagged
+                              ? const Color(0xFFFDF2F2)
+                              : AppColors.surfaceAlt),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isOfficialLetter
+                        ? AppColors.primary.withAlpha(80)
+                        : (isVerified
+                            ? AppColors.primary.withAlpha(40)
+                            : isFlagged
+                                ? const Color(0xFFB34040).withAlpha(50)
+                                : AppColors.rule),
+                    width: isOfficialLetter ? 1.0 : 0.8,
+                  ),
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: isVerified
-                              ? AppColors.successBg
-                              : isFlagged
-                                  ? const Color(0xFFFFECEC)
-                                  : AppColors.surface,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Center(
-                          child: Icon(
-                            isVerified
-                                ? LucideIcons.checkCircle2
-                                : isFlagged
-                                    ? (isAdditional ? LucideIcons.filePlus : LucideIcons.alertTriangle)
-                                    : LucideIcons.fileText,
-                            size: 16,
-                            color: isVerified
-                                ? AppColors.primary
-                                : isFlagged
-                                    ? const Color(0xFFB34040)
-                                    : AppColors.textSecondary,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: isOfficialLetter
+                                ? AppColors.primary.withAlpha(40)
+                                : (isVerified
+                                    ? AppColors.successBg
+                                    : isFlagged
+                                        ? const Color(0xFFFFECEC)
+                                        : AppColors.surface),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              isOfficialLetter
+                                  ? LucideIcons.fileText
+                                  : (isVerified
+                                      ? LucideIcons.checkCircle2
+                                      : isFlagged
+                                          ? (isAdditional ? LucideIcons.filePlus : LucideIcons.alertTriangle)
+                                          : LucideIcons.fileText),
+                              size: 16,
+                              color: isOfficialLetter
+                                  ? AppColors.primary
+                                  : (isVerified
+                                      ? AppColors.primary
+                                      : isFlagged
+                                          ? const Color(0xFFB34040)
+                                          : AppColors.textSecondary),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            if (filename != null || filesize != null)
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                [filename, filesize].whereType<String>().join(' · '),
-                                style: GoogleFonts.dmMono(
-                                  fontSize: 9.5,
-                                  color: AppColors.textMuted,
+                                name,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: isVerified
-                              ? AppColors.primary
-                              : isFlagged
-                                  ? const Color(0xFFB34040)
-                                  : AppColors.amberDeep,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          isVerified
-                              ? '✓ Verified'
-                              : isFlagged
-                                  ? (isAdditional ? '🚩 Required' : '🚩 Issue Flagged')
-                                  : '● In Review',
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                              if (isOfficialLetter)
+                                Text(
+                                  'Tap to view / download official PDF letter',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
+                              else if (filename != null || filesize != null)
+                                Text(
+                                  [filename, filesize].whereType<String>().join(' · '),
+                                  style: GoogleFonts.dmMono(
+                                    fontSize: 9.5,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-
-                  // Display remarks / reason if flagged
-                  if (isFlagged && remarks != null && remarks.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFB34040).withAlpha(40)),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(LucideIcons.info, size: 12, color: Color(0xFFB34040)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              'Provider note: $remarks',
-                              style: GoogleFonts.inter(
-                                fontSize: 10.5,
-                                color: const Color(0xFFB34040),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isOfficialLetter
+                                ? AppColors.primary
+                                : (isVerified
+                                    ? AppColors.primary
+                                    : isFlagged
+                                        ? const Color(0xFFB34040)
+                                        : AppColors.amberDeep),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  // Resubmit / Upload Action Button when Flagged or Additional
-                  if (isFlagged) ...[
-                    const SizedBox(height: 8),
-                    if (scholarship.isCycleOpen)
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            if (scholarship.applicationId != null && scholarship.scholarId != null) {
-                              _openResubmitModal(
-                                context,
-                                applicationId: scholarship.applicationId!,
-                                scholarId: scholarship.scholarId!,
-                                docItem: doc,
-                                allDocs: scholarship.submittedDocuments,
-                              );
-                            }
-                          },
-                          icon: const Icon(LucideIcons.uploadCloud, size: 14, color: Colors.white),
-                          label: Text(
-                            isAdditional ? 'Upload Requested Document' : 'Resubmit This Document',
+                          child: Text(
+                            isOfficialLetter
+                                ? '✓ Official'
+                                : (isVerified
+                                    ? '✓ Verified'
+                                    : isFlagged
+                                        ? (isAdditional ? '🚩 Required' : '🚩 Issue Flagged')
+                                        : '● In Review'),
                             style: GoogleFonts.inter(
-                              fontSize: 11,
+                              fontSize: 9,
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
                             ),
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            elevation: 0,
-                          ),
                         ),
-                      )
-                    else
+                      ],
+                    ),
+
+                    // Display remarks / reason if flagged
+                    if (isFlagged && remarks != null && remarks.isNotEmpty) ...[
+                      const SizedBox(height: 8),
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        alignment: Alignment.center,
-                        child: Text(
-                          'Resubmission closed (${scholarship.cycleEndDate ?? 'Cycle ended'})',
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            color: AppColors.textMuted,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFB34040).withAlpha(40)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(LucideIcons.info, size: 12, color: Color(0xFFB34040)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Provider note: $remarks',
+                                style: GoogleFonts.inter(
+                                  fontSize: 10.5,
+                                  color: const Color(0xFFB34040),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                    ],
+
+                    // Resubmit / Upload Action Button when Flagged or Additional
+                    if (isFlagged) ...[
+                      const SizedBox(height: 8),
+                      if (scholarship.isCycleOpen)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (scholarship.applicationId != null && scholarship.scholarId != null) {
+                                _openResubmitModal(
+                                  context,
+                                  applicationId: scholarship.applicationId!,
+                                  scholarId: scholarship.scholarId!,
+                                  docItem: doc,
+                                  allDocs: scholarship.submittedDocuments,
+                                );
+                              }
+                            },
+                            icon: const Icon(LucideIcons.uploadCloud, size: 14, color: Colors.white),
+                            label: Text(
+                              isAdditional ? 'Upload Requested Document' : 'Resubmit This Document',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              elevation: 0,
+                            ),
+                          ),
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          alignment: Alignment.center,
+                          child: Text(
+                            'Resubmission closed (${scholarship.cycleEndDate ?? 'Cycle ended'})',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
-                ],
+                ),
               ),
             );
           },
