@@ -34,7 +34,7 @@ export const LoginRegister: React.FC<LoginRegisterProps> = ({ onLogin, onBackToH
   // Email Verification States
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
-  const [codeDigits, setCodeDigits] = useState<string[]>(Array(6).fill(''));
+  const [enteredCode, setEnteredCode] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -69,7 +69,7 @@ export const LoginRegister: React.FC<LoginRegisterProps> = ({ onLogin, onBackToH
     setErrorMessage('');
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setVerificationCode(code);
-    setCodeDigits(Array(6).fill(''));
+    setEnteredCode('');
 
     const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
     const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
@@ -104,7 +104,6 @@ export const LoginRegister: React.FC<LoginRegisterProps> = ({ onLogin, onBackToH
   };
 
   const handleVerifyCode = async () => {
-    const enteredCode = codeDigits.join('');
     if (enteredCode.length < 6) {
       setErrorMessage('Please enter all 6 digits.');
       return;
@@ -219,26 +218,7 @@ export const LoginRegister: React.FC<LoginRegisterProps> = ({ onLogin, onBackToH
 
 
 
-  const handleDigitChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newDigits = [...codeDigits];
-    newDigits[index] = value.slice(-1);
-    setCodeDigits(newDigits);
 
-    if (value && index < 5) {
-      const nextInput = document.getElementById(`digit-${index + 1}`);
-      nextInput?.focus();
-    }
-  };
-
-  const handleDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace') {
-      if (!codeDigits[index] && index > 0) {
-        const prevInput = document.getElementById(`digit-${index - 1}`);
-        prevInput?.focus();
-      }
-    }
-  };
 
 
 
@@ -656,11 +636,11 @@ export const LoginRegister: React.FC<LoginRegisterProps> = ({ onLogin, onBackToH
         onClose={() => setShowVerificationModal(false)}
         email={email}
         errorMessage={errorMessage}
-        codeDigits={codeDigits}
-        handleDigitChange={handleDigitChange}
-        handleDigitKeyDown={handleDigitKeyDown}
+        enteredCode={enteredCode}
+        setEnteredCode={setEnteredCode}
         isSubmitting={isSubmitting}
         handleVerifyCode={handleVerifyCode}
+        onResendCode={sendVerificationEmail}
       />
 
       {/* Terms and Conditions Modal */}

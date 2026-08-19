@@ -1560,8 +1560,8 @@ class _OtpVerificationSheet extends StatefulWidget {
 }
 
 class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
-  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final TextEditingController _otpController = TextEditingController();
+  final FocusNode _otpFocusNode = FocusNode();
   String? _errorMessage;
   int _timerSeconds = 30;
   bool _canResend = false;
@@ -1570,6 +1570,9 @@ class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
   void initState() {
     super.initState();
     _startTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _otpFocusNode.requestFocus();
+    });
   }
 
   void _startTimer() {
@@ -1593,17 +1596,13 @@ class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
 
   @override
   void dispose() {
-    for (var c in _controllers) {
-      c.dispose();
-    }
-    for (var f in _focusNodes) {
-      f.dispose();
-    }
+    _otpController.dispose();
+    _otpFocusNode.dispose();
     super.dispose();
   }
 
   void _onVerify() {
-    final code = _controllers.map((c) => c.text).join();
+    final code = _otpController.text.trim();
     if (code.length < 6) {
       setState(() {
         _errorMessage = 'Please enter all 6 digits.';
@@ -1672,57 +1671,100 @@ class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
           ),
           const SizedBox(height: 24),
           
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(6, (index) {
-              return SizedBox(
-                width: 42,
-                height: 48,
-                child: TextField(
-                  controller: _controllers[index],
-                  focusNode: _focusNodes[index],
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  maxLength: 1,
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    counterText: '',
-                    contentPadding: EdgeInsets.zero,
-                    filled: true,
-                    fillColor: AppColors.surfaceAlt,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.rule),
+          GestureDetector(
+            onTap: () => _otpFocusNode.requestFocus(),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Hidden single TextField capturing keystrokes and paste
+                Opacity(
+                  opacity: 0.0,
+                  child: TextField(
+                    controller: _otpController,
+                    focusNode: _otpFocusNode,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    autofillHints: const [AutofillHints.oneTimeCode],
+                    decoration: const InputDecoration(
+                      counterText: '',
+                      border: InputBorder.none,
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.rule),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                    ),
-                  ),
-                  onChanged: (value) {
-                    if (value.isNotEmpty) {
-                      if (index < 5) {
-                        _focusNodes[index + 1].requestFocus();
-                      } else {
-                        _focusNodes[index].unfocus();
+                    onChanged: (value) {
+                      setState(() {
+                        if (_errorMessage != null) _errorMessage = null;
+                      });
+                      if (value.length == 6) {
+                        _onVerify();
                       }
-                    } else {
-                      if (index > 0) {
-                        _focusNodes[index - 1].requestFocus();
-                      }
-                    }
-                  },
+                    },
+                  ),
                 ),
-              );
-            }),
+                // 6 Separated Visual Number Boxes
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(6, (index) {
+                    final text = _otpController.text;
+                    final isFilled = index < text.length;
+                    final char = isFilled ? text[index] : '';
+                    final isFocused = _otpFocusNode.hasFocus &&
+                        (index == text.length || (index == 5 && text.length == 6));
+
+                    return Container(
+                      width: 44,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: isFilled || isFocused ? Colors.white : AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isFocused
+                              ? AppColors.primary
+                              : isFilled
+                                  ? AppColors.primaryDark.withValues(alpha: 0.6)
+                                  : AppColors.rule,
+                          width: isFocused ? 2.0 : 1.2,
+                        ),
+                        boxShadow: isFocused
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.12),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                )
+                              ]
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: isFilled
+                          ? Text(
+                              char,
+                              style: GoogleFonts.inter(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
+                            )
+                          : isFocused
+                              ? Container(
+                                  width: 2,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    borderRadius: BorderRadius.circular(1),
+                                  ),
+                                )
+                              : Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.rule,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                    );
+                  }),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           
