@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GoogleMap, Autocomplete } from '@react-google-maps/api';
 import type { AnnType, Program } from '../types';
 
@@ -74,6 +74,8 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
   const [filterType, setFilterType] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showPreview, setShowPreview] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const ITEMS_PER_PAGE = 2;
 
   // Quick Template helper
   const applyTemplate = (templateType: string) => {
@@ -98,133 +100,146 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
 
   // Filtered announcements
   const filteredAnnouncements = announcements.filter((ann) => {
+    const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
-      ann.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ann.body?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ann.audience?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ann.location?.toLowerCase().includes(searchQuery.toLowerCase());
+      !q ||
+      ann.title?.toLowerCase().includes(q) ||
+      ann.body?.toLowerCase().includes(q) ||
+      ann.audience?.toLowerCase().includes(q) ||
+      ann.location?.toLowerCase().includes(q);
 
     if (!matchesSearch) return false;
     if (filterType === 'All') return true;
-    if (filterType === 'Exam' && ann.type === 'Examination Schedule') return true;
-    if (filterType === 'Funds' && ann.type === 'Release of Funds') return true;
-    if (filterType === 'Reqs' && ann.type === 'Requirements Update') return true;
-    if (filterType === 'General' && ann.type === 'General Notice') return true;
-    return true;
+    if (filterType === 'Exam') return ann.type === 'Examination Schedule' || ann.type?.toLowerCase().includes('exam');
+    if (filterType === 'Funds') return ann.type === 'Release of Funds' || ann.type?.toLowerCase().includes('fund');
+    if (filterType === 'Reqs') return ann.type === 'Requirements Update' || ann.type?.toLowerCase().includes('req');
+    if (filterType === 'General') return ann.type === 'General Notice' || ann.type?.toLowerCase().includes('general');
+    return false;
   });
 
-  const totalExams = announcements.filter(a => a.type === 'Examination Schedule').length;
-  const totalFunds = announcements.filter(a => a.type === 'Release of Funds').length;
+  const totalExams = announcements.filter(a => a.type === 'Examination Schedule' || a.type?.toLowerCase().includes('exam')).length;
+  const totalFunds = announcements.filter(a => a.type === 'Release of Funds' || a.type?.toLowerCase().includes('fund')).length;
+  const totalReqs = announcements.filter(a => a.type === 'Requirements Update' || a.type?.toLowerCase().includes('req')).length;
+  const totalGeneral = announcements.filter(a => a.type === 'General Notice' || a.type?.toLowerCase().includes('general')).length;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType, searchQuery]);
+
+  const totalPages = Math.ceil(filteredAnnouncements.length / ITEMS_PER_PAGE) || 1;
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+  const paginatedAnnouncements = filteredAnnouncements.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       {/* ─── Hero Header & Stats ─── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[#1A3C2E] via-[#244E3B] to-[#2D5941] text-white p-7 rounded-3xl shadow-lg border border-[#2D5941]/50 relative overflow-hidden">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[#1A3C2E] via-[#244E3B] to-[#2D5941] text-white p-5 rounded-3xl shadow-lg border border-[#2D5941]/50 relative overflow-hidden">
         {/* Background glow circle */}
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-[#E8A838]/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 space-y-1">
+        <div className="relative z-10 space-y-0.5">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-[#E8A838] text-[#1A3C2E]">
               Scholar Broadcast Center
             </span>
             <span className="text-[11px] text-[#9BA89F] font-semibold">● Direct Scholar Inbox Sync</span>
           </div>
-          <h2 className="text-2xl lg:text-3xl font-extrabold font-serif tracking-tight text-white mt-1">
+          <h2 className="text-xl lg:text-2xl font-extrabold font-serif tracking-tight text-white mt-0.5">
             Announcements & Notices
           </h2>
-          <p className="text-xs text-[#E8A838]/90 max-w-xl leading-relaxed">
-            Broadcast official examination venues, disbursement updates, and requirement notices directly to scholars' mobile and web inboxes.
+          <p className="text-[11.5px] text-[#E8A838]/90 max-w-xl leading-relaxed">
+            Dispatch announcements directly into registered scholars' and applicants' inboxes. Schedule examinations with venue pins, release payout alerts, or issue requirements updates.
           </p>
         </div>
 
         {/* Mini stats cards */}
-        <div className="relative z-10 flex items-center gap-3 shrink-0">
-          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/15 text-center min-w-[84px]">
-            <span className="text-xl font-black font-serif text-[#E8A838] block leading-none">{announcements.length}</span>
-            <span className="text-[10px] text-white/80 font-bold uppercase tracking-wider mt-1 block">Total Sent</span>
+        <div className="relative z-10 flex items-center gap-2.5 shrink-0">
+          <div className="bg-white/10 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-white/15 text-center min-w-[76px]">
+            <span className="text-lg font-black font-serif text-[#E8A838] block leading-none">{announcements.length}</span>
+            <span className="text-[9.5px] text-white/80 font-bold uppercase tracking-wider mt-0.5 block">Total Sent</span>
           </div>
-          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/15 text-center min-w-[84px]">
-            <span className="text-xl font-black font-serif text-white block leading-none">{totalExams}</span>
-            <span className="text-[10px] text-white/80 font-bold uppercase tracking-wider mt-1 block">Exams</span>
+          <div className="bg-white/10 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-white/15 text-center min-w-[76px]">
+            <span className="text-lg font-black font-serif text-white block leading-none">{totalExams}</span>
+            <span className="text-[9.5px] text-white/80 font-bold uppercase tracking-wider mt-0.5 block">Exams</span>
           </div>
-          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/15 text-center min-w-[84px]">
-            <span className="text-xl font-black font-serif text-white block leading-none">{totalFunds}</span>
-            <span className="text-[10px] text-white/80 font-bold uppercase tracking-wider mt-1 block">Fund Releases</span>
+          <div className="bg-white/10 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-white/15 text-center min-w-[76px]">
+            <span className="text-lg font-black font-serif text-white block leading-none">{totalFunds}</span>
+            <span className="text-[9.5px] text-white/80 font-bold uppercase tracking-wider mt-0.5 block">Fund Releases</span>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ─── Left Column: Broadcast Composer (5 cols) ─── */}
-        <div className="lg:col-span-5 bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-sm space-y-6">
-          <div className="flex items-center justify-between border-b border-[#D9D2C5]/40 pb-4">
+        <div className="lg:col-span-5 bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-[#D9D2C5]/40 pb-3">
             <div>
-              <h3 className="font-bold text-[#1A3C2E] font-serif text-lg leading-tight">Create Broadcast</h3>
-              <p className="text-[11px] text-[#6C6C70] mt-0.5">Saves to scholars' database notification inbox</p>
+              <h3 className="font-bold text-[#1A3C2E] font-serif text-base leading-tight">Create Broadcast</h3>
+              <p className="text-[10.5px] text-[#6C6C70] mt-0.5">Saves to scholars' database notification inbox</p>
             </div>
             <button
               type="button"
               onClick={() => setShowPreview(!showPreview)}
-              className="text-[11px] font-bold text-[#2D5941] hover:text-[#1A3C2E] bg-[#EBF5EE] hover:bg-[#EDE8DE] px-3 py-1.5 rounded-xl transition-colors border-0 cursor-pointer flex items-center gap-1"
+              className="text-[10.5px] font-bold text-[#2D5941] hover:text-[#1A3C2E] bg-[#EBF5EE] hover:bg-[#EDE8DE] px-2.5 py-1 rounded-xl transition-colors border-0 cursor-pointer flex items-center gap-1"
             >
               <span>{showPreview ? 'Hide Preview' : '👁️ Preview'}</span>
             </button>
           </div>
 
           {/* Quick Template Pills */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold text-[#6C6C70] uppercase tracking-wider">Quick Templates:</span>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="space-y-1">
+            <span className="text-[9.5px] font-bold text-[#6C6C70] uppercase tracking-wider">Quick Templates:</span>
+            <div className="flex flex-wrap gap-1">
               <button
                 type="button"
                 onClick={() => applyTemplate('exam')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
-                📝 Exam Venue
+                📝 Exam Screening
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('fund')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
-                💰 Stipend Release
+                💰 Payout Alert
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('reqs')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
                 📋 Grades & COR
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('orientation')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
-                📢 Orientation
+                🎓 Orientation
               </button>
             </div>
           </div>
 
-          <form onSubmit={handleAddAnnouncement} className="space-y-4">
+          <form onSubmit={handleAddAnnouncement} className="space-y-3">
             {/* Category Selector */}
             <div>
-              <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
+              <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
                 Announcement Category
               </label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 {[
-                  { value: 'General Notice', label: '📢 General Notice', color: 'border-[#2D5941]' },
-                  { value: 'Examination Schedule', label: '📝 Exam Schedule', color: 'border-amber-500' },
-                  { value: 'Release of Funds', label: '💰 Release Funds', color: 'border-blue-500' },
-                  { value: 'Requirements Update', label: '📋 Requirements', color: 'border-purple-500' },
+                  { value: 'General Notice', label: '📢 General Notice' },
+                  { value: 'Examination Schedule', label: '📝 Exam Schedule' },
+                  { value: 'Release of Funds', label: '💰 Release Funds' },
+                  { value: 'Requirements Update', label: '📋 Requirements' },
                 ].map(cat => (
                   <button
                     key={cat.value}
                     type="button"
                     onClick={() => setNewAnnType(cat.value as AnnType)}
-                    className={`py-2.5 px-3 rounded-xl text-xs font-bold text-left transition-all border cursor-pointer ${
+                    className={`py-2 px-2.5 rounded-xl text-[11px] font-bold text-left transition-all border cursor-pointer ${
                       newAnnType === cat.value
                         ? 'bg-[#1A3C2E] text-white shadow-sm border-[#1A3C2E]'
                         : 'bg-[#F9F5EF]/60 text-[#1C1C1E] hover:bg-[#EDE8DE] border-[#D9D2C5]/60'
@@ -238,42 +253,24 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
 
             {/* Audience / Program Selector */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide">
                   Target Audience / Program
                 </label>
                 {newAnnType === 'Examination Schedule' ? (
-                  <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md">
+                  <span className="text-[9.5px] font-extrabold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-md">
                     🎯 for_exam status only
                   </span>
                 ) : selectedProgramId === 'all_scholars_and_applicants' ? (
-                  <span className="text-[10px] font-extrabold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+                  <span className="text-[9.5px] font-extrabold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded-md">
                     👥 Scholars & Applicants
                   </span>
                 ) : (
-                  <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                  <span className="text-[9.5px] font-extrabold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded-md">
                     🎯 Approved Scholars Only
                   </span>
                 )}
               </div>
-
-              {newAnnType === 'Examination Schedule' ? (
-                <p className="text-[11px] text-[#94580E] bg-amber-50 p-2.5 rounded-xl border border-amber-200/70 mb-2 leading-tight">
-                  ℹ️ This examination notice will <strong>only</strong> be sent to candidates with the <code>for_exam</code> evaluation status in the selected program.
-                </p>
-              ) : selectedProgramId === 'all_scholars_and_applicants' ? (
-                <p className="text-[11px] text-blue-800 bg-blue-50 p-2.5 rounded-xl border border-blue-200/70 mb-2 leading-tight">
-                  ℹ️ This announcement will be broadcasted to <strong>all registered scholars, active applicants, and enrolled candidates</strong>.
-                </p>
-              ) : selectedProgramId && selectedProgramId !== 'all' ? (
-                <p className="text-[11px] text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/70 mb-2 leading-tight">
-                  ℹ️ This announcement will <strong>only</strong> be delivered to scholars officially <strong>approved</strong> for <em>{newAnnAudience}</em>.
-                </p>
-              ) : (
-                <p className="text-[11px] text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/70 mb-2 leading-tight">
-                  ℹ️ This announcement will be delivered to all <strong>approved scholars</strong> across all your active scholarship programs.
-                </p>
-              )}
 
               <select
                 value={selectedProgramId || newAnnAudience}
@@ -289,7 +286,7 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                     setNewAnnAudience(match ? match.title : val);
                   }
                 }}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] text-xs font-semibold cursor-pointer bg-white"
+                className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] text-xs font-semibold cursor-pointer bg-white"
               >
                 {newAnnType === 'Examination Schedule' ? (
                   <>
@@ -317,15 +314,15 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
 
             {/* Google Maps Venue Search (Shown when Examination Schedule is selected) */}
             {newAnnType === 'Examination Schedule' && (
-              <div className="space-y-2.5 p-3.5 rounded-2xl border border-amber-300 bg-amber-50/50 animate-fade-in">
+              <div className="space-y-2 p-3 rounded-2xl border border-amber-300 bg-amber-50/50 animate-fade-in">
                 <div className="flex justify-between items-center">
-                  <span className="text-[11px] font-extrabold text-[#94580E] uppercase tracking-wide flex items-center gap-1">
+                  <span className="text-[10.5px] font-extrabold text-[#94580E] uppercase tracking-wide flex items-center gap-1">
                     <span>📍 Examination Venue</span>
                     <span className="text-red-500 font-black">*</span>
                   </span>
                   <div className="flex items-center gap-2">
                     {(!examCoords.address?.trim() && !mapSearchText?.trim()) && (
-                      <span className="text-[10px] font-extrabold text-red-600 bg-red-100 px-2 py-0.5 rounded-md">
+                      <span className="text-[9.5px] font-extrabold text-red-600 bg-red-100 px-1.5 py-0.2 rounded-md">
                         Required
                       </span>
                     )}
@@ -344,10 +341,10 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                     <input
                       type="text"
                       required
-                      placeholder="Search exam venue e.g. UP Diliman Bahay ng Alumni..."
+                      placeholder="Search exam venue e.g. UP Bahay ng Alumni..."
                       value={mapSearchText}
                       onChange={(e) => setMapSearchText(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl border border-[#D9D2C5] text-xs font-semibold bg-white focus:outline-none focus:border-[#2D5941] shadow-xs"
+                      className="w-full px-3 py-1.5 rounded-xl border border-[#D9D2C5] text-xs font-semibold bg-white focus:outline-none focus:border-[#2D5941] shadow-xs"
                     />
                   </Autocomplete>
                 ) : (
@@ -355,13 +352,13 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                 )}
 
                 {(!examCoords.address?.trim() && !mapSearchText?.trim()) && (
-                  <p className="text-[11px] font-semibold text-red-600 bg-red-50 p-2 rounded-xl border border-red-200 leading-tight">
-                    ⚠️ Please search or pin a specific examination venue on the map before broadcasting.
+                  <p className="text-[10.5px] font-semibold text-red-600 bg-red-50 p-1.5 rounded-xl border border-red-200 leading-tight">
+                    ⚠️ Please search or pin a specific venue on the map.
                   </p>
                 )}
 
                 {/* Google Maps Viewport */}
-                <div className="w-full h-36 rounded-xl border border-[#D9D2C5] overflow-hidden relative shadow-inner bg-slate-100">
+                <div className="w-full h-28 rounded-xl border border-[#D9D2C5] overflow-hidden relative shadow-inner bg-slate-100">
                   {isLoaded ? (
                     <GoogleMap
                       mapContainerStyle={{ width: '100%', height: '100%' }}
@@ -380,23 +377,23 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   )}
 
                   {/* Coordinates indicator */}
-                  <div className="absolute top-2 left-2 z-10 bg-white/95 backdrop-blur-xs px-2 py-1 rounded-lg text-[9px] text-[#1A3C2E] font-bold border border-[#D9D2C5]/50 shadow-sm">
+                  <div className="absolute top-1.5 left-1.5 z-10 bg-white/95 backdrop-blur-xs px-1.5 py-0.5 rounded-md text-[8.5px] text-[#1A3C2E] font-bold border border-[#D9D2C5]/50 shadow-xs">
                     {examCoords.lat.toFixed(4)}° N, {examCoords.lng.toFixed(4)}° E
                   </div>
 
                   {/* Zoom controls */}
-                  <div className="absolute bottom-2 right-2 z-10 flex gap-1">
+                  <div className="absolute bottom-1.5 right-1.5 z-10 flex gap-1">
                     <button
                       type="button"
                       onClick={() => setMapZoom(prev => Math.min(prev + 1, 18))}
-                      className="w-6 h-6 bg-white hover:bg-slate-50 border border-[#D9D2C5] text-xs font-black rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
+                      className="w-5 h-5 bg-white hover:bg-slate-50 border border-[#D9D2C5] text-[10px] font-black rounded flex items-center justify-center cursor-pointer shadow-xs"
                     >
                       +
                     </button>
                     <button
                       type="button"
                       onClick={() => setMapZoom(prev => Math.max(prev - 1, 6))}
-                      className="w-6 h-6 bg-white hover:bg-slate-50 border border-[#D9D2C5] text-xs font-black rounded-lg flex items-center justify-center cursor-pointer shadow-sm"
+                      className="w-5 h-5 bg-white hover:bg-slate-50 border border-[#D9D2C5] text-[10px] font-black rounded flex items-center justify-center cursor-pointer shadow-xs"
                     >
                       -
                     </button>
@@ -405,9 +402,9 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
 
                 {/* Selected Address Display */}
                 {examCoords.address && (
-                  <div className="text-[11px] font-semibold text-[#1A3C2E] bg-white p-2 rounded-xl border border-[#D9D2C5] flex items-start gap-1.5">
+                  <div className="text-[10.5px] font-semibold text-[#1A3C2E] bg-white p-1.5 rounded-xl border border-[#D9D2C5] flex items-start gap-1">
                     <span className="shrink-0 text-amber-600">📌</span>
-                    <span className="leading-snug">{examCoords.address}</span>
+                    <span className="leading-snug truncate">{examCoords.address}</span>
                   </div>
                 )}
               </div>
@@ -415,53 +412,50 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
 
             {/* Title */}
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wide">
-                  Title / Subject
-                </label>
-                <span className="text-[10px] text-[#8E8E93]">{newAnnTitle.length}/100</span>
-              </div>
+              <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1">
+                Announcement Title
+              </label>
               <input
                 type="text"
                 required
                 maxLength={100}
-                placeholder="e.g. Mandatory Qualifying Examination Guidelines"
+                placeholder="e.g. Mandatory Qualifying Exam on Saturday"
                 value={newAnnTitle}
                 onChange={(e) => setNewAnnTitle(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] text-xs font-semibold bg-white"
+                className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] text-xs font-semibold bg-white"
               />
             </div>
 
-            {/* Message Body */}
+            {/* Message Details */}
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wide">
+                <label className="text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide">
                   Message Details
                 </label>
-                <span className="text-[10px] text-[#8E8E93]">{newAnnBody.length}/1000</span>
+                <span className="text-[9.5px] text-[#8E8E93]">{newAnnBody.length}/1000</span>
               </div>
               <textarea
                 required
-                rows={4}
+                rows={3}
                 maxLength={1000}
-                placeholder="Write full instructions, exam schedules, requirements deadlines, or important announcements..."
+                placeholder="Write full instructions, exam schedules, deadlines, or announcements..."
                 value={newAnnBody}
                 onChange={(e) => setNewAnnBody(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] text-xs font-semibold bg-white leading-relaxed"
+                className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] text-xs font-semibold bg-white leading-relaxed"
               />
             </div>
 
             {/* Live Preview Card */}
             {showPreview && (
-              <div className="p-4 rounded-2xl bg-[#F9F5EF] border border-[#2D5941]/30 space-y-2 animate-fade-in">
+              <div className="p-3.5 rounded-2xl bg-[#F9F5EF] border border-[#2D5941]/30 space-y-1.5 animate-fade-in">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold uppercase text-[#2D5941]">Scholar Mobile Preview</span>
-                  <span className="text-[10px] font-bold text-[#8E8E93]">Target: {newAnnAudience}</span>
+                  <span className="text-[9.5px] font-extrabold uppercase text-[#2D5941]">Scholar Mobile Preview</span>
+                  <span className="text-[9.5px] font-bold text-[#8E8E93]">Target: {newAnnAudience}</span>
                 </div>
                 <h4 className="text-xs font-bold text-[#1A3C2E]">{newAnnTitle || 'Untitled Announcement'}</h4>
-                <p className="text-xs text-[#6C6C70] whitespace-pre-wrap">{newAnnBody || 'Message body will appear here...'}</p>
+                <p className="text-[11px] text-[#6C6C70] whitespace-pre-wrap">{newAnnBody || 'Message body will appear here...'}</p>
                 {newAnnType === 'Examination Schedule' && examCoords.address && (
-                  <div className="text-[10px] font-bold text-[#C97B2E] pt-1">
+                  <div className="text-[9.5px] font-bold text-[#C97B2E] pt-0.5">
                     📍 {examCoords.address}
                   </div>
                 )}
@@ -477,11 +471,11 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                 !newAnnBody.trim() ||
                 (newAnnType === 'Examination Schedule' && !examCoords.address?.trim() && !mapSearchText?.trim())
               }
-              className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] disabled:bg-[#D9D2C5] disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer border-0 flex items-center justify-center gap-2"
+              className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] disabled:bg-[#D9D2C5] disabled:cursor-not-allowed text-white py-3 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer border-0 flex items-center justify-center gap-2"
             >
               {isBroadcasting ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>Broadcasting to Scholars...</span>
                 </>
               ) : (
@@ -523,8 +517,8 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                 { key: 'All', label: 'All Broadcasts', count: announcements.length },
                 { key: 'Exam', label: '📝 Exam Schedules', count: totalExams },
                 { key: 'Funds', label: '💰 Fund Releases', count: totalFunds },
-                { key: 'Reqs', label: '📋 Requirements', count: announcements.filter(a => a.type === 'Requirements Update').length },
-                { key: 'General', label: '📢 General Notices', count: announcements.filter(a => a.type === 'General Notice').length },
+                { key: 'Reqs', label: '📋 Requirements', count: totalReqs },
+                { key: 'General', label: '📢 General Notices', count: totalGeneral },
               ].map(tab => (
                 <button
                   key={tab.key}
@@ -562,10 +556,10 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                 </p>
               </div>
             ) : (
-              filteredAnnouncements.map((ann) => {
-                const isExam = ann.type === 'Examination Schedule';
-                const isFund = ann.type === 'Release of Funds';
-                const isReqs = ann.type === 'Requirements Update';
+              paginatedAnnouncements.map((ann) => {
+                const isExam = ann.type === 'Examination Schedule' || ann.type?.toLowerCase().includes('exam');
+                const isFund = ann.type === 'Release of Funds' || ann.type?.toLowerCase().includes('fund');
+                const isReqs = ann.type === 'Requirements Update' || ann.type?.toLowerCase().includes('req');
 
                 return (
                   <div
@@ -656,6 +650,52 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   </div>
                 );
               })
+            )}
+
+            {/* Pagination Controls */}
+            {filteredAnnouncements.length > ITEMS_PER_PAGE && (
+              <div className="bg-white rounded-2xl border border-[#D9D2C5]/70 p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in">
+                <span className="text-xs font-semibold text-[#6C6C70]">
+                  Showing <strong className="text-[#1A3C2E]">{startIndex + 1}</strong> - <strong className="text-[#1A3C2E]">{Math.min(startIndex + ITEMS_PER_PAGE, filteredAnnouncements.length)}</strong> of <strong className="text-[#1A3C2E]">{filteredAnnouncements.length}</strong> announcements
+                </span>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={safePage <= 1}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#F9F5EF] hover:bg-[#EDE8DE] disabled:opacity-40 disabled:cursor-not-allowed text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>← Previous</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 px-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center justify-center ${
+                          safePage === pageNum
+                            ? 'bg-[#1A3C2E] text-white shadow-sm font-extrabold'
+                            : 'bg-[#F9F5EF] text-[#6C6C70] hover:bg-[#EDE8DE] hover:text-[#1A3C2E]'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={safePage >= totalPages}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#F9F5EF] hover:bg-[#EDE8DE] disabled:opacity-40 disabled:cursor-not-allowed text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Next →</span>
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
