@@ -22,6 +22,10 @@ class EligibilityHelper {
         return false;
       }
     }
+    // Face verification is required to be considered a fully verified scholar
+    if (scholar['face_verification_status']?.toString() != 'verified') {
+      return false;
+    }
     return true;
   }
 
@@ -41,7 +45,8 @@ class EligibilityHelper {
         'School',
         'Course',
         'Year Level',
-        'GPA / GWA'
+        'GPA / GWA',
+        'Identity Verification',
       ];
     }
     final missing = <String>[];
@@ -66,6 +71,10 @@ class EligibilityHelper {
         missing.add(label);
       }
     });
+    // Check face verification separately with a human-readable label
+    if (scholar['face_verification_status']?.toString() != 'verified') {
+      missing.add('Identity Verification (face check required)');
+    }
     return missing;
   }
 

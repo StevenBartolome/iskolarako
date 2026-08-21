@@ -13,6 +13,7 @@ import '../screens/notifications/notification_detail_screen.dart';
 import '../widgets/main_layout.dart';
 
 import '../screens/profile/profile_edit_screen.dart';
+import '../screens/profile/face_verification_screen.dart';
 
 class AppRouter {
   static const String splash = '/splash';
@@ -29,6 +30,7 @@ class AppRouter {
   static const String notificationDetail = '/notification_detail';
   static const String fundTracking = '/fund_tracking';
   static const String profileEdit = '/profile_edit';
+  static const String faceVerification = '/face_verification';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -65,6 +67,9 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const FundTrackingScreen(), settings: settings);
       case profileEdit:
         return MaterialPageRoute(builder: (_) => const ProfileEditScreen(), settings: settings);
+      case faceVerification:
+        return MaterialPageRoute(builder: (_) => const FaceVerificationScreen(), settings: settings);
+
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(

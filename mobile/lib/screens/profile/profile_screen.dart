@@ -28,6 +28,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   bool _isUploadingPhoto = false;
   bool _isProfileComplete = false;
+  // Face verification
+  String _faceVerificationStatus = 'unverified'; // unverified | verified | failed
+  DateTime? _faceVerifiedAt;
 
   static const Map<String, String> _eduLabels = {
     'college': 'Undergraduate / College',
@@ -80,6 +83,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _initials = '${first.isNotEmpty ? first[0] : ''}${last.isNotEmpty ? last[0] : ''}'.toUpperCase();
               _academicDetails = '$eduLevel • $course\n$school';
               _gpaText = 'GWA: $gpa ($scale)';
+              // Face verification
+              _faceVerificationStatus =
+                  data['face_verification_status']?.toString() ?? 'unverified';
+              final verifiedAtRaw = data['face_verified_at']?.toString();
+              _faceVerifiedAt = verifiedAtRaw != null
+                  ? DateTime.tryParse(verifiedAtRaw)
+                  : null;
             } else {
               _isProfileComplete = false;
               _fullName = user.email ?? 'Scholar Student';
@@ -360,6 +370,201 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // FACE VERIFICATION CARD
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildFaceVerificationCard() {
+    if (_faceVerificationStatus == 'verified') {
+      // Green verified card
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.successBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.primary.withAlpha(60)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withAlpha(20),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                LucideIcons.shieldCheck,
+                color: AppColors.primary,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Identity Verified',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  if (_faceVerifiedAt != null)
+                    Text(
+                      'Verified on ${_faceVerifiedAt!.day}/${_faceVerifiedAt!.month}/${_faceVerifiedAt!.year}',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.checkCircle,
+                color: AppColors.primary, size: 20),
+          ],
+        ),
+      );
+    } else if (_faceVerificationStatus == 'failed') {
+      // Red failed card with retry
+      return GestureDetector(
+        onTap: () async {
+          final result = await Navigator.pushNamed(
+              context, AppRouter.faceVerification);
+          if (result == true) _loadProfileData();
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.errorBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.error.withAlpha(60)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.error.withAlpha(20),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  LucideIcons.shieldOff,
+                  color: AppColors.error,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Verification Failed',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.error,
+                      ),
+                    ),
+                    Text(
+                      'Tap to retry identity verification',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(LucideIcons.arrowRight,
+                  color: AppColors.error, size: 18),
+            ],
+          ),
+        ),
+      );
+    } else {
+      // Unverified — amber CTA banner
+      return GestureDetector(
+        onTap: () async {
+          final result = await Navigator.pushNamed(
+              context, AppRouter.faceVerification);
+          if (result == true) _loadProfileData();
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFFF8EE), Color(0xFFFFF0D4)],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.amber.withAlpha(80)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.amber.withAlpha(30),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  LucideIcons.shieldAlert,
+                  color: AppColors.amberDeep,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Verify Your Identity',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.amberDeep,
+                      ),
+                    ),
+                    Text(
+                      'Upload your ID + face check to get verified',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.amberDeep,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Verify Now',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -529,7 +734,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (_isProfileComplete)
+                                    if (_isProfileComplete && _faceVerificationStatus == 'verified')
                                       const VerifiedBadge(label: 'Verified Scholar')
                                     else
                                       const StatusChip(label: 'Incomplete Profile', type: StatusType.pending),
@@ -648,6 +853,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 16),
+
+                    // ── Face Verification Banner ────────────────────────────
+                    _buildFaceVerificationCard(),
                     const SizedBox(height: 24),
 
                     // Menu Sections
