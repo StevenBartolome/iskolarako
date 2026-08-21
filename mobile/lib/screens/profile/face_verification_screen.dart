@@ -314,11 +314,63 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       final user = Supabase.instance.client.auth.currentUser;
 
       if (user != null) {
-        await Supabase.instance.client.from('scholar').update({
+        String? idUrl;
+        String? selfieUrl;
+
+        // 1. Upload ID document to Supabase Storage
+        try {
+          final idExt = _isIdPdf ? 'pdf' : 'jpg';
+          final idPath = 'face_verification/id_${user.id}_${DateTime.now().millisecondsSinceEpoch}.$idExt';
+          await Supabase.instance.client.storage.from('scholar-documents').uploadBinary(
+                idPath,
+                _idImageBytes!,
+                fileOptions: FileOptions(
+                  contentType: _isIdPdf ? 'application/pdf' : 'image/jpeg',
+                  upsert: true,
+                ),
+              );
+          idUrl = Supabase.instance.client.storage.from('scholar-documents').getPublicUrl(idPath);
+          debugPrint('[FaceVerification] ID document uploaded to storage: $idUrl');
+        } catch (e) {
+          debugPrint('[FaceVerification] ID storage upload error: $e');
+        }
+
+        // 2. Upload Selfie to Supabase Storage
+        try {
+          final selfiePath = 'face_verification/selfie_${user.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          await Supabase.instance.client.storage.from('scholar-documents').uploadBinary(
+                selfiePath,
+                _selfieBytes!,
+                fileOptions: const FileOptions(
+                  contentType: 'image/jpeg',
+                  upsert: true,
+                ),
+              );
+          selfieUrl = Supabase.instance.client.storage.from('scholar-documents').getPublicUrl(selfiePath);
+          debugPrint('[FaceVerification] Selfie uploaded to storage: $selfieUrl');
+        } catch (e) {
+          debugPrint('[FaceVerification] Selfie storage upload error: $e');
+        }
+
+        // 3. Update scholar row in database
+        final updatePayload = <String, dynamic>{
           'face_verification_status': status,
           'face_verified_at': result.isMatch ? DateTime.now().toIso8601String() : null,
           'face_verification_reason': result.reason,
-        }).eq('user_id', user.id);
+        };
+        if (idUrl != null) updatePayload['id_document_url'] = idUrl;
+        if (selfieUrl != null) updatePayload['face_selfie_url'] = selfieUrl;
+
+        try {
+          await Supabase.instance.client.from('scholar').update(updatePayload).eq('user_id', user.id);
+        } catch (e) {
+          // If custom URL columns don't exist yet, update core verification columns
+          await Supabase.instance.client.from('scholar').update({
+            'face_verification_status': status,
+            'face_verified_at': result.isMatch ? DateTime.now().toIso8601String() : null,
+            'face_verification_reason': result.reason,
+          }).eq('user_id', user.id);
+        }
       }
 
       if (mounted) {
