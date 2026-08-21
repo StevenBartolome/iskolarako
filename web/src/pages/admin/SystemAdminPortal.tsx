@@ -17,6 +17,7 @@ import { AdminUsersTab } from './components/AdminUsersTab';
 import { AdminLogsTab } from './components/AdminLogsTab';
 import { AdminSettingsTab } from './components/AdminSettingsTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
+import { sendAdminAnnouncement, fetchAdminBroadcasts, deleteNotification } from '@/services/notificationService';
 import type {
   SystemAdminPortalProps,
   AdminTab,
@@ -34,6 +35,10 @@ import type {
 export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, showWelcome }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   
+  const [currentAdminUserId, setCurrentAdminUserId] = useState<string | undefined>(undefined);
+  const [adminBroadcasts, setAdminBroadcasts] = useState<any[]>([]);
+  const [isSendingAnnouncement, setIsSendingAnnouncement] = useState(false);
+
   // Profile state loaded dynamically from Supabase
   const [profile, setProfile] = useState<{
     firstName: string;
@@ -58,6 +63,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
+        setCurrentAdminUserId(user.id);
 
         const { data: userData, error: userErr } = await supabase
           .from('users')
@@ -381,6 +387,21 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   const [announcementTarget, setAnnouncementTarget] = useState<'Students' | 'Providers' | 'Both'>('Both');
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementBody, setAnnouncementBody] = useState('');
+
+  const fetchBroadcastsHistory = async () => {
+    try {
+      const data = await fetchAdminBroadcasts();
+      setAdminBroadcasts(data);
+    } catch (err) {
+      console.error('Error fetching admin broadcasts:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'notifications') {
+      fetchBroadcastsHistory();
+    }
+  }, [activeTab]);
 
   // Fetch categories from the database on tab settings or mount
   const fetchCategories = async () => {
@@ -1348,13 +1369,44 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     showToast(`Report #${id} has been ${action}.`);
   };
 
-  const handleSendAnnouncement = (e: React.FormEvent) => {
+  const handleSendAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!announcementTitle || !announcementBody) return;
-    addAuditLog(`BROADCAST ANNOUNCEMENT`, `Target: ${announcementTarget} - Title: ${announcementTitle}`);
-    showToast(`Announcement successfully sent to ${announcementTarget}!`);
-    setAnnouncementTitle('');
-    setAnnouncementBody('');
+    if (!announcementTitle.trim() || !announcementBody.trim()) return;
+    setIsSendingAnnouncement(true);
+    try {
+      const res = await sendAdminAnnouncement({
+        title: announcementTitle.trim(),
+        message: announcementBody.trim(),
+        target: announcementTarget,
+        adminId: currentAdminUserId,
+        adminName: profile ? `${profile.firstName} ${profile.lastName}` : 'System Admin'
+      });
+
+      if (res.success) {
+        addAuditLog(`BROADCAST ANNOUNCEMENT`, `Target: ${announcementTarget} - Title: ${announcementTitle} (${res.count} users)`);
+        showToast(`Announcement successfully broadcasted to ${res.count} users!`);
+        setAnnouncementTitle('');
+        setAnnouncementBody('');
+        await fetchBroadcastsHistory();
+      } else {
+        showToast(`Failed to send broadcast: ${res.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      console.error('Error broadcasting admin announcement:', err);
+      showToast(`Broadcast failed: ${err.message || 'Error occurred'}`);
+    } finally {
+      setIsSendingAnnouncement(false);
+    }
+  };
+
+  const handleDeleteAdminBroadcast = async (id: string | number) => {
+    try {
+      await deleteNotification(String(id));
+      showToast('Broadcast deleted from log.');
+      await fetchBroadcastsHistory();
+    } catch (err) {
+      console.error('Error deleting broadcast:', err);
+    }
   };
 
   const handleCreateAdmin = (e: React.FormEvent) => {
@@ -1680,6 +1732,9 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             setAnnouncementTitle={setAnnouncementTitle}
             announcementBody={announcementBody}
             setAnnouncementBody={setAnnouncementBody}
+            adminBroadcasts={adminBroadcasts}
+            isSendingAnnouncement={isSendingAnnouncement}
+            onDeleteBroadcast={handleDeleteAdminBroadcast}
           />
         )}
 

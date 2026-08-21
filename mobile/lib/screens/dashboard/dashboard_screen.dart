@@ -37,6 +37,7 @@ class DashboardScreenState extends State<DashboardScreen> {
   List<dynamic> _recentActivities = [];
   bool _isProfileComplete = false;
   bool _isLoadingData = true;
+  int _unreadNotifCount = 0;
   RealtimeChannel? _realtimeChannel;
 
   @override
@@ -68,7 +69,7 @@ class DashboardScreenState extends State<DashboardScreen> {
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'scholarship_programs',
+          table: 'notifications',
           callback: (payload) {
             if (mounted) _loadDashboardData();
           },
@@ -106,6 +107,22 @@ class DashboardScreenState extends State<DashboardScreen> {
             .from('scholarship_programs')
             .select('*, provider:provider_id(*), cycles:application_cycles(*)')
             .eq('status', 'active');
+
+        // Fetch unread notifications count from Supabase
+        try {
+          final notifRes = await Supabase.instance.client
+              .from('notifications')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('is_read', false);
+          if (mounted) {
+            setState(() {
+              _unreadNotifCount = notifRes.length;
+            });
+          }
+        } catch (notifErr) {
+          debugPrint('[Unread Notifs Count Error]: $notifErr');
+        }
 
         final List<String> scholarIds = [user.id];
         if (scholarData != null && scholarData['id'] != null) {
@@ -268,7 +285,10 @@ class DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         GestureDetector(
-          onTap: () => Navigator.pushNamed(context, AppRouter.notifications),
+          onTap: () async {
+            await Navigator.pushNamed(context, AppRouter.notifications);
+            if (mounted) _loadDashboardData();
+          },
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -295,19 +315,37 @@ class DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-              Positioned(
-                top: -2,
-                right: -2,
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: AppColors.error,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.background, width: 2),
+              if (_unreadNotifCount > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.background, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.error.withAlpha(50),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Center(
+                      child: Text(
+                        _unreadNotifCount > 9 ? '9+' : '$_unreadNotifCount',
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),

@@ -20,7 +20,16 @@ class NotificationItem {
   final String? actionLabel;
   final String? route;
   final bool showVerified;
-  final String category; // 'Updates', 'Reminders'
+  final String category; // 'Announcements', 'Updates', 'Reminders'
+  final String? senderBadge;
+  final String? senderType;
+  final String? senderName;
+  final String? programTitle;
+  final String? location;
+  final double? lat;
+  final double? lng;
+  final String? announcementType;
+  final Map<String, dynamic>? metadata;
 
   NotificationItem({
     required this.id,
@@ -35,6 +44,15 @@ class NotificationItem {
     this.route,
     this.showVerified = false,
     this.category = 'Updates',
+    this.senderBadge,
+    this.senderType,
+    this.senderName,
+    this.programTitle,
+    this.location,
+    this.lat,
+    this.lng,
+    this.announcementType,
+    this.metadata,
   });
 }
 
@@ -60,7 +78,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   void _subscribeRealtime() {
     _realtimeChannel = Supabase.instance.client
-        .channel('notifications-realtime')
+        .channel('notifications-screen-realtime')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -72,7 +90,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'system_notifications',
+          table: 'scholarship_applications',
           callback: (payload) {
             if (mounted) _fetchNotifications();
           },
@@ -96,7 +114,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       final List<NotificationItem> loaded = [];
 
       if (user != null) {
-        // 1. Fetch from notifications table
+        // 1. Fetch from notifications table (Admin broadcasts, Provider announcements, Agreements, Statuses)
         try {
           final res = await Supabase.instance.client
               .from('notifications')
@@ -112,23 +130,70 @@ class _NotificationScreenState extends State<NotificationScreen> {
               final isRead = n['is_read'] == true;
               final createdAtRaw = n['created_at']?.toString();
               final timeStr = _formatTimestamp(createdAtRaw);
+              final meta = n['metadata'] is Map ? (n['metadata'] as Map<String, dynamic>) : <String, dynamic>{};
+
+              final senderType = (meta['sender_type'] ?? '').toString().toLowerCase();
+              final senderName = meta['sender_name']?.toString() ?? meta['provider_name']?.toString();
+              final annType = meta['announcement_type']?.toString();
+              final location = meta['location']?.toString();
+              final progTitle = meta['program_title']?.toString();
+
+              double? lat;
+              double? lng;
+              if (meta['coordinates'] is Map) {
+                final c = meta['coordinates'] as Map;
+                if (c['lat'] != null) lat = double.tryParse(c['lat'].toString());
+                if (c['lng'] != null) lng = double.tryParse(c['lng'].toString());
+              }
 
               IconVariant iconVar = IconVariant.green;
               IconData icon = LucideIcons.bell;
               StatusType statusType = StatusType.approved;
+              String category = 'Updates';
+              String? senderBadge;
 
-              if (type == 'success' || title.toLowerCase().contains('exam') || title.toLowerCase().contains('congrat')) {
+              if (senderType == 'admin' || type == 'announcement') {
+                senderBadge = '🏛️ System Admin';
+                category = 'Announcements';
+                icon = LucideIcons.megaphone;
+                iconVar = IconVariant.amber;
+                statusType = StatusType.pending;
+              } else if (senderType == 'provider') {
+                senderBadge = '🏢 ${senderName ?? "Provider"}';
+                category = 'Announcements';
+                if (type == 'exam' || annType?.toLowerCase().contains('exam') == true) {
+                  icon = LucideIcons.fileCheck;
+                  iconVar = IconVariant.amber;
+                  statusType = StatusType.pending;
+                } else if (type == 'fund' || annType?.toLowerCase().contains('fund') == true) {
+                  icon = LucideIcons.banknote;
+                  iconVar = IconVariant.sky;
+                  statusType = StatusType.released;
+                } else {
+                  icon = LucideIcons.bell;
+                  iconVar = IconVariant.green;
+                  statusType = StatusType.approved;
+                }
+              } else if (type == 'success' || title.toLowerCase().contains('exam') || title.toLowerCase().contains('congrat')) {
                 iconVar = IconVariant.green;
                 icon = title.toLowerCase().contains('exam') ? LucideIcons.fileCheck : LucideIcons.checkCircle2;
                 statusType = StatusType.approved;
+                category = 'Updates';
               } else if (type == 'warning' || title.toLowerCase().contains('flag') || title.toLowerCase().contains('resubmit')) {
                 iconVar = IconVariant.amber;
                 icon = LucideIcons.alertTriangle;
                 statusType = StatusType.pending;
+                category = 'Reminders';
               } else if (type == 'error' || title.toLowerCase().contains('reject')) {
                 iconVar = IconVariant.red;
                 icon = LucideIcons.xCircle;
                 statusType = StatusType.rejected;
+                category = 'Updates';
+              } else if (title.toLowerCase().contains('deadline') || title.toLowerCase().contains('schedule')) {
+                category = 'Reminders';
+                icon = LucideIcons.clock;
+                iconVar = IconVariant.amber;
+                statusType = StatusType.pending;
               }
 
               loaded.add(
@@ -141,9 +206,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   time: timeStr,
                   isUnread: !isRead,
                   accentType: statusType,
-                  actionLabel: 'View Tracker →',
+                  actionLabel: type == 'exam' || category == 'Updates' ? 'View Details →' : null,
                   route: AppRouter.applicationTracker,
-                  category: title.toLowerCase().contains('deadline') || title.toLowerCase().contains('resubmit') ? 'Reminders' : 'Updates',
+                  category: category,
+                  senderBadge: senderBadge,
+                  senderType: senderType,
+                  senderName: senderName,
+                  programTitle: progTitle,
+                  location: location,
+                  lat: lat,
+                  lng: lng,
+                  announcementType: annType,
+                  metadata: meta,
+                  showVerified: senderType == 'admin',
                 ),
               );
             }
@@ -152,7 +227,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           debugPrint('[Notifications Table Query Note]: $dbErr');
         }
 
-        // 2. Fetch live scholarship application updates to ensure instant notifications
+        // 2. Fetch live scholarship application updates
         try {
           final scholarRes = await Supabase.instance.client
               .from('scholar')
@@ -196,13 +271,14 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       icon: LucideIcons.alertTriangle,
                       iconVariant: IconVariant.amber,
                       title: 'Action Required: Document Issue Flagged ⚠️',
-                      message: 'An issue was noted in your submitted requirement for $progTitle. Tap to view provider instructions and resubmit before the deadline.',
+                      message: 'An issue was noted in your submitted requirement for $progTitle. Tap to view provider instructions and resubmit.',
                       time: timeStr,
                       isUnread: true,
                       accentType: StatusType.pending,
                       actionLabel: 'Resubmit File →',
                       route: AppRouter.applicationTracker,
                       category: 'Reminders',
+                      programTitle: progTitle,
                     ),
                   );
                 }
@@ -214,13 +290,14 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       icon: LucideIcons.fileCheck,
                       iconVariant: IconVariant.green,
                       title: 'Examination Shortlist 🎉',
-                      message: 'Congratulations! You passed the initial evaluation for $progTitle. You are now shortlisted for the Examination / Screening stage. Please wait for further announcements regarding the schedule and testing venue.',
+                      message: 'Congratulations! You passed the initial evaluation for $progTitle. You are now shortlisted for the Examination stage.',
                       time: timeStr,
                       isUnread: true,
                       accentType: StatusType.approved,
-                      actionLabel: 'View Tracker →',
+                      actionLabel: 'View Details →',
                       route: AppRouter.applicationTracker,
                       category: 'Updates',
+                      programTitle: progTitle,
                     ),
                   );
                 } else if (status == 'approved') {
@@ -230,13 +307,14 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       icon: LucideIcons.checkCircle2,
                       iconVariant: IconVariant.green,
                       title: 'Application Approved! 🎓',
-                      message: 'Congratulations! Your scholarship application for $progTitle has been officially approved by the committee. Welcome to the scholarship program!',
+                      message: 'Congratulations! Your scholarship application for $progTitle has been officially approved. Welcome to the scholarship program!',
                       time: timeStr,
                       isUnread: true,
                       accentType: StatusType.approved,
                       actionLabel: 'View Status →',
                       route: AppRouter.applicationTracker,
                       category: 'Updates',
+                      programTitle: progTitle,
                     ),
                   );
                 } else if (status == 'rejected') {
@@ -251,6 +329,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       isUnread: false,
                       accentType: StatusType.rejected,
                       category: 'Updates',
+                      programTitle: progTitle,
                     ),
                   );
                 }
@@ -262,7 +341,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         }
       }
 
-      // Add standard welcome/system default cards if loaded is empty
+      // Add default welcome card if completely empty
       if (loaded.isEmpty) {
         loaded.addAll([
           NotificationItem(
@@ -270,23 +349,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
             icon: LucideIcons.sparkles,
             iconVariant: IconVariant.green,
             title: 'Welcome to IskoAko! 🎉',
-            message: 'Your student account is active. Explore open scholarships and track your application milestones directly here.',
+            message: 'Your scholar account is active. Explore verified scholarships, track milestones, and receive instant announcements here.',
             time: 'Recently',
-            isUnread: true,
+            isUnread: false,
             accentType: StatusType.approved,
             actionLabel: 'Explore Scholarships →',
             category: 'Updates',
-          ),
-          NotificationItem(
-            id: 'mock-2',
-            icon: LucideIcons.clock,
-            iconVariant: IconVariant.amber,
-            title: 'Prepare Requirements',
-            message: 'Make sure your Transcript of Records (TOR) and Certificate of Registration (COR) are up to date for fast verification.',
-            time: '1 day ago',
-            isUnread: false,
-            accentType: StatusType.pending,
-            category: 'Reminders',
           ),
         ]);
       }
@@ -357,12 +425,38 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
+  Future<void> _handleNotificationTap(NotificationItem item) async {
+    if (item.isUnread) {
+      setState(() => item.isUnread = false);
+      try {
+        await Supabase.instance.client
+            .from('notifications')
+            .update({'is_read': true})
+            .eq('id', item.id);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+
+    // Navigate to dedicated NotificationDetailScreen
+    await Navigator.pushNamed(
+      context,
+      AppRouter.notificationDetail,
+      arguments: item,
+    );
+
+    if (mounted) {
+      _fetchNotifications();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final unreadCount = _notifications.where((n) => n.isUnread).length;
 
     List<NotificationItem> filtered = _notifications;
-    if (_selectedTab == 'Updates') {
+    if (_selectedTab == 'Announcements') {
+      filtered = _notifications.where((n) => n.category == 'Announcements').toList();
+    } else if (_selectedTab == 'Updates') {
       filtered = _notifications.where((n) => n.category == 'Updates').toList();
     } else if (_selectedTab == 'Reminders') {
       filtered = _notifications.where((n) => n.category == 'Reminders').toList();
@@ -384,7 +478,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
                           itemCount: filtered.length,
                           separatorBuilder: (_, __) => const SizedBox(height: 10),
-                          itemBuilder: (context, idx) {
+                          itemBuilder: (_, idx) {
                             final item = filtered[idx];
                             return _NotifCard(
                               icon: item.icon,
@@ -396,12 +490,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               accentType: item.accentType,
                               actionLabel: item.actionLabel,
                               showVerified: item.showVerified,
-                              onTap: () {
-                                setState(() => item.isUnread = false);
-                                if (item.route != null) {
-                                  Navigator.pushNamed(context, item.route!);
-                                }
-                              },
+                              senderBadge: item.senderBadge,
+                              announcementTag: item.announcementType,
+                              location: item.location,
+                              onTap: () => _handleNotificationTap(item),
                             );
                           },
                         ),
@@ -431,7 +523,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'You are all caught up with your latest scholarship announcements.',
+              'You are all caught up with your scholarship notices and broadcasts.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 12,
@@ -475,7 +567,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      'NOTIFICATION ALERTS',
+                      'NOTIFICATION INBOX',
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -500,7 +592,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Alerts &\nnotifications.',
+              'Alerts &\nannouncements.',
               style: GoogleFonts.playfairDisplay(
                 fontSize: 34,
                 fontWeight: FontWeight.w900,
@@ -509,28 +601,37 @@ class _NotificationScreenState extends State<NotificationScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            // Tab row
-            Row(
-              children: [
-                _TabItem(
-                  label: 'All',
-                  badge: unreadCount > 0 ? '$unreadCount' : null,
-                  isActive: _selectedTab == 'All',
-                  onTap: () => setState(() => _selectedTab = 'All'),
-                ),
-                const SizedBox(width: 20),
-                _TabItem(
-                  label: 'Updates',
-                  isActive: _selectedTab == 'Updates',
-                  onTap: () => setState(() => _selectedTab = 'Updates'),
-                ),
-                const SizedBox(width: 20),
-                _TabItem(
-                  label: 'Reminders',
-                  isActive: _selectedTab == 'Reminders',
-                  onTap: () => setState(() => _selectedTab = 'Reminders'),
-                ),
-              ],
+            // Tab row with Announcements tab
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _TabItem(
+                    label: 'All',
+                    badge: unreadCount > 0 ? '$unreadCount' : null,
+                    isActive: _selectedTab == 'All',
+                    onTap: () => setState(() => _selectedTab = 'All'),
+                  ),
+                  const SizedBox(width: 18),
+                  _TabItem(
+                    label: 'Announcements',
+                    isActive: _selectedTab == 'Announcements',
+                    onTap: () => setState(() => _selectedTab = 'Announcements'),
+                  ),
+                  const SizedBox(width: 18),
+                  _TabItem(
+                    label: 'Updates',
+                    isActive: _selectedTab == 'Updates',
+                    onTap: () => setState(() => _selectedTab = 'Updates'),
+                  ),
+                  const SizedBox(width: 18),
+                  _TabItem(
+                    label: 'Reminders',
+                    isActive: _selectedTab == 'Reminders',
+                    onTap: () => setState(() => _selectedTab = 'Reminders'),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -551,6 +652,9 @@ class _NotifCard extends StatelessWidget {
   final StatusType accentType;
   final String? actionLabel;
   final bool showVerified;
+  final String? senderBadge;
+  final String? announcementTag;
+  final String? location;
   final VoidCallback? onTap;
 
   const _NotifCard({
@@ -563,6 +667,9 @@ class _NotifCard extends StatelessWidget {
     required this.accentType,
     this.actionLabel,
     this.showVerified = false,
+    this.senderBadge,
+    this.announcementTag,
+    this.location,
     this.onTap,
   });
 
@@ -629,6 +736,49 @@ class _NotifCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Sender Badge / Tag Row
+          if (senderBadge != null || announcementTag != null) ...[
+            Row(
+              children: [
+                if (senderBadge != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryDark.withAlpha(12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      senderBadge!,
+                      style: GoogleFonts.inter(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryDark,
+                      ),
+                    ),
+                  ),
+                if (announcementTag != null) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.amber.withAlpha(20),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      announcementTag!,
+                      style: GoogleFonts.inter(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.amberDeep,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -679,12 +829,46 @@ class _NotifCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             message,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.inter(
               fontSize: 12,
               color: AppColors.textSecondary,
               height: 1.55,
             ),
           ),
+
+          // Venue Location Card (for Examination Schedules)
+          if (location != null && location!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.pendingBg,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.amber.withAlpha(50), width: 0.8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.mapPin, size: 14, color: AppColors.amberDeep),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Venue: $location',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.amberDeep,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(LucideIcons.chevronRight, size: 14, color: AppColors.amberDeep),
+                ],
+              ),
+            ),
+          ],
+
           if (actionLabel != null || showVerified) ...[
             const SizedBox(height: 10),
             Wrap(

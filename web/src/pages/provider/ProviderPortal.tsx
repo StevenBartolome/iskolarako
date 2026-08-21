@@ -17,6 +17,8 @@ import { ProviderVerificationTab } from './components/ProviderVerificationTab';
 import { ProviderViewApplicationTab } from './components/ProviderViewApplicationTab';
 import { ProviderProgramFormTab } from './components/ProviderProgramFormTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
+import { ProviderNotificationDrawer } from './components/ProviderNotificationDrawer';
+import { sendProviderAnnouncement, fetchProviderBroadcasts, deleteNotification } from '@/services/notificationService';
 import type {
   ProviderPortalProps,
   TabType,
@@ -46,6 +48,13 @@ const getTodayMidnight = () => {
 export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWelcome }) => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   
+  // Current authenticated user ID
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
+
+  // Notification Drawer State
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+
   // Profile state loaded dynamically from Supabase
   const [profile, setProfile] = useState<{
     firstName: string;
@@ -120,6 +129,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
+        setCurrentUserId(user.id);
 
         // Fetch user record
         const { data: userData, error: userErr } = await supabase
@@ -490,29 +500,98 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   // Announcements state
   const [announcements, setAnnouncements] = useState<any[]>([]);
-
   const [newAnnTitle, setNewAnnTitle] = useState('');
   const [newAnnBody, setNewAnnBody] = useState('');
   const [newAnnType, setNewAnnType] = useState<AnnType>('General Notice');
   const [newAnnAudience, setNewAnnAudience] = useState('All Scholars');
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
 
-  const handleAddAnnouncement = (e: React.FormEvent) => {
+  const fetchBroadcasts = async () => {
+    if (!providerDetails?.id) return;
+    try {
+      const data = await fetchProviderBroadcasts(providerDetails.id, currentUserId);
+      if (data && data.length > 0) {
+        setAnnouncements(data);
+      }
+    } catch (err) {
+      console.error('Error fetching provider broadcasts:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (providerDetails?.id) {
+      fetchBroadcasts();
+    }
+  }, [providerDetails?.id, currentUserId]);
+
+  const handleAddAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAnnTitle || !newAnnBody) return;
-    const newAnn = {
-      id: Date.now(),
-      title: newAnnTitle,
-      body: newAnnBody,
-      type: newAnnType,
-      audience: newAnnAudience,
-      date: 'Just Now',
-      author: 'DOST-SEI Admin',
-      location: newAnnType === 'Examination Schedule' ? selectedExamLocation : null
-    };
-    setAnnouncements([newAnn, ...announcements]);
-    setNewAnnTitle('');
-    setNewAnnBody('');
-    showToast(`Successfully broadcasted: "${newAnnTitle}"`);
+    if (!newAnnTitle.trim() || !newAnnBody.trim() || !providerDetails?.id) return;
+
+    // Validate Examination Venue for exam schedules
+    const examLocation = (examCoords.address || selectedExamLocation || '').trim();
+    if (newAnnType === 'Examination Schedule' && !examLocation) {
+      showToast('Examination Venue is required! Please specify a venue location.');
+      return;
+    }
+
+    setIsBroadcasting(true);
+    try {
+      const matchedProg = programsList.find(p => String(p.id) === selectedProgramId);
+      const res = await sendProviderAnnouncement({
+        providerId: providerDetails.id,
+        providerName: providerDetails.name,
+        authorUserId: currentUserId,
+        authorName: profile ? `${profile.firstName} ${profile.lastName}` : providerDetails.name,
+        title: newAnnTitle.trim(),
+        message: newAnnBody.trim(),
+        type: newAnnType,
+        audience: newAnnAudience,
+        programId: selectedProgramId !== 'all' ? selectedProgramId : undefined,
+        programTitle: matchedProg ? matchedProg.title : undefined,
+        location: newAnnType === 'Examination Schedule' ? examLocation : undefined,
+        coordinates: newAnnType === 'Examination Schedule' ? { lat: examCoords.lat, lng: examCoords.lng, address: examCoords.address } : undefined,
+      });
+
+      if (res.success) {
+        if (newAnnType === 'Examination Schedule') {
+          if (res.count > 0) {
+            showToast(`Exam schedule published & sent to ${res.count} shortlisted "for_exam" candidates!`);
+          } else {
+            showToast(`Exam schedule published (0 candidates currently in "for_exam" status).`);
+          }
+        } else if (selectedProgramId !== 'all' && matchedProg) {
+          if (res.count > 0) {
+            showToast(`Announcement published & sent to ${res.count} approved scholars of "${matchedProg.title}"!`);
+          } else {
+            showToast(`Announcement published (0 approved scholars found for "${matchedProg.title}").`);
+          }
+        } else {
+          showToast(`Announcement published & saved to ${res.count} scholars' inboxes!`);
+        }
+        setNewAnnTitle('');
+        setNewAnnBody('');
+        await fetchBroadcasts();
+      } else {
+        showToast(`Broadcast failed: ${res.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      console.error('Error broadcasting announcement:', err);
+      showToast(`Broadcast failed: ${err.message || 'Error occurred'}`);
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: string | number) => {
+    try {
+      await deleteNotification(String(id));
+      showToast('Announcement removed.');
+      await fetchBroadcasts();
+    } catch (err) {
+      console.error('Error deleting announcement:', err);
+    }
   };
 
   // Programs State (Loaded dynamically from database)
@@ -2108,8 +2187,66 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-10 max-w-7xl mx-auto">
+      {/* Main Content Area with Top Header */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#F9F5EF]">
+        {/* Top Header Bar */}
+        <header className="bg-white border-b border-[#D9D2C5]/60 px-8 py-3.5 flex items-center justify-between shrink-0 shadow-xs z-10">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#2D5941] animate-pulse" />
+              <h2 className="text-sm font-bold text-[#1A3C2E] font-serif">
+                {providerDetails?.name || 'Scholarship Provider Portal'}
+              </h2>
+            </div>
+            {providerDetails && (
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${
+                providerDetails.verificationStatus === 'verified'
+                  ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20'
+                  : providerDetails.verificationStatus === 'under_review'
+                  ? 'bg-[#FFF8EE] text-[#C97B2E] border border-amber-200'
+                  : 'bg-slate-100 text-[#6C6C70]'
+              }`}>
+                {providerDetails.verificationStatus === 'verified' ? '✓ Verified Partner' : providerDetails.verificationStatus.replace('_', ' ')}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Notification Bell Button */}
+            <button
+              type="button"
+              onClick={() => setIsNotificationDrawerOpen(true)}
+              className="relative p-2.5 rounded-2xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer flex items-center justify-center group"
+              title="Notifications & Admin Broadcasts"
+            >
+              <svg className="w-5 h-5 transition-transform group-hover:scale-110 text-[#1A3C2E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {unreadNotifCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#E8A838] text-[#1A3C2E] text-[10px] font-black rounded-full flex items-center justify-center shadow-sm ring-2 ring-white animate-bounce">
+                  {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                </span>
+              )}
+            </button>
+
+            {/* Quick Broadcast button */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('announcements')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'announcements'
+                  ? 'bg-[#2D5941] text-white shadow-sm'
+                  : 'bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E]'
+              }`}
+            >
+              <span>📢</span>
+              <span>Announcements</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-10 max-w-7xl w-full mx-auto">
         {activeTab === 'dashboard' && (
           <ProviderDashboardTab
             programsList={programsList}
@@ -2336,6 +2473,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             setNewAnnType={setNewAnnType}
             newAnnAudience={newAnnAudience}
             setNewAnnAudience={setNewAnnAudience}
+            selectedProgramId={selectedProgramId}
+            setSelectedProgramId={setSelectedProgramId}
+            programsList={programsList}
             setIsBigMapModalOpen={setIsBigMapModalOpen}
             isLoaded={isLoaded}
             onAutocompleteLoad={onAutocompleteLoad}
@@ -2351,6 +2491,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             newAnnBody={newAnnBody}
             setNewAnnBody={setNewAnnBody}
             announcements={announcements}
+            onDeleteAnnouncement={handleDeleteAnnouncement}
+            isBroadcasting={isBroadcasting}
           />
         )}
 
@@ -2394,7 +2536,16 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             }}
           />
         )}
-      </main>
+        </main>
+      </div>
+
+      {/* ─── Provider Notification Drawer ─── */}
+      <ProviderNotificationDrawer
+        isOpen={isNotificationDrawerOpen}
+        onClose={() => setIsNotificationDrawerOpen(false)}
+        userId={currentUserId}
+        onUnreadCountChange={setUnreadNotifCount}
+      />
 
       {/* ─── View Details Modal ─── */}
       {isViewModalOpen && selectedProgram && (

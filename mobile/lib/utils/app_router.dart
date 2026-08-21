@@ -9,6 +9,7 @@ import '../screens/applications/document_upload_screen.dart';
 import '../screens/scholarships/scholarship_detail_screen.dart';
 import '../screens/funds/fund_tracking_screen.dart';
 import '../screens/notifications/notification_screen.dart';
+import '../screens/notifications/notification_detail_screen.dart';
 import '../widgets/main_layout.dart';
 
 import '../screens/profile/profile_edit_screen.dart';
@@ -25,6 +26,7 @@ class AppRouter {
   static const String applicationTracker = '/application_tracker';
   static const String documentUpload = '/document_upload';
   static const String notifications = '/notifications';
+  static const String notificationDetail = '/notification_detail';
   static const String fundTracking = '/fund_tracking';
   static const String profileEdit = '/profile_edit';
 
@@ -54,6 +56,11 @@ class AppRouter {
             builder: (_) => const DocumentUploadScreen(), settings: settings);
       case notifications:
         return MaterialPageRoute(builder: (_) => const NotificationScreen(), settings: settings);
+      case notificationDetail:
+        return MaterialPageRoute(
+          builder: (_) => const NotificationDetailScreen(),
+          settings: settings,
+        );
       case fundTracking:
         return MaterialPageRoute(builder: (_) => const FundTrackingScreen(), settings: settings);
       case profileEdit:
