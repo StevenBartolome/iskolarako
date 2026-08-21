@@ -195,7 +195,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
 
     try {
       // Step 1: Capture baseline frame (facing forward)
-      await Future.delayed(const Duration(milliseconds: 700));
+      await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
       final baselineFile = await _cameraController!.takePicture();
       final baselineBytes = await baselineFile.readAsBytes();
@@ -205,14 +205,15 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       setState(() {
         _faceDetected = true; // Turn blue as soon as forward face is locked
         _livenessHint = action == LivenessAction.blink
-            ? 'Step 2: Now BLINK or CLOSE your eyes!'
+            ? 'Step 2: Blink / close your eyes now!'
             : (action == LivenessAction.turnLeft
                 ? 'Step 2: Now TURN HEAD to the LEFT!'
                 : 'Step 2: Now TURN HEAD to the RIGHT!');
       });
 
-      // Step 2: Give user 1.5 seconds to turn head / blink
-      await Future.delayed(const Duration(milliseconds: 1500));
+      // Step 2: Action-specific fast delay (500ms for blink, 800ms for turn)
+      final actionDelay = action == LivenessAction.blink ? 500 : 800;
+      await Future.delayed(Duration(milliseconds: actionDelay));
       if (!mounted) return;
 
       final actionFile = await _cameraController!.takePicture();
@@ -243,7 +244,6 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           if (action == LivenessAction.turnLeft) _turnLeftDone = true;
           if (action == LivenessAction.turnRight) _turnRightDone = true;
         });
-        await Future.delayed(const Duration(milliseconds: 700));
         if (mounted) _advanceLivenessStep(action);
       } else {
         setState(() {
