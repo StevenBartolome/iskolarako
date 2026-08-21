@@ -11,6 +11,8 @@ interface ProviderProgramsTabProps {
   handleViewDetails: (prog: Program) => void;
   handleEditProgram: (prog: Program) => void;
   handleOpenRenewModal: (prog: Program) => void;
+  handleOpenEditCycle?: (prog: Program, cyc: any) => void;
+  handleDeleteCycle?: (id: string, name: string) => void;
   setProgramToClose: (prog: Program | null) => void;
   setIsCloseConfirmOpen: (open: boolean) => void;
   fetchPrograms: () => Promise<void>;
@@ -25,6 +27,8 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
   handleViewDetails,
   handleEditProgram,
   handleOpenRenewModal,
+  handleOpenEditCycle,
+  handleDeleteCycle,
   setProgramToClose,
   setIsCloseConfirmOpen,
   fetchPrograms,
@@ -134,12 +138,22 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                     {prog.cycles?.map((cyc: any) => (
                       <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
                         <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                          cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                            cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                            cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
+                            cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' :
                             'bg-gray-200 text-gray-600'
                           }`}>
-                          {cyc.status}
-                        </span>
+                            {cyc.status}
+                          </span>
+                          {handleOpenEditCycle && (
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenEditCycle(prog, cyc); }} className="p-0.5 hover:text-[#2D5941] cursor-pointer bg-transparent border-0" title="Edit cycle">✏️</button>
+                          )}
+                          {handleDeleteCycle && (
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-red-700 cursor-pointer bg-transparent border-0" title="Delete cycle">🗑️</button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

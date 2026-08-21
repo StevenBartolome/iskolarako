@@ -17,12 +17,14 @@ interface ProviderViewApplicationTabProps {
     remarks?: string,
     updatedDocs?: SubmittedDocItem[]
   ) => Promise<void>;
+  onUpdateDocs?: (appId: string | number, updatedDocs: SubmittedDocItem[]) => void;
 }
 
 export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProps> = ({
   application,
   onBack,
   onUpdateStatus,
+  onUpdateDocs,
 }) => {
   const [selectedStatus, setSelectedStatus] = useState<ApplicantStatus>(application?.status || 'Pending');
   const [remarks, setRemarks] = useState(application?.remarks || '');
@@ -57,6 +59,27 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
     'Certificate of Good Moral Character (Updated)',
     'Proof of Intended College Admission / Entrance Exam Results',
   ];
+
+  const evaluateAndAdjustStatus = (docs: SubmittedDocItem[]) => {
+    const scannableDocs = docs.filter(d => d.document_url || d.url);
+    if (scannableDocs.length === 0) return;
+
+    const flaggedDocs = docs.filter(
+      d => d.status === 'Flagged' || d.aiVerification?.verificationStatus === 'flagged' || d.aiVerification?.verificationStatus === 'rejected'
+    );
+    const verifiedDocs = docs.filter(
+      d => d.status === 'Verified' || d.aiVerification?.verificationStatus === 'verified'
+    );
+
+    setAutoScanSummary({
+      total: scannableDocs.length,
+      flagged: flaggedDocs.length,
+      verified: verifiedDocs.length,
+      actionTaken: flaggedDocs.length > 0
+        ? `Application noted for review (${flaggedDocs.length}/${scannableDocs.length} flagged/incomplete).`
+        : `All ${scannableDocs.length} documents verified authentic.`,
+    });
+  };
 
   const persistDocAiScanToDb = async (doc: SubmittedDocItem, result: DocVerificationResult) => {
     try {
@@ -122,14 +145,15 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
       if (application?.id) {
         const currentDocs = application.submittedDocuments || [];
-        const updatedDocsJson = currentDocs.map(d => {
+        const newDocStatus: 'Verified' | 'Flagged' = result.verificationStatus === 'verified' ? 'Verified' : 'Flagged';
+        const updatedDocsJson: SubmittedDocItem[] = currentDocs.map(d => {
           const isMatch = (d.id && doc.id && d.id === doc.id) ||
             (d.name && doc.name && d.name.toLowerCase().trim() === doc.name.toLowerCase().trim()) ||
             (d.document_url && doc.document_url && d.document_url.trim() === doc.document_url.trim());
           if (isMatch) {
             return {
               ...d,
-              status: result.verificationStatus === 'verified' ? 'Verified' : 'Flagged',
+              status: newDocStatus,
               remarks: docRemarks,
               aiVerification: result,
             };
@@ -144,6 +168,10 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             updated_at: new Date().toISOString(),
           })
           .eq('id', application.id);
+
+        if (application) {
+          application.submittedDocuments = updatedDocsJson;
+        }
       }
     } catch (err) {
       console.warn('[Doc AI Cache Persist Note in View Tab]:', err);
@@ -160,7 +188,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
         setActivePreviewDoc(docs[0]);
       }
 
-      // Auto scan only unscanned or resubmitted documents on load
+      // Automatically scan only unscanned or resubmitted documents on initial load
       const unscanned = docs.filter(d => {
         const hasUrl = Boolean(d.url || d.document_url);
         if (!hasUrl) return false;
@@ -170,7 +198,9 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
       });
 
       if (unscanned.length > 0) {
-        handleBatchAiScan(true);
+        handleBatchAiScan(docs, true);
+      } else {
+        evaluateAndAdjustStatus(docs);
       }
     }
   }, [application]);
@@ -376,72 +406,111 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
     }
   };
 
-  const handleBatchAiScan = async (onlyUnscanned = false) => {
-    if (documentsList.length === 0) return;
-    setIsBatchScanning(true);
-    let flaggedCount = 0;
-    let verifiedCount = 0;
-    const updatedDocs = [...documentsList];
+  const handleBatchAiScan = async (customDocsList?: SubmittedDocItem[], onlyUnscanned = false) => {
+    const currentList = customDocsList || documentsList;
+    if (!currentList || currentList.length === 0) return;
 
-    for (let i = 0; i < updatedDocs.length; i++) {
-      const doc = updatedDocs[i];
-      const fileUrl = doc.url || doc.document_url || '';
-
-      const isResubmitted = (doc.remarks || '').toLowerCase().includes('resubmit');
-      const isAlreadyScanned = Boolean(doc.aiVerification && doc.aiVerification.verificationStatus);
-
-      if (onlyUnscanned && isAlreadyScanned && !isResubmitted) {
-        if (doc.status === 'Verified' || doc.aiVerification?.verificationStatus === 'verified') {
-          verifiedCount++;
-        } else {
-          flaggedCount++;
+    const scannableIndices = currentList
+      .map((d, i) => {
+        if (!(d.document_url || d.url)) return -1;
+        if (onlyUnscanned && d.aiVerification && d.aiVerification.verificationStatus && !(d.remarks || '').toLowerCase().includes('resubmit')) {
+          return -1;
         }
-        continue;
-      }
+        return i;
+      })
+      .filter(i => i !== -1);
 
-      setBatchProgressMsg(`Analyzing Document ${i + 1} of ${updatedDocs.length}: "${doc.name}"...`);
+    if (scannableIndices.length === 0) {
+      evaluateAndAdjustStatus(currentList);
+      return;
+    }
 
-      if (!fileUrl) {
-        updatedDocs[i] = { ...doc, status: 'Flagged', remarks: 'No accessible document file preview found' };
-        flaggedCount++;
-        continue;
-      }
+    setIsBatchScanning(true);
+    setBatchProgressMsg(`Auto-Scanning ${scannableIndices.length} document(s)...`);
+
+    let workingList = [...currentList];
+    const context = getApplicantContext();
+
+    for (let count = 0; count < scannableIndices.length; count++) {
+      const idx = scannableIndices[count];
+      const doc = workingList[idx];
+      const fileUrl = doc.url || doc.document_url;
+
+      if (!fileUrl) continue;
+
+      setBatchProgressMsg(`Auto-Scanning (${count + 1}/${scannableIndices.length}): ${doc.name}...`);
+      workingList = workingList.map((d, i) => (i === idx ? { ...d, isAiScanning: true } : d));
+      setDocumentsList(workingList);
 
       try {
         const result = await verifyDocumentAuthenticity({
           documentUrl: fileUrl,
-          documentName: doc.name,
-          applicantContext: getApplicantContext(),
+          documentName: doc.name || doc.filename || 'Submitted Document',
+          applicantContext: context,
         });
-        persistDocAiScanToDb(doc, result);
-        const isVerified = result.verificationStatus === 'verified';
-        if (isVerified) {
-          verifiedCount++;
-        } else {
-          flaggedCount++;
+
+        await persistDocAiScanToDb(doc, result);
+
+        workingList = workingList.map((d, i) => {
+          if (i !== idx) return d;
+          let newStatus: 'Pending' | 'Verified' | 'Flagged' = d.status || 'Pending';
+          let autoRemarks = d.remarks || '';
+
+          if (result.verificationStatus === 'verified') {
+            newStatus = 'Verified';
+            if (!autoRemarks || autoRemarks.includes('Flagged') || autoRemarks.includes('Resubmitted')) autoRemarks = '';
+          } else if (result.verificationStatus === 'flagged' || result.verificationStatus === 'rejected') {
+            newStatus = 'Flagged';
+            if (result.flags && result.flags.length > 0) {
+              autoRemarks = `AI Flag: ${result.flags[0]}`;
+            } else {
+              autoRemarks = result.summary || 'Flagged for provider review';
+            }
+          }
+
+          return {
+            ...d,
+            status: newStatus,
+            remarks: autoRemarks,
+            aiVerification: result,
+            isAiScanning: false,
+          };
+        });
+
+        setDocumentsList(workingList);
+        if (application) {
+          application.submittedDocuments = workingList;
         }
-        updatedDocs[i] = {
-          ...doc,
-          status: isVerified ? 'Verified' : 'Flagged',
-          remarks: result.summary,
-          aiVerification: result,
-        };
       } catch (err) {
-        flaggedCount++;
-        updatedDocs[i] = { ...doc, status: 'Flagged', remarks: 'OCR scanning failed' };
+        console.error(`Error verifying document #${idx}:`, err);
+        workingList = workingList.map((d, i) => (i === idx ? { ...d, isAiScanning: false } : d));
+        setDocumentsList(workingList);
       }
     }
 
-    setDocumentsList(updatedDocs);
-    setIsBatchScanning(false);
-    setBatchProgressMsg('');
+    if (application?.id) {
+      await supabase
+        .from('scholarship_applications')
+        .update({
+          submitted_documents: { documents: workingList },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', application.id);
+    }
 
-    setAutoScanSummary({
-      total: updatedDocs.length,
-      flagged: flaggedCount,
-      verified: verifiedCount,
-      actionTaken: flaggedCount > 0 ? 'Flagged items detected' : 'All documents clear',
-    });
+    setBatchProgressMsg('AI Verification Complete!');
+    if (application) {
+      application.submittedDocuments = workingList;
+      if (onUpdateDocs) {
+        onUpdateDocs(application.id, workingList);
+      }
+    }
+    evaluateAndAdjustStatus(workingList);
+
+    setTimeout(() => {
+      setIsBatchScanning(false);
+      setBatchProgressMsg('');
+    }, 1200);
   };
 
   const handleSaveStatus = async (overrideStatus?: ApplicantStatus) => {
@@ -759,7 +828,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
               </div>
 
               <button
-                onClick={() => handleBatchAiScan(false)}
+                onClick={() => handleBatchAiScan(documentsList, false)}
                 disabled={isBatchScanning || documentsList.length === 0}
                 className={`px-4 py-2.5 rounded-xl text-xs font-extrabold border-0 cursor-pointer transition-all flex items-center justify-center gap-2 shadow-sm ${
                   isBatchScanning

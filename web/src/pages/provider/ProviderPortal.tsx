@@ -307,13 +307,41 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       banking_policy: dbProg.banking_policy,
       required_bank_name: dbProg.required_bank_name,
       renewalGwa: dbProg.renewal_gwa_requirement ? String(dbProg.renewal_gwa_requirement) : '',
-      cycles: (dbProg.cycles || []).map((cyc: any) => ({
-        id: cyc.id,
-        name: cyc.cycle_name,
-        startDate: cyc.application_start_date,
-        endDate: cyc.application_end_date,
-        status: cyc.status === 'open' ? 'Open' : cyc.status === 'evaluating' ? 'Evaluating' : cyc.status === 'upcoming' ? 'Upcoming' : 'Closed'
-      })),
+      cycles: (dbProg.cycles || []).map((cyc: any) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const end = cyc.application_end_date ? new Date(cyc.application_end_date + 'T00:00:00') : null;
+        const start = cyc.application_start_date ? new Date(cyc.application_start_date + 'T00:00:00') : null;
+
+        let dynamicStatus = 'Closed';
+        const rawStatus = (cyc.status || '').toLowerCase().trim();
+
+        if (rawStatus === 'closed' || rawStatus === 'archived') {
+          dynamicStatus = 'Closed';
+        } else if (end && end < today) {
+          // Deadline has passed! Automatically mark as Closed
+          dynamicStatus = 'Closed';
+        } else if (start && start > today) {
+          dynamicStatus = 'Upcoming';
+        } else if (rawStatus === 'evaluating') {
+          dynamicStatus = 'Evaluating';
+        } else {
+          dynamicStatus = 'Open';
+        }
+
+        return {
+          id: cyc.id,
+          name: cyc.cycle_name,
+          startDate: cyc.application_start_date,
+          endDate: cyc.application_end_date,
+          status: dynamicStatus,
+          cycleType: cyc.cycle_type,
+          semester: cyc.semester,
+          slotsAvailable: cyc.slots_available,
+          renewalRequirements: cyc.renewal_requirements,
+        };
+      }),
       budgetUsed: '₱0',
       budgetTotal: dbProg.budget_total ? `₱${Number(dbProg.budget_total).toLocaleString()}` : '₱0',
       rejectionRemarks: dbProg.rejection_remarks || undefined,
@@ -344,6 +372,24 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       }
 
       if (data) {
+        // Auto-sync expired cycles in the database to status: 'closed'
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const expiredCycleIds = data.flatMap((p: any) =>
+          (p.cycles || [])
+            .filter((c: any) => (c.status === 'open' || c.status === 'active') && c.application_end_date && new Date(c.application_end_date + 'T00:00:00') < today)
+            .map((c: any) => c.id)
+        );
+
+        if (expiredCycleIds.length > 0) {
+          supabase
+            .from('application_cycles')
+            .update({ status: 'closed' })
+            .in('id', expiredCycleIds)
+            .then(() => console.log(`[Auto-Close Cycles]: Synced ${expiredCycleIds.length} expired cycles to closed in DB.`));
+        }
+
         const mapped = data.map(mapDbToProgram);
         setProgramsList(mapped);
       }
@@ -362,7 +408,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         { event: '*', schema: 'public', table: 'scholarship_programs' },
         () => {
           fetchPrograms();
-          showToast('Programs updated in real-time!');
         }
       )
       .on(
@@ -380,7 +425,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   }, [providerDetails?.id, categories]);
 
   // Search & filter states
-
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
 
@@ -407,12 +451,23 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   // Renew/Reopen Cycle Modal States
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [selectedProgramForRenewal, setSelectedProgramForRenewal] = useState<Program | null>(null);
+  const [cycleToEdit, setCycleToEdit] = useState<any | null>(null);
   const [renewCycleName, setRenewCycleName] = useState('');
   const [renewStartDate, setRenewStartDate] = useState('');
   const [renewEndDate, setRenewEndDate] = useState('');
   const [renewSlots, setRenewSlots] = useState('');
   const [renewCycleType, setRenewCycleType] = useState<'new_applicant' | 'renewal'>('renewal');
   const [renewSemester, setRenewSemester] = useState<string>('2nd Semester');
+  const [renewRequirements, setRenewRequirements] = useState<Array<{ name: string; description: string }>>([
+    {
+      name: '1st Semester Official Grade Slip / Report of Grades',
+      description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
+    },
+    {
+      name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
+      description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+    },
+  ]);
 
   // Delete Cycle Confirm Modal States
   const [isDeleteCycleConfirmOpen, setIsDeleteCycleConfirmOpen] = useState(false);
@@ -758,6 +813,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           }
 
           let scholarPaymentMap: Record<string, any> = {};
+          let scholarPayoutsMap: Record<string, any[]> = {};
           if (scholarIds.length > 0) {
             try {
               const { data: pAccData } = await supabase
@@ -771,6 +827,37 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               }
             } catch (pErr) {
               console.warn('[Provider Scholar Payment Accounts Exception]:', pErr);
+            }
+
+            try {
+              const { data: frData } = await supabase
+                .from('fund_releases')
+                .select(`
+                  id,
+                  application_id,
+                  scholar_id,
+                  cycle_id,
+                  program_id,
+                  amount,
+                  status,
+                  blockchain_verified,
+                  fund_type,
+                  created_at,
+                  cycle:cycle_id(cycle_name, semester, cycle_type)
+                `)
+                .in('scholar_id', scholarIds)
+                .order('created_at', { ascending: true });
+
+              if (frData) {
+                frData.forEach((fr: any) => {
+                  if (!scholarPayoutsMap[fr.scholar_id]) {
+                    scholarPayoutsMap[fr.scholar_id] = [];
+                  }
+                  scholarPayoutsMap[fr.scholar_id].push(fr);
+                });
+              }
+            } catch (frErr) {
+              console.warn('[Provider Fund Releases Exception]:', frErr);
             }
           }
 
@@ -786,6 +873,17 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               return `${num}th Year`;
             }
             return String(yl);
+          };
+
+          const formatGwa = (raw: any, remarksStr?: string) => {
+            if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
+              return String(raw).trim();
+            }
+            if (remarksStr) {
+              const match = remarksStr.match(/GWA:\s*([0-9\.]+)/i);
+              if (match && match[1]) return match[1];
+            }
+            return '1.50';
           };
 
           const mappedApplicants: ApplicationDetail[] = data.map((app: any) => {
@@ -810,7 +908,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             const school = scholar.school || scholar.institution || 'Unspecified University';
             const course = scholar.course || scholar.degree || 'Undergraduate Degree';
             const yearLevel = formatYearLevel(scholar.year_level);
-            const gpa = scholar.gpa != null ? String(scholar.gpa) : (scholar.gwa != null ? String(scholar.gwa) : '1.50');
+            const gpa = formatGwa(scholar.gpa || scholar.gwa, app.remarks);
             const citizenship = scholar.citizenship || 'Filipino';
             const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
             const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
@@ -850,41 +948,30 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               scholarDocsMap[scholar.id].forEach(sd => {
                 const sdName = (sd.name || '').toLowerCase().trim();
                 const sdUrl = (sd.document_url || sd.url || '').toLowerCase().trim();
-                const sdFile = (sd.filename || '').toLowerCase().trim();
 
                 const existingIdx = docs.findIndex(d => {
-                  const dName = (d.name || '').toLowerCase().trim();
                   const dUrl = (d.document_url || d.url || '').toLowerCase().trim();
-                  const dFile = (d.filename || '').toLowerCase().trim();
-                  return (sdName && dName === sdName) ||
-                         (sdUrl && dUrl === sdUrl) ||
-                         (sdFile && dFile === sdFile);
+                  if (dUrl && sdUrl && (dUrl === sdUrl || dUrl.includes(sdUrl) || sdUrl.includes(dUrl))) return true;
+                  const dName = (d.name || '').toLowerCase().trim();
+                  return sdName && dName && (sdName === dName || sdName.includes(dName) || dName.includes(sdName));
                 });
 
                 if (existingIdx !== -1) {
                   const currentDoc = docs[existingIdx];
-                  const isResubmitted =
-                    (currentDoc.remarks || '').toLowerCase().includes('resubmit') ||
-                    (sd.remarks || '').toLowerCase().includes('resubmit') ||
-                    Boolean(currentDoc.document_url && sd.document_url && currentDoc.document_url.trim() !== sd.document_url.trim());
+                  const cachedAiVerif = currentDoc.aiVerification || sd.aiVerification;
+                  const cachedStatus = (currentDoc.status === 'Verified' || currentDoc.status === 'Flagged')
+                    ? currentDoc.status
+                    : (cachedAiVerif?.verificationStatus === 'verified' ? 'Verified' : (sd.status || currentDoc.status || 'Pending'));
 
-                  const cachedAiVerif = isResubmitted ? undefined : (sd.aiVerification || currentDoc.aiVerification);
-                  const cachedStatus = isResubmitted
-                    ? 'Pending'
-                    : (cachedAiVerif?.verificationStatus === 'verified' ? 'Verified' : (sd.status || currentDoc.status));
-
-                  // Merge the cached AI verification and status (clear only if actually resubmitted)
                   docs[existingIdx] = {
                     ...currentDoc,
                     id: sd.id || currentDoc.id,
                     status: cachedStatus,
-                    remarks: isResubmitted ? (currentDoc.remarks || 'Resubmitted by scholar') : (sd.remarks || currentDoc.remarks),
+                    remarks: currentDoc.remarks || sd.remarks || '',
                     aiVerification: cachedAiVerif,
                     document_url: currentDoc.document_url || sd.document_url,
                     url: currentDoc.url || sd.url,
                   };
-                } else {
-                  docs.push(sd);
                 }
               });
             }
@@ -959,7 +1046,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             const school = scholar.school || scholar.institution || 'Unspecified University';
             const course = scholar.course || scholar.degree || 'Undergraduate Degree';
             const yearLevel = formatYearLevel(scholar.year_level);
-            const gpa = scholar.gpa != null ? String(scholar.gpa) : (scholar.gwa != null ? String(scholar.gwa) : '1.50');
+            const gpa = formatGwa(scholar.gpa || scholar.gwa, app.remarks);
             const citizenship = scholar.citizenship || 'Filipino';
             const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
             const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
@@ -990,40 +1077,30 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               scholarDocsMap[scholar.id].forEach(sd => {
                 const sdName = (sd.name || '').toLowerCase().trim();
                 const sdUrl = (sd.document_url || sd.url || '').toLowerCase().trim();
-                const sdFile = (sd.filename || '').toLowerCase().trim();
 
                 const existingIdx = docs.findIndex(d => {
-                  const dName = (d.name || '').toLowerCase().trim();
                   const dUrl = (d.document_url || d.url || '').toLowerCase().trim();
-                  const dFile = (d.filename || '').toLowerCase().trim();
-                  return (sdName && dName === sdName) ||
-                         (sdUrl && dUrl === sdUrl) ||
-                         (sdFile && dFile === sdFile);
+                  if (dUrl && sdUrl && (dUrl === sdUrl || dUrl.includes(sdUrl) || sdUrl.includes(dUrl))) return true;
+                  const dName = (d.name || '').toLowerCase().trim();
+                  return sdName && dName && (sdName === dName || sdName.includes(dName) || dName.includes(sdName));
                 });
 
                 if (existingIdx !== -1) {
                   const currentDoc = docs[existingIdx];
-                  const isResubmitted =
-                    (currentDoc.remarks || '').toLowerCase().includes('resubmit') ||
-                    (sd.remarks || '').toLowerCase().includes('resubmit') ||
-                    Boolean(currentDoc.document_url && sd.document_url && currentDoc.document_url.trim() !== sd.document_url.trim());
-
-                  const cachedAiVerif = isResubmitted ? undefined : (sd.aiVerification || currentDoc.aiVerification);
-                  const cachedStatus = isResubmitted
-                    ? 'Pending'
-                    : (cachedAiVerif?.verificationStatus === 'verified' ? 'Verified' : (sd.status || currentDoc.status));
+                  const cachedAiVerif = currentDoc.aiVerification || sd.aiVerification;
+                  const cachedStatus = (currentDoc.status === 'Verified' || currentDoc.status === 'Flagged')
+                    ? currentDoc.status
+                    : (cachedAiVerif?.verificationStatus === 'verified' ? 'Verified' : (sd.status || currentDoc.status || 'Pending'));
 
                   docs[existingIdx] = {
                     ...currentDoc,
                     id: sd.id || currentDoc.id,
                     status: cachedStatus,
-                    remarks: isResubmitted ? (currentDoc.remarks || 'Resubmitted by scholar') : (sd.remarks || currentDoc.remarks),
+                    remarks: currentDoc.remarks || sd.remarks || '',
                     aiVerification: cachedAiVerif,
                     document_url: currentDoc.document_url || sd.document_url,
                     url: currentDoc.url || sd.url,
                   };
-                } else {
-                  docs.push(sd);
                 }
               });
             }
@@ -1072,6 +1149,22 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               rawApplication: app
             };
 
+            const payouts = scholarPayoutsMap[scholar.id] || [];
+            const releaseHistory = payouts.map(p => ({
+              id: p.id,
+              applicationId: p.application_id,
+              cycleId: p.cycle_id,
+              cycleName: p.cycle?.cycle_name || 'Intake Cycle',
+              semester: p.cycle?.semester || '1st Semester',
+              amount: Number(p.amount) || 0,
+              status: p.status || (p.blockchain_verified ? 'released' : 'pending'),
+              date: p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently',
+              isRenewal: p.cycle?.cycle_type === 'renewal' ||
+                (p.cycle?.cycle_name || '').toLowerCase().includes('renewal') ||
+                (p.cycle?.cycle_name || '').toLowerCase().includes('2nd sem') ||
+                (p.cycle?.semester || '').toLowerCase().includes('2nd')
+            }));
+
             return {
               id: app.id,
               scholarName: scholarName,
@@ -1083,11 +1176,39 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               disbursement_mode: prog.disbursement_mode || 'online',
               banking_policy: prog.banking_policy || 'any_bank',
               paymentAccount: scholarPaymentMap[scholar.id] || null,
+              payoutHistory: releaseHistory,
               appDetail: appDetail
             };
           });
 
-          setScholarsList(mappedScholars);
+          // Strictly deduplicate scholars by scholar ID (or name) + program title
+          const scholarMap = new Map<string, ScholarAward>();
+          for (const sch of mappedScholars) {
+            const scholarKey = `${sch.appDetail.scholarId || sch.scholarName}_${sch.programTitle}`;
+            if (!scholarMap.has(scholarKey)) {
+              scholarMap.set(scholarKey, sch);
+            } else {
+              const existing = scholarMap.get(scholarKey)!;
+              // If existing lacks payment account but this row has it, merge it
+              if (!existing.paymentAccount && sch.paymentAccount) {
+                existing.paymentAccount = sch.paymentAccount;
+                existing.appDetail.paymentAccount = sch.paymentAccount;
+              }
+              // Merge payout history
+              if (sch.payoutHistory && sch.payoutHistory.length > 0) {
+                const existingIds = new Set((existing.payoutHistory || []).map((p: any) => p.id));
+                const newPayouts = sch.payoutHistory.filter((p: any) => !existingIds.has(p.id));
+                existing.payoutHistory = [...(existing.payoutHistory || []), ...newPayouts];
+              }
+              // If this row is more recent or is a renewal cycle, update cycleJoined and docs
+              if (sch.cycleJoined && (sch.cycleJoined.toLowerCase().includes('renewal') || sch.cycleJoined.toLowerCase().includes('sem'))) {
+                existing.cycleJoined = sch.cycleJoined;
+                existing.appDetail.cycle = sch.cycleJoined;
+              }
+            }
+          }
+
+          setScholarsList(Array.from(scholarMap.values()));
         } else {
           setApplicantsList([]);
           setScholarsList([]);
@@ -1106,22 +1227,23 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       .channel('provider-applications-realtime')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scholarship_applications'
+        },
         () => {
           fetchApplicantsAndScholars();
-          showToast('Applications & Scholar status updated live!');
+          showToast('Applications refreshed with latest student updates!');
         }
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'scholar_documents' },
-        () => {
-          fetchApplicantsAndScholars();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'disbursement_transactions' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scholar_documents'
+        },
         () => {
           fetchApplicantsAndScholars();
         }
@@ -1137,7 +1259,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   // Handle applicant status and document decision updates
   const handleUpdateStatus = async (
-    id: number | string,
+    id: string | number,
     nextStatus: ApplicantStatus,
     remarks?: string,
     updatedDocs?: SubmittedDocItem[]
@@ -1198,27 +1320,17 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       if (scholarId && updatedDocs && updatedDocs.length > 0) {
         for (const doc of updatedDocs) {
-          const docStatusDb = doc.status === 'Verified' ? 'verified' : doc.status === 'Flagged' ? 'rejected' : 'under_review';
-          const docRemarks = doc.remarks || (doc.status === 'Verified' ? 'Verified by scholarship provider' : doc.status === 'Flagged' ? 'Flagged: Resubmission required' : null);
-          const docUrl = doc.document_url || doc.url || '';
-          const docName = doc.name || doc.filename || 'Submitted Document';
-
           try {
-            // 1. Try finding by ID if doc.id is a UUID
-            let recordIdToUpdate: string | null = null;
-            if (doc.id && typeof doc.id === 'string' && doc.id.includes('-') && doc.id.length > 20) {
-              const { data: byId } = await supabase
-                .from('scholar_documents')
-                .select('id')
-                .eq('id', doc.id)
-                .maybeSingle();
-              if (byId?.id) {
-                recordIdToUpdate = byId.id;
-              }
-            }
+            const docName = doc.name || doc.filename || '';
+            const docUrl = doc.document_url || doc.url || '';
+            let docStatusDb = 'pending';
+            if (doc.status === 'Verified') docStatusDb = 'verified';
+            else if (doc.status === 'Flagged') docStatusDb = 'rejected';
 
-            // 2. If not found by ID, search by scholar_id and flexible document_name / url matching
-            if (!recordIdToUpdate) {
+            const docRemarks = doc.remarks || (docStatusDb === 'verified' ? 'Verified by provider' : docStatusDb === 'rejected' ? 'Flagged during provider review' : '');
+
+            let recordIdToUpdate = doc.id;
+            if (!recordIdToUpdate || typeof recordIdToUpdate === 'number' || (typeof recordIdToUpdate === 'string' && !recordIdToUpdate.includes('-'))) {
               const { data: existingRecords } = await supabase
                 .from('scholar_documents')
                 .select('id, document_name, document_url')
@@ -1227,13 +1339,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               if (existingRecords && existingRecords.length > 0) {
                 const match = existingRecords.find(r =>
                   (r.document_name && r.document_name.toLowerCase().trim() === docName.toLowerCase().trim()) ||
-                  (r.document_url && docUrl && r.document_url.trim() === docUrl.trim()) ||
-                  (r.document_name && docName.toLowerCase().includes(r.document_name.toLowerCase())) ||
-                  (r.document_name && r.document_name.toLowerCase().includes(docName.toLowerCase()))
+                  (r.document_url && docUrl && r.document_url.trim() === docUrl.trim())
                 );
-                if (match) {
-                  recordIdToUpdate = match.id;
-                }
+                if (match) recordIdToUpdate = match.id;
               }
             }
 
@@ -1267,7 +1375,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 .eq('id', recordIdToUpdate);
 
               if (updErr) {
-                // If columns not yet created in SQL editor, retry standard update
                 if (updErr.message?.includes('column') || updErr.code === '42703') {
                   await supabase
                     .from('scholar_documents')
@@ -1513,47 +1620,83 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
-  const getNextCycleName = (lastCycleName: string): string => {
-    const rangeRegex = /(\d{4})\s*-\s*(\d{4})/;
-    const singleRegex = /(\d{4})/;
-    
-    const rangeMatch = lastCycleName.match(rangeRegex);
-    if (rangeMatch) {
-      const startYear = parseInt(rangeMatch[1], 10);
-      const endYear = parseInt(rangeMatch[2], 10);
-      return lastCycleName.replace(rangeRegex, `${startYear + 1}-${endYear + 1}`);
-    }
-    
-    const singleMatch = lastCycleName.match(singleRegex);
-    if (singleMatch) {
-      const year = parseInt(singleMatch[1], 10);
-      return lastCycleName.replace(singleRegex, `${year + 1}`);
-    }
-    
-    const currentYear = new Date().getFullYear();
-    return `AY ${currentYear}-${currentYear + 1}`;
-  };
-
   const handleOpenRenewModal = (prog: Program) => {
     setSelectedProgramForRenewal(prog);
+    setCycleToEdit(null);
     
-    // Sort cycles to find the latest one
-    const latestCycle = prog.cycles && prog.cycles.length > 0
-      ? [...prog.cycles].sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())[0]
-      : null;
+    // Auto-calculate next academic year
+    let nextStartYear = new Date().getFullYear();
+    if (prog.cycles && prog.cycles.length > 0) {
+      for (const c of prog.cycles) {
+        const match = (c.name || '').match(/20\d{2}/g);
+        if (match && match.length > 0) {
+          const parsedYears = match.map((y: string) => parseInt(y, 10));
+          const maxYear = Math.max(...parsedYears);
+          if (maxYear >= nextStartYear) {
+            nextStartYear = maxYear;
+          }
+        }
+      }
+    }
       
     const currentYear = new Date().getFullYear();
     setRenewCycleType('renewal');
     setRenewSemester('2nd Semester');
-    if (latestCycle) {
-      setRenewCycleName(`${getNextCycleName(latestCycle.name)} • 2nd Sem Renewal`);
-    } else {
-      setRenewCycleName(`AY ${currentYear}-${currentYear + 1} • 2nd Sem Renewal`);
-    }
-    
+    setRenewCycleName(`AY ${currentYear}-${currentYear + 1} • 2nd Sem Renewal`);
     setRenewStartDate(new Date().toISOString().split('T')[0]);
     setRenewEndDate(new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0]);
     setRenewSlots(prog.totalSlots || '');
+    setRenewRequirements([
+      {
+        name: '1st Semester Official Grade Slip / Report of Grades',
+        description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
+      },
+      {
+        name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
+        description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+      },
+    ]);
+    setIsRenewModalOpen(true);
+  };
+
+  const handleOpenEditCycle = (prog: Program, cyc: any) => {
+    setSelectedProgramForRenewal(prog);
+    setCycleToEdit(cyc);
+    setRenewCycleName(cyc.name || '');
+    setRenewStartDate(cyc.startDate || new Date().toISOString().split('T')[0]);
+    setRenewEndDate(cyc.endDate || new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0]);
+    setRenewSlots(cyc.slotsAvailable ? String(cyc.slotsAvailable) : '');
+    
+    const isRenewal = cyc.cycleType === 'renewal' || (cyc.name && cyc.name.toLowerCase().includes('renewal'));
+    setRenewCycleType(isRenewal ? 'renewal' : 'new_applicant');
+    setRenewSemester(cyc.semester || '2nd Semester');
+
+    const rawReqs = (cyc.renewalRequirements && Array.isArray(cyc.renewalRequirements) && cyc.renewalRequirements.length > 0)
+      ? cyc.renewalRequirements
+      : (prog.applicationRequirements && Array.isArray(prog.applicationRequirements) && prog.applicationRequirements.length > 0)
+      ? prog.applicationRequirements
+      : null;
+
+    if (rawReqs && rawReqs.length > 0) {
+      setRenewRequirements(
+        rawReqs.map((r: any) =>
+          typeof r === 'string'
+            ? { name: r, description: '' }
+            : { name: r.name || 'Document', description: r.description || '' }
+        )
+      );
+    } else {
+      setRenewRequirements([
+        {
+          name: 'Official Grade Slip / Report of Grades',
+          description: 'Signed copy or portal screenshot of your latest term grades/GWA',
+        },
+        {
+          name: 'Certificate of Registration (COR) / Enrollment Form',
+          description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+        },
+      ]);
+    }
     setIsRenewModalOpen(true);
   };
 
@@ -1564,13 +1707,54 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       return;
     }
 
+    if (renewCycleType === 'renewal' && renewRequirements.length === 0) {
+      showToast('Please select or add at least one required renewal document.');
+      return;
+    }
+
     try {
       const cycleStatus = parseLocalMidnight(renewStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
       
-      // 1. Insert new cycle with cycle_type & semester
-      const { error: cycleErr } = await supabase
-        .from('application_cycles')
-        .insert({
+      if (cycleToEdit && cycleToEdit.id) {
+        // ─── Edit Existing Cycle ───
+        const updatePayload: any = {
+          cycle_name: renewCycleName,
+          cycle_type: renewCycleType,
+          semester: renewSemester,
+          application_start_date: renewStartDate,
+          application_end_date: renewEndDate,
+          slots_available: renewCycleType === 'renewal' ? null : (renewSlots ? parseInt(renewSlots, 10) : null),
+          status: cycleStatus,
+        };
+
+        if (renewCycleType === 'renewal') {
+          updatePayload.renewal_requirements = renewRequirements;
+        }
+
+        const { error: updateErr } = await supabase
+          .from('application_cycles')
+          .update(updatePayload)
+          .eq('id', cycleToEdit.id);
+
+        if (updateErr) {
+          console.warn('Update attempt error, retrying without renewal_requirements:', updateErr);
+          delete updatePayload.renewal_requirements;
+          const { error: fallbackUpdateErr } = await supabase
+            .from('application_cycles')
+            .update(updatePayload)
+            .eq('id', cycleToEdit.id);
+
+          if (fallbackUpdateErr) {
+            console.error('Error updating cycle:', fallbackUpdateErr);
+            showToast('Error updating application cycle.');
+            return;
+          }
+        }
+
+        showToast(`Cycle "${renewCycleName}" updated successfully!`);
+      } else {
+        // ─── Insert New Cycle ───
+        const insertPayload: any = {
           program_id: selectedProgramForRenewal.id,
           cycle_name: renewCycleName,
           cycle_type: renewCycleType,
@@ -1578,74 +1762,159 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           application_start_date: renewStartDate,
           application_end_date: renewEndDate,
           slots_available: renewCycleType === 'renewal' ? null : (renewSlots ? parseInt(renewSlots, 10) : null),
-          status: cycleStatus
-        });
+          status: cycleStatus,
+        };
 
-      if (cycleErr) {
-        console.error('Error inserting renewal cycle:', cycleErr);
-        showToast('Error creating new application cycle.');
-        return;
-      }
+        if (renewCycleType === 'renewal') {
+          insertPayload.renewal_requirements = renewRequirements;
+        }
 
-      // 2. If Semestral Renewal, notify continuing scholars of this program
-      if (renewCycleType === 'renewal') {
-        try {
-          const { data: approvedApps } = await supabase
-            .from('scholarship_applications')
-            .select(`
-              id,
-              scholar_id,
-              scholar:scholars(
+        let newCycleId = '';
+        const { data: cycleData, error: cycleErr } = await supabase
+          .from('application_cycles')
+          .insert(insertPayload)
+          .select('id')
+          .single();
+
+        if (cycleErr) {
+          console.warn('First insert attempt error, retrying standard payload:', cycleErr);
+          delete insertPayload.renewal_requirements;
+          const { data: fallbackData, error: fallbackErr } = await supabase
+            .from('application_cycles')
+            .insert(insertPayload)
+            .select('id')
+            .single();
+
+          if (fallbackErr) {
+            console.error('Error inserting renewal cycle:', fallbackErr);
+            showToast('Error creating new application cycle.');
+            return;
+          }
+          newCycleId = fallbackData?.id || '';
+        } else {
+          newCycleId = cycleData?.id || '';
+        }
+
+        // If Semestral Renewal, notify continuing scholars of this program with requirements
+        if (renewCycleType === 'renewal') {
+          try {
+            // Fetch all approved applications for this program (using singular 'scholar')
+            const { data: approvedApps } = await supabase
+              .from('scholarship_applications')
+              .select(`
                 id,
-                user_id,
-                first_name,
-                last_name,
-                user:users(id, email, first_name, last_name)
-              ),
-              cycle:application_cycles!inner(program_id)
-            `)
-            .eq('status', 'approved')
-            .eq('cycle.program_id', selectedProgramForRenewal.id);
+                scholar_id,
+                scholar:scholar(
+                  id,
+                  user_id,
+                  first_name,
+                  last_name
+                ),
+                cycle:application_cycles!inner(program_id)
+              `)
+              .eq('status', 'approved')
+              .eq('cycle.program_id', selectedProgramForRenewal.id);
 
-          if (approvedApps && approvedApps.length > 0) {
-            const notifInserts = approvedApps.map((app: any) => {
-              const uId = app.scholar?.user_id || app.scholar?.user?.id;
-              return {
+            let userIdsToSend: string[] = [];
+
+            if (approvedApps && approvedApps.length > 0) {
+              for (const app of approvedApps as any[]) {
+                const uId = app.scholar?.user_id;
+                if (uId && !userIdsToSend.includes(uId)) {
+                  userIdsToSend.push(uId);
+                }
+              }
+            }
+
+            // Fallback: If join didn't return user_ids, fetch scholar table directly
+            if (userIdsToSend.length === 0) {
+              const { data: rawApps } = await supabase
+                .from('scholarship_applications')
+                .select('scholar_id, cycle:application_cycles!inner(program_id)')
+                .eq('status', 'approved')
+                .eq('cycle.program_id', selectedProgramForRenewal.id);
+
+              if (rawApps && rawApps.length > 0) {
+                const sIds = Array.from(new Set(rawApps.map((a: any) => a.scholar_id).filter(Boolean)));
+                if (sIds.length > 0) {
+                  const { data: scholarRows } = await supabase
+                    .from('scholar')
+                    .select('user_id')
+                    .in('id', sIds);
+                  if (scholarRows) {
+                    userIdsToSend = scholarRows.map((s: any) => s.user_id).filter(Boolean);
+                  }
+                }
+              }
+            }
+
+            if (userIdsToSend.length > 0) {
+              const notifInserts = userIdsToSend.map((uId: string) => ({
                 user_id: uId,
-                title: `📢 ${selectedProgramForRenewal.title} — ${renewSemester} Renewal Open!`,
-                message: `Notice for Continuing Scholars: The semestral renewal for ${selectedProgramForRenewal.title} (${renewSemester}) is now open until ${renewEndDate}. Please upload your latest Grade Slip and Certificate of Registration (COR) in your IskoAko app to maintain your scholarship grant.`,
+                title: `📢 ${renewSemester} Renewal Open — ${selectedProgramForRenewal.title}`,
+                message: `Notice for Continuing Scholars: The renewal for ${selectedProgramForRenewal.title} (${renewSemester}) is now open until ${renewEndDate}.\n\nRequired Documents to Submit:\n${renewRequirements.map((r, i) => `${i + 1}. ${r.name}${r.description ? ` — ${r.description}` : ''}`).join('\n')}\n\nPlease upload them in your IskoAko app to maintain your grant.`,
                 type: 'info',
                 is_read: false,
                 metadata: {
                   program_id: selectedProgramForRenewal.id,
+                  cycle_id: newCycleId,
                   cycle_name: renewCycleName,
                   semester: renewSemester,
-                  action: 'renewal_submission'
-                }
-              };
-            }).filter((n: any) => !!n.user_id);
+                  deadline: renewEndDate,
+                  renewal_requirements: renewRequirements,
+                  action: 'renewal_submission',
+                },
+              }));
 
-            if (notifInserts.length > 0) {
-              await supabase.from('notifications').insert(notifInserts);
-              console.log(`[Renewal Broadcast]: Sent in-app notifications to ${notifInserts.length} continuing scholars.`);
+              const { error: notifInsertErr } = await supabase.from('notifications').insert(notifInserts);
+              if (notifInsertErr) {
+                console.error('Error inserting renewal notifications:', notifInsertErr);
+              } else {
+                console.log(`[Renewal Broadcast]: Successfully sent in-app notifications to ${userIdsToSend.length} approved scholars!`);
+              }
             }
+          } catch (notifErr) {
+            console.warn('[Renewal Scholar Notification Exception]:', notifErr);
           }
-        } catch (notifErr) {
-          console.warn('[Renewal Scholar Notification Exception]:', notifErr);
         }
+
+        // Update program status and application_requirements
+        if (renewCycleType === 'renewal') {
+          const formattedReqs = renewRequirements.map((r) => ({
+            name: r.name,
+            description: r.description || '',
+            required: true,
+          }));
+          await supabase
+            .from('scholarship_programs')
+            .update({
+              application_requirements: formattedReqs,
+              status: 'active',
+            })
+            .eq('id', selectedProgramForRenewal.id);
+        } else {
+          await supabase
+            .from('scholarship_programs')
+            .update({ status: 'active' })
+            .eq('id', selectedProgramForRenewal.id);
+        }
+
+        showToast(`Successfully opened "${renewCycleName}" with ${renewRequirements.length} required documents!`);
       }
 
-      // 3. Update program status to 'active'
-      const { error: progErr } = await supabase
-        .from('scholarship_programs')
-        .update({ status: 'active' })
-        .eq('id', selectedProgramForRenewal.id);
-
-      if (progErr) {
-        console.error('Error updating program status on renewal:', progErr);
-        showToast('Cycle added, but failed to set program status to active.');
-      } else {
-        showToast(`Successfully opened "${renewCycleName}" for "${selectedProgramForRenewal.title}"!`);
+      // If editing renewal cycle, also sync requirements to program
+      if (cycleToEdit && renewCycleType === 'renewal') {
+        const formattedReqs = renewRequirements.map((r) => ({
+          name: r.name,
+          description: r.description || '',
+          required: true,
+        }));
+        await supabase
+          .from('scholarship_programs')
+          .update({
+            application_requirements: formattedReqs,
+          })
+          .eq('id', selectedProgramForRenewal.id);
       }
 
       // Reload programs
@@ -1654,12 +1923,23 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       // Close modal & reset state
       setIsRenewModalOpen(false);
       setSelectedProgramForRenewal(null);
+      setCycleToEdit(null);
       setRenewCycleName('');
       setRenewStartDate('');
       setRenewEndDate('');
       setRenewSlots('');
       setRenewCycleType('renewal');
       setRenewSemester('2nd Semester');
+      setRenewRequirements([
+        {
+          name: '1st Semester Official Grade Slip / Report of Grades',
+          description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
+        },
+        {
+          name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
+          description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+        },
+      ]);
     } catch (err) {
       console.error('Unexpected error during renewal:', err);
       showToast('An unexpected error occurred.');
@@ -2288,6 +2568,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             application={selectedAppForReview}
             onBack={() => setActiveTab('applicants')}
             onUpdateStatus={handleUpdateStatus}
+            onUpdateDocs={(appId, updatedDocs) => {
+              setApplicantsList(prev => prev.map(a => a.id === appId ? { ...a, submittedDocuments: updatedDocs } : a));
+              setSelectedAppForReview(prev => prev && prev.id === appId ? { ...prev, submittedDocuments: updatedDocs } : prev);
+            }}
           />
         )}
 
@@ -2382,7 +2666,38 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   console.error('Error updating program:', error);
                   showToast(`Error updating program: ${error.message || 'Check fields'}`);
                 } else {
-                  showToast('Program updated successfully');
+                  // Update or insert primary cycle dates
+                  if (selectedProgram?.id && formData.application_start_date && formData.application_end_date) {
+                    const todayMid = getTodayMidnight();
+                    const endMid = parseLocalMidnight(formData.application_end_date);
+                    const startMid = parseLocalMidnight(formData.application_start_date);
+                    const cycleStatus = endMid < todayMid ? 'closed' : (startMid > todayMid ? 'upcoming' : 'open');
+
+                    const existingCycle = selectedProgram.cycles && selectedProgram.cycles.length > 0 ? selectedProgram.cycles[0] : null;
+                    if (existingCycle?.id) {
+                      await supabase
+                        .from('application_cycles')
+                        .update({
+                          cycle_name: formData.cycle_name || existingCycle.name || 'AY 2026-2027',
+                          application_start_date: formData.application_start_date,
+                          application_end_date: formData.application_end_date,
+                          status: cycleStatus,
+                        })
+                        .eq('id', existingCycle.id);
+                    } else {
+                      await supabase
+                        .from('application_cycles')
+                        .insert({
+                          program_id: selectedProgram.id,
+                          cycle_name: formData.cycle_name || 'AY 2026-2027',
+                          application_start_date: formData.application_start_date,
+                          application_end_date: formData.application_end_date,
+                          status: cycleStatus,
+                        });
+                    }
+                  }
+
+                  showToast('Program and intake schedule updated successfully!');
                   await fetchPrograms();
                   setSelectedProgram(null);
                   setActiveTab('programs');
@@ -2421,17 +2736,24 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   console.error('Error creating program:', error);
                   showToast(`Error creating program: ${error?.message || 'Check fields'}`);
                 } else {
-                  // Create default cycle
+                  // Create configured intake cycle
+                  const startDate = formData.application_start_date || new Date().toISOString().split('T')[0];
+                  const endDate = formData.application_end_date || new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0];
+                  const todayMid = getTodayMidnight();
+                  const endMid = parseLocalMidnight(endDate);
+                  const startMid = parseLocalMidnight(startDate);
+                  const cycleStatus = endMid < todayMid ? 'closed' : (startMid > todayMid ? 'upcoming' : 'open');
+
                   await supabase
                     .from('application_cycles')
                     .insert({
                       program_id: progData.id,
-                      cycle_name: 'AY 2026-2027',
-                      application_start_date: new Date().toISOString().split('T')[0],
-                      application_end_date: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
-                      status: 'open'
+                      cycle_name: formData.cycle_name || 'AY 2026-2027',
+                      application_start_date: startDate,
+                      application_end_date: endDate,
+                      status: cycleStatus,
                     });
-                  showToast('Program created successfully!');
+                  showToast('Program and application cycle published successfully!');
                   await fetchPrograms();
                   setSelectedProgram(null);
                   setActiveTab('programs');
@@ -2452,6 +2774,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             handleViewDetails={handleViewDetails}
             handleEditProgram={handleEditProgram}
             handleOpenRenewModal={handleOpenRenewModal}
+            handleOpenEditCycle={handleOpenEditCycle}
+            handleDeleteCycle={handleDeleteCycle}
             setProgramToClose={setProgramToClose}
             setIsCloseConfirmOpen={setIsCloseConfirmOpen}
             fetchPrograms={fetchPrograms}
@@ -2644,16 +2968,34 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 <div className="space-y-2">
                   {selectedProgram.cycles?.map((cyc: any) => (
                     <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
-                      <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[#8E8E93]">{cyc.startDate} → {cyc.endDate}</span>
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' : cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' : cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-600'}`}>{cyc.status}</span>
+                      <div>
+                        <span className="font-bold text-[#1C1C1E] block">{cyc.name}</span>
+                        {cyc.semester && <span className="text-[10px] text-[#6C6C70] font-medium">{cyc.semester}</span>}
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-[#8E8E93] text-[11px]">{cyc.startDate} → {cyc.endDate}</span>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                          cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                          cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
+                          cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' :
+                          'bg-gray-200 text-gray-600'
+                        }`}>{cyc.status}</span>
+                        <button
+                          onClick={() => {
+                            setIsViewModalOpen(false);
+                            handleOpenEditCycle(selectedProgram, cyc);
+                          }}
+                          className="px-2 py-1 bg-white hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5] rounded-lg cursor-pointer transition-all text-[10.5px] font-bold flex items-center gap-1 shadow-2xs"
+                          title="Edit this cycle"
+                        >
+                          <span>✏️</span> Edit
+                        </button>
                         <button
                           onClick={() => handleDeleteCycle(cyc.id.toString(), cyc.name)}
-                          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded bg-transparent border-0 cursor-pointer transition-all text-xs leading-none"
-                          title="Delete Cycle"
+                          className="px-2 py-1 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg cursor-pointer transition-all text-[10.5px] font-bold flex items-center gap-1 shadow-2xs"
+                          title="Delete this cycle"
                         >
-                          🗑️
+                          <span>🗑️</span> Delete
                         </button>
                       </div>
                     </div>
@@ -2697,7 +3039,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       <RenewCycleModal
         isOpen={isRenewModalOpen}
         program={selectedProgramForRenewal}
-        onClose={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); }}
+        cycleToEdit={cycleToEdit}
+        onClose={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); setCycleToEdit(null); }}
         onSubmit={handleRenewProgramCycle}
         renewCycleName={renewCycleName}
         setRenewCycleName={setRenewCycleName}
@@ -2711,6 +3054,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         setRenewCycleType={setRenewCycleType}
         renewSemester={renewSemester}
         setRenewSemester={setRenewSemester}
+        renewRequirements={renewRequirements}
+        setRenewRequirements={setRenewRequirements}
       />
 
       {/* ─── Review Application Modal ─── */}

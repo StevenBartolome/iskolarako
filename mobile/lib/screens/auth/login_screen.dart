@@ -81,31 +81,136 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     setState(() => _isLoading = true);
+    debugPrint('\n========================================');
+    debugPrint('[Login] Attempting login for: "$email"');
+    debugPrint('========================================');
 
     try {
       final AuthResponse response = await Supabase.instance.client.auth
           .signInWithPassword(email: email, password: password);
 
-      if (response.user == null) throw const AuthException('Authentication failed.');
+      final user = response.user;
+      if (user == null) {
+        throw const AuthException('Authentication failed: No user returned.');
+      }
 
-      final userData = await Supabase.instance.client
-          .from('users')
-          .select('role, first_name')
-          .eq('id', response.user!.id)
-          .single();
+      debugPrint('[Login] Supabase Auth Response received:');
+      debugPrint('  - User ID: ${user.id}');
+      debugPrint('  - Email: ${user.email}');
+      debugPrint('  - Confirmed At: ${user.emailConfirmedAt}');
 
-      if (userData['role'] != 'scholar') {
+      // Detect and purge oversized fields (e.g. base64 avatar images) from user_metadata to fix the 100KB JWT header overflow
+      if (user.userMetadata != null) {
+        final Map<String, dynamic> cleanData = {};
+        bool hasOversized = false;
+        user.userMetadata!.forEach((key, value) {
+          if (value is String && (value.startsWith('data:image') || value.length > 1000)) {
+            hasOversized = true;
+            cleanData[key] = ''; // Using empty string instead of null to prevent GoTrue 500 error
+            debugPrint('[Login] Found oversized field in user_metadata: "$key" (${value.length} chars). Overwriting with empty string...');
+          }
+        });
+        if (hasOversized) {
+          try {
+            await Supabase.instance.client.auth.updateUser(
+              UserAttributes(data: cleanData),
+            );
+            debugPrint('[Login] Successfully purged oversized metadata from auth user record!');
+            // Refresh session so Supabase client gets a clean <1KB JWT
+            await Supabase.instance.client.auth.refreshSession();
+            debugPrint('[Login] Session refreshed with clean JWT.');
+          } catch (e) {
+            debugPrint('[Login] Warning during metadata purge: $e');
+          }
+        }
+      }
+
+      final userId = user.id;
+
+      // Query public.users table with maybeSingle to prevent crash if record is missing
+      debugPrint('[Login] Fetching public.users row for ID: $userId ...');
+      Map<String, dynamic>? userData;
+      try {
+        userData = await Supabase.instance.client
+            .from('users')
+            .select('role, first_name, email')
+            .eq('id', userId)
+            .maybeSingle();
+      } on PostgrestException catch (e) {
+        debugPrint('[Login] PostgrestException on user query: ${e.message}');
+        if (e.message.contains('100KB') || e.message.contains('header buffer size')) {
+          debugPrint('[Login] 100KB Header overflow detected on query. Performing emergency metadata cleanup and session refresh...');
+          try {
+            await Supabase.instance.client.auth.updateUser(
+              UserAttributes(data: {'avatar_url': ''}),
+            );
+            await Supabase.instance.client.auth.refreshSession();
+            userData = await Supabase.instance.client
+                .from('users')
+                .select('role, first_name, email')
+                .eq('id', userId)
+                .maybeSingle();
+          } catch (err) {
+            debugPrint('[Login] Emergency refresh error: $err');
+          }
+        }
+      }
+
+      debugPrint('[Login] public.users query result: $userData');
+
+      String role = (userData?['role']?.toString().toLowerCase().trim() ??
+              user.userMetadata?['role']?.toString().toLowerCase().trim() ??
+              'scholar')
+          .toLowerCase();
+      String firstName = userData?['first_name']?.toString() ??
+          user.userMetadata?['first_name']?.toString() ??
+          'Scholar';
+
+      debugPrint('[Login] Extracted Role: "$role", First Name: "$firstName"');
+
+      // If user profile is missing from public.users table, attempt auto-creation
+      if (userData == null) {
+        debugPrint('[Login] Note: Profile row not found in public.users table. Attempting auto-creation...');
+        try {
+          final newProfile = {
+            'id': userId,
+            'email': email,
+            'first_name': firstName,
+            'role': role.isNotEmpty ? role : 'scholar',
+            'created_at': DateTime.now().toIso8601String(),
+          };
+          await Supabase.instance.client.from('users').upsert(newProfile);
+          debugPrint('[Login] Successfully created missing public.users row!');
+          if (role.isEmpty) role = 'scholar';
+        } catch (e) {
+          debugPrint('[Login] Auto-create public.users row failed (non-fatal): $e');
+        }
+      }
+
+      // Check role permissions: scholars, students, and applicants are allowed
+      if (role.isNotEmpty &&
+          role != 'scholar' &&
+          role != 'student' &&
+          role != 'applicant') {
+        debugPrint('[Login] ACCESS DENIED: Account role is "$role". Only scholars can use the mobile app.');
         await Supabase.instance.client.auth.signOut();
-        throw const AuthException('Access Denied: Only scholars can use this app.');
+        throw AuthException('Access Denied: Only scholars can use this app (current role: $role).');
       }
 
       if (!mounted) return;
-      _showSnackBar('Welcome back, ${userData['first_name']}!', isError: false);
+      debugPrint('[Login] Login successful! Navigating to Home...');
+      _showSnackBar('Welcome back, $firstName!', isError: false);
       Navigator.pushReplacementNamed(context, AppRouter.home);
     } on AuthException catch (e) {
+      debugPrint('[Login] AuthException: ${e.message} (Status code: ${e.statusCode})');
       _showSnackBar(e.message, isError: true);
-    } catch (_) {
-      _showSnackBar('Something went wrong. Please try again.', isError: true);
+    } on PostgrestException catch (e) {
+      debugPrint('[Login] PostgrestException: ${e.message} (Code: ${e.code}, Details: ${e.details}, Hint: ${e.hint})');
+      _showSnackBar('Database error: ${e.message}', isError: true);
+    } catch (e, stackTrace) {
+      debugPrint('[Login] Unexpected error during login: $e');
+      debugPrint('[Login] StackTrace: $stackTrace');
+      _showSnackBar('Error: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

@@ -178,13 +178,21 @@ Rules:
   static Future<LivenessCheckResult> checkLiveness({
     required Uint8List frameBytes,
     Uint8List? baselineFrameBytes,
+    List<Uint8List>? additionalActionFramesBytes,
     required LivenessAction expectedAction,
   }) async {
     final frameBase64 = base64Encode(frameBytes);
     final baselineFrameBase64 =
         baselineFrameBytes != null ? base64Encode(baselineFrameBytes) : null;
-    final prompt = _buildLivenessPrompt(expectedAction,
-        hasBaseline: baselineFrameBytes != null);
+    final additionalFramesBase64 = additionalActionFramesBytes
+        ?.map((b) => base64Encode(b))
+        .toList();
+    final actionCount = 1 + (additionalActionFramesBytes?.length ?? 0);
+    final prompt = _buildLivenessPrompt(
+      expectedAction,
+      hasBaseline: baselineFrameBytes != null,
+      actionFrameCount: actionCount,
+    );
 
     // 1. Try Gemini
     if (_geminiKey.isNotEmpty) {
@@ -193,6 +201,7 @@ Rules:
           prompt: prompt,
           frameBase64: frameBase64,
           baselineFrameBase64: baselineFrameBase64,
+          additionalActionFramesBase64: additionalFramesBase64,
         );
         if (result != null) return result;
       } catch (e) {
@@ -207,6 +216,7 @@ Rules:
           prompt: prompt,
           frameBase64: frameBase64,
           baselineFrameBase64: baselineFrameBase64,
+          additionalActionFramesBase64: additionalFramesBase64,
         );
         if (result != null) return result;
       } catch (e) {
@@ -221,6 +231,7 @@ Rules:
           prompt: prompt,
           frameBase64: frameBase64,
           baselineFrameBase64: baselineFrameBase64,
+          additionalActionFramesBase64: additionalFramesBase64,
         );
         if (result != null) return result;
       } catch (e) {
@@ -246,7 +257,7 @@ Rules:
     required String selfieBase64,
     required String idMimeType,
   }) async {
-    const models = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
     for (final model in models) {
       for (int attempt = 0; attempt < 2; attempt++) {
         try {
@@ -292,8 +303,9 @@ Rules:
     required String prompt,
     required String frameBase64,
     String? baselineFrameBase64,
+    List<String>? additionalActionFramesBase64,
   }) async {
-    const models = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
     for (final model in models) {
       for (int attempt = 0; attempt < 2; attempt++) {
         try {
@@ -310,16 +322,23 @@ Rules:
           parts.add({
             'inline_data': {'mime_type': 'image/jpeg', 'data': frameBase64}
           });
+          if (additionalActionFramesBase64 != null) {
+            for (final f in additionalActionFramesBase64) {
+              parts.add({
+                'inline_data': {'mime_type': 'image/jpeg', 'data': f}
+              });
+            }
+          }
 
           final body = jsonEncode({
             'contents': [
               {'parts': parts}
             ],
-            'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 40},
+            'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 60},
           });
           final response = await http
               .post(url, headers: {'Content-Type': 'application/json'}, body: body)
-              .timeout(const Duration(seconds: 6));
+              .timeout(const Duration(seconds: 8));
 
           if (response.statusCode == 200) {
             final res = _parseLivenessResult(response.body, 'Gemini $model');
@@ -411,9 +430,10 @@ Rules:
     required String prompt,
     required String frameBase64,
     String? baselineFrameBase64,
+    List<String>? additionalActionFramesBase64,
   }) async {
     const models = [
-      'google/gemini-2.5-flash',
+      'google/gemini-2.0-flash-001',
       'openai/gpt-4o-mini',
       'qwen/qwen-2.5-vl-72b-instruct',
     ];
@@ -433,6 +453,14 @@ Rules:
           'type': 'image_url',
           'image_url': {'url': 'data:image/jpeg;base64,$frameBase64'},
         });
+        if (additionalActionFramesBase64 != null) {
+          for (final f in additionalActionFramesBase64) {
+            contents.add({
+              'type': 'image_url',
+              'image_url': {'url': 'data:image/jpeg;base64,$f'},
+            });
+          }
+        }
 
         final body = jsonEncode({
           'model': model,
@@ -535,6 +563,7 @@ Rules:
     required String prompt,
     required String frameBase64,
     String? baselineFrameBase64,
+    List<String>? additionalActionFramesBase64,
   }) async {
     const models = ['pixtral-12b-2409', 'pixtral-large-latest'];
     for (final model in models) {
@@ -552,6 +581,14 @@ Rules:
           'type': 'image_url',
           'image_url': {'url': 'data:image/jpeg;base64,$frameBase64'},
         });
+        if (additionalActionFramesBase64 != null) {
+          for (final f in additionalActionFramesBase64) {
+            contents.add({
+              'type': 'image_url',
+              'image_url': {'url': 'data:image/jpeg;base64,$f'},
+            });
+          }
+        }
 
         final body = jsonEncode({
           'model': model,
@@ -701,10 +738,13 @@ Rules:
     return null;
   }
 
-  static String _buildLivenessPrompt(LivenessAction action,
-      {bool hasBaseline = false}) {
+  static String _buildLivenessPrompt(
+    LivenessAction action, {
+    bool hasBaseline = false,
+    int actionFrameCount = 1,
+  }) {
     final actionName = action == LivenessAction.blink
-        ? 'BLINK (closing or shut eyes)'
+        ? 'SINGLE BLINK (closing eyes once)'
         : (action == LivenessAction.turnLeft
             ? 'TURN HEAD LEFT'
             : 'TURN HEAD RIGHT');
@@ -727,10 +767,10 @@ Return ONLY raw JSON (no markdown, no backticks):
 Verification Rules:
 1. "face_detected": true if a human face is visible in the frame.
 2. "action_detected":
-   - For BLINK: true if the eyes in Frame 2 are closed, squinting, or shutting compared to Frame 1.
+   - For BLINK: true if the person in Frame 2 is blinking, has closed or shut eyes, has eyelids lowered, or shows any eye closure compared to Frame 1 (where eyes were open).
    - For TURN HEAD LEFT / RIGHT: true if the person in Frame 2 has turned their head to the side (side profile visible, ear/cheek shown, nose pointing away from camera center).
    - Front selfie cameras may mirror the image, so if the person in Frame 2 is noticeably turned away from the center to ANY side, accept it as action_detected: true.
-   - Only return action_detected: false if the person is staring completely straight forward in both frames with zero movement.
+   - Only return action_detected: false if the person is staring completely straight forward in both frames with zero movement or zero blink.
 ''';
     } else {
       switch (action) {

@@ -114,7 +114,12 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
           setState(() {
             _scholarProfile = scholarData;
             _isProfileComplete = EligibilityHelper.isProfileComplete(scholarData);
-            _allPrograms = programsData;
+            // Strictly filter out closed programs (no open cycle or past deadline)
+            final openPrograms = (programsData as List<dynamic>?)
+                    ?.where((p) => EligibilityHelper.isProgramOpen(p as Map<String, dynamic>?))
+                    .toList() ??
+                [];
+            _allPrograms = openPrograms;
 
             if (_isProfileComplete && scholarData != null) {
               _qualifiedPrograms = _allPrograms

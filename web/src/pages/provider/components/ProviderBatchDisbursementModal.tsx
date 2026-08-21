@@ -165,9 +165,30 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
       if (appsErr) console.warn('Apps query warning:', appsErr);
 
-      const scholarIds = (apps || []).map((a: any) => a.scholar_id);
+      // 3. Fetch existing fund_releases for this cycle to exclude scholars whose payout for this cycle is already complete
+      const { data: frData } = await supabase
+        .from('fund_releases')
+        .select('application_id, scholar_id, status, blockchain_verified')
+        .eq('cycle_id', cycId);
 
-      // 3. Fetch payment accounts for these scholars
+      const releasedScholarIds = new Set<string>();
+      (frData || []).forEach((fr: any) => {
+        const isComplete =
+          fr.status === 'released' ||
+          fr.status === 'processing' ||
+          fr.blockchain_verified === true ||
+          fr.status === 'Completed';
+
+        if (isComplete && fr.scholar_id) {
+          releasedScholarIds.add(fr.scholar_id);
+        }
+      });
+
+      // Filter out scholars who already received their payout for this cycle
+      const pendingApps = (apps || []).filter((a: any) => !releasedScholarIds.has(a.scholar_id));
+      const scholarIds = pendingApps.map((a: any) => a.scholar_id);
+
+      // 4. Fetch payment accounts for these pending scholars
       let paymentAccountsMap: Record<string, any> = {};
       if (scholarIds.length > 0) {
         const { data: pAccounts } = await supabase
@@ -182,8 +203,20 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
         }
       }
 
-      // 4. Map into BatchScholarRow
-      const rows: BatchScholarRow[] = (apps || []).map((app: any) => {
+      const currentCycle = cycles.find((c) => c.id === cycId);
+      const cycleName = currentCycle?.cycle_name || 'Active Cycle';
+      const semester = currentCycle?.semester || '1st Semester';
+      const isRenewal = currentCycle?.cycle_type === 'renewal' ||
+        cycleName.toLowerCase().includes('renewal') ||
+        cycleName.toLowerCase().includes('2nd sem') ||
+        semester.toLowerCase().includes('2nd');
+
+      const formattedProgTitle = isRenewal
+        ? `${progTitle} • 2nd Sem Renewal (${cycleName})`
+        : `${progTitle} (${cycleName})`;
+
+      // 5. Map into BatchScholarRow
+      const rows: BatchScholarRow[] = pendingApps.map((app: any) => {
         const sObj = app.scholar;
         const scholarName = sObj
           ? `${sObj.first_name || ''} ${sObj.last_name || ''}`.trim()
@@ -198,9 +231,9 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           scholarName,
           school: sObj?.school || 'University / College',
           programId: progId,
-          programTitle: progTitle,
+          programTitle: formattedProgTitle,
           cycleId: cycId,
-          cycleName: cycles.find((c) => c.id === cycId)?.cycle_name || 'Active Cycle',
+          cycleName: cycleName,
           disbursementMode,
           bankingPolicy,
           hasPaymentAccount: hasPayment,
@@ -526,11 +559,19 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                   disabled={isProcessingBatch || cycles.length === 0}
                   className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-xs font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
                 >
-                  {cycles.map((cyc) => (
-                    <option key={cyc.id} value={cyc.id}>
-                      📅 {cyc.cycle_name || 'Active Cycle'} ({cyc.semester || '1st Sem'})
-                    </option>
-                  ))}
+                  {cycles.map((cyc) => {
+                    const isRenewal = cyc.cycle_type === 'renewal' ||
+                      (cyc.cycle_name || '').toLowerCase().includes('renewal') ||
+                      (cyc.cycle_name || '').toLowerCase().includes('2nd sem') ||
+                      (cyc.semester || '').toLowerCase().includes('2nd');
+                    return (
+                      <option key={cyc.id} value={cyc.id}>
+                        {isRenewal ? '🔄 ' : '📅 '}
+                        {cyc.cycle_name || 'Active Cycle'}
+                        {isRenewal ? ' • 2nd Semester Renewal' : ` (${cyc.semester || '1st Sem'})`}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 

@@ -192,4 +192,46 @@ class EligibilityHelper {
 
     return true;
   }
+
+  /// Checks whether a scholarship program is currently active and has at least one open, unexpired application cycle.
+  static bool isProgramOpen(Map<String, dynamic>? program) {
+    if (program == null) return false;
+    final status = program['status']?.toString().toLowerCase().trim();
+    if (status != 'active' && status != 'approved') return false;
+
+    final cycles = program['cycles'] as List<dynamic>?;
+    if (cycles == null || cycles.isEmpty) return false;
+
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+
+    // Check if there is at least one cycle that is open, not expired, AND meant for new applicants
+    return cycles.any((c) {
+      if (c is! Map<String, dynamic>) return false;
+      final cStatus = c['status']?.toString().toLowerCase().trim();
+      
+      // Cycle status must be open or active
+      if (cStatus != 'open' && cStatus != 'active') return false;
+
+      // Renewal-only cycles are reserved for approved continuing scholars in their Application Tracker
+      final cType = c['cycle_type']?.toString().toLowerCase().trim() ?? '';
+      final cName = c['cycle_name']?.toString().toLowerCase() ?? '';
+      if (cType == 'renewal' || cName.contains('renewal') || cName.contains('sem renewal')) {
+        return false;
+      }
+
+      // Check deadline if present
+      final endDateStr = c['application_end_date']?.toString() ?? c['end_date']?.toString();
+      if (endDateStr != null && endDateStr.trim().isNotEmpty) {
+        final endDate = DateTime.tryParse(endDateStr);
+        if (endDate != null) {
+          final endMidnight = DateTime(endDate.year, endDate.month, endDate.day);
+          if (endMidnight.isBefore(todayMidnight)) {
+            return false; // Deadline has passed
+          }
+        }
+      }
+      return true;
+    });
+  }
 }

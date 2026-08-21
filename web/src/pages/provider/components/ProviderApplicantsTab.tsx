@@ -428,29 +428,66 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                     </div>
                     <span className="font-bold text-[#1C1C1E]">{sch.scholarName}</span>
                   </td>
-                  <td className="px-6 py-4 text-[#1C1C1E]">{sch.programTitle}</td>
+                  <td className="px-6 py-4 text-[#1C1C1E]">
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="font-semibold">{sch.programTitle}</span>
+                      {((sch.cycleJoined || '').toLowerCase().includes('renewal') || (sch.cycleJoined || '').toLowerCase().includes('2nd sem')) && (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          🔄 2nd Semester Renewal
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-xs font-semibold text-[#6C6C70]">{sch.cycleJoined || sch.batchName || 'Default Batch'}</td>
                   <td className="px-6 py-4 text-center font-serif font-bold text-[#2D5941]">{sch.gwa}</td>
                   <td className="px-6 py-4">
-                    <div className="flex flex-col items-start gap-1">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${sch.status === 'Maintaining' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                        sch.status === 'Awaiting Grades' ? 'bg-amber-50 text-[#C97B2E]' :
-                          sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
-                            'bg-gray-100 text-gray-700'
-                        }`}>
-                        {sch.status}
-                      </span>
-                      {sch.disbursement_mode === 'in_person_cash' ? (
-                        <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                          💵 Cash
+                    <div className="flex flex-col items-start gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${sch.status === 'Maintaining' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                          sch.status === 'Awaiting Grades' ? 'bg-amber-50 text-[#C97B2E]' :
+                            sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
+                              'bg-gray-100 text-gray-700'
+                          }`}>
+                          {sch.status}
                         </span>
-                      ) : sch.paymentAccount ? (
-                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#2D5941] bg-[#EBF5EE] border border-[#2D5941]/30 px-2 py-0.5 rounded" title={`${sch.paymentAccount.bank_name} (${sch.paymentAccount.account_number})`}>
-                          💳 {sch.paymentAccount.bank_name?.replace('of the Philippines', '')} •••• {sch.paymentAccount.account_number?.slice(-4)}
-                        </span>
+                        {sch.disbursement_mode === 'in_person_cash' ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                            💵 Cash
+                          </span>
+                        ) : sch.paymentAccount ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#2D5941] bg-[#EBF5EE] border border-[#2D5941]/30 px-2 py-0.5 rounded" title={`${sch.paymentAccount.bank_name} (${sch.paymentAccount.account_number})`}>
+                            💳 {sch.paymentAccount.bank_name?.replace('of the Philippines', '')} •••• {sch.paymentAccount.account_number?.slice(-4)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
+                            ⚠️ Bank Proof Missing
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Semestral Payout Release Status */}
+                      {sch.payoutHistory && sch.payoutHistory.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          {sch.payoutHistory.map((p: any, pIdx: number) => {
+                            const isReleased = p.status === 'released' || p.status === 'Completed' || p.blockchain_verified;
+                            const semLabel = p.isRenewal || p.semester?.includes('2nd') ? '2nd Sem' : '1st Sem';
+                            return (
+                              <span
+                                key={pIdx}
+                                className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded border ${
+                                  isReleased
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : 'bg-amber-50 text-amber-800 border-amber-300'
+                                }`}
+                              >
+                                {isReleased ? '✅' : '⏳'} {semLabel} Payout: {isReleased ? `₱${p.amount?.toLocaleString()} (Released)` : 'Pending Release'}
+                              </span>
+                            );
+                          })}
+                        </div>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
-                          ⚠️ Bank Proof Missing
+                        <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
+                          ⏳ 1st Sem Payout Pending
                         </span>
                       )}
                     </div>

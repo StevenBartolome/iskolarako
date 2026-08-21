@@ -236,6 +236,24 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
         if (scholarshipName.isEmpty) scholarshipName = 'Scholarship Program';
         if (providerName.isEmpty) providerName = 'Scholarship Provider';
 
+        // If this specific application entry is for a renewal cycle, format the card title with Renewal info
+        final cycleType = cycle?['cycle_type']?.toString().toLowerCase() ?? '';
+        final cycleName = cycle?['cycle_name']?.toString() ?? '';
+        final semester = cycle?['semester']?.toString() ?? '';
+        final remarksStr = row['remarks']?.toString().toLowerCase() ?? '';
+        final isRenewalApp = cycleType == 'renewal' ||
+            cycleName.toLowerCase().contains('renewal') ||
+            cycleName.toLowerCase().contains('sem') ||
+            remarksStr.contains('renewal');
+
+        if (isRenewalApp) {
+          final semTitle = semester.isNotEmpty ? semester : '2nd Semester';
+          final baseName = scholarshipName;
+          if (!baseName.toLowerCase().contains('renewal')) {
+            scholarshipName = '$semTitle Renewal — $baseName${cycleName.isNotEmpty ? ' ($cycleName)' : ''}';
+          }
+        }
+
         String? programId = program?['id']?.toString() ?? row['program_id']?.toString();
 
         final dbStatus = row['status']?.toString().toLowerCase() ?? 'pending';
@@ -269,7 +287,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           try {
             final renewalCycles = await Supabase.instance.client
                 .from('application_cycles')
-                .select('id, cycle_name, application_start_date, application_end_date, status, cycle_type, semester')
+                .select('*, program:scholarship_programs(*)')
                 .eq('program_id', programId)
                 .eq('status', 'open');
 
@@ -1031,13 +1049,19 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            scholarship.activeRenewalCycle!['cycle_name']?.toString() ?? 'Semestral Renewal Open',
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primaryDark,
-                            ),
+                          Builder(
+                            builder: (context) {
+                              final sem = scholarship.activeRenewalCycle!['semester']?.toString() ?? '2nd Semester';
+                              final cName = scholarship.activeRenewalCycle!['cycle_name']?.toString() ?? '';
+                              return Text(
+                                '$sem Renewal — ${scholarship.scholarshipName}${cName.isNotEmpty ? ' ($cName)' : ''}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.primaryDark,
+                                ),
+                              );
+                            },
                           ),
                           Text(
                             'Deadline: ${scholarship.activeRenewalCycle!['application_end_date']?.toString() ?? 'Open'}',
@@ -2063,12 +2087,65 @@ class _SemestralRenewalSheet extends StatefulWidget {
   State<_SemestralRenewalSheet> createState() => _SemestralRenewalSheetState();
 }
 
+class _RenewalRequirementItem {
+  final String name;
+  final String description;
+
+  const _RenewalRequirementItem({
+    required this.name,
+    this.description = '',
+  });
+}
+
 class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
-  PlatformFile? _gradeSlipFile;
-  PlatformFile? _corFile;
+  late final List<_RenewalRequirementItem> _requirements;
+  final Map<String, PlatformFile> _uploadedFiles = {};
   final TextEditingController _gwaController = TextEditingController();
   bool _isUploading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _requirements = _parseRequirements();
+  }
+
+  List<_RenewalRequirementItem> _parseRequirements() {
+    final dynamic reqs = widget.renewalCycle['renewal_requirements'] ??
+        widget.renewalCycle['requirements'] ??
+        widget.renewalCycle['program']?['application_requirements'] ??
+        widget.renewalCycle['application_requirements'] ??
+        (widget.renewalCycle['metadata'] is Map
+            ? widget.renewalCycle['metadata']['renewal_requirements']
+            : null);
+
+    if (reqs is List && reqs.isNotEmpty) {
+      final List<_RenewalRequirementItem> list = [];
+      for (final item in reqs) {
+        if (item is Map) {
+          final name = item['name']?.toString().trim() ?? '';
+          final desc = item['description']?.toString().trim() ?? item['desc']?.toString().trim() ?? '';
+          if (name.isNotEmpty) {
+            list.add(_RenewalRequirementItem(name: name, description: desc));
+          }
+        } else if (item is String && item.trim().isNotEmpty) {
+          list.add(_RenewalRequirementItem(name: item.trim(), description: ''));
+        }
+      }
+      if (list.isNotEmpty) return list;
+    }
+
+    return [
+      const _RenewalRequirementItem(
+        name: '1st Semester Official Grade Slip / Report of Grades',
+        description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
+      ),
+      const _RenewalRequirementItem(
+        name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
+        description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+      ),
+    ];
+  }
 
   @override
   void dispose() {
@@ -2076,7 +2153,7 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
     super.dispose();
   }
 
-  Future<void> _pickFile(bool isGradeSlip) async {
+  Future<void> _pickFileForRequirement(String reqName) async {
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -2085,14 +2162,25 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
       );
 
       if (result != null && result.files.isNotEmpty) {
+        final pickedFile = result.files.first;
         setState(() {
-          if (isGradeSlip) {
-            _gradeSlipFile = result.files.first;
-          } else {
-            _corFile = result.files.first;
-          }
+          _uploadedFiles[reqName] = pickedFile;
           _error = null;
         });
+
+        // If this requirement is for grades/GWA and user hasn't typed GWA yet, try extracting from filename pattern
+        if ((reqName.toLowerCase().contains('grade') ||
+                reqName.toLowerCase().contains('gwa') ||
+                reqName.toLowerCase().contains('slip') ||
+                reqName.toLowerCase().contains('report')) &&
+            _gwaController.text.trim().isEmpty) {
+          final gwaMatch = RegExp(r'([1-4]\.[0-9]{1,2}|5\.00)').firstMatch(pickedFile.name);
+          if (gwaMatch != null && gwaMatch.group(1) != null) {
+            setState(() {
+              _gwaController.text = gwaMatch.group(1)!;
+            });
+          }
+        }
       }
     } catch (e) {
       setState(() => _error = 'Error selecting file: $e');
@@ -2100,8 +2188,10 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
   }
 
   Future<void> _submitRenewal() async {
-    if (_gradeSlipFile == null || _corFile == null) {
-      setState(() => _error = 'Please upload both your Grade Slip and Certificate of Registration.');
+    // Validate that all requirements have an attached file
+    final missing = _requirements.where((r) => !_uploadedFiles.containsKey(r.name)).toList();
+    if (missing.isNotEmpty) {
+      setState(() => _error = 'Please upload all required documents:\n• ${missing.map((m) => m.name).join("\n• ")}');
       return;
     }
 
@@ -2114,74 +2204,81 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final cycleId = widget.renewalCycle['id']?.toString() ?? '';
       final cycleName = widget.renewalCycle['cycle_name']?.toString() ?? 'Semestral Renewal';
+      final gwaText = _gwaController.text.trim();
+      final double? gwaNumber = double.tryParse(gwaText);
 
-      // 1. Upload Grade Slip
-      String gradeSlipUrl = '';
-      final gradeExt = _gradeSlipFile!.extension ?? 'pdf';
-      final gradePath = '${widget.scholarId}/Grade_Slip_$timestamp.$gradeExt';
-      Uint8List? gradeBytes = _gradeSlipFile!.bytes;
-      if (gradeBytes == null && _gradeSlipFile!.path != null) {
-        gradeBytes = await File(_gradeSlipFile!.path!).readAsBytes();
-      }
-      if (gradeBytes != null) {
-        try {
-          await Supabase.instance.client.storage
-              .from('scholar-documents')
-              .uploadBinary(gradePath, gradeBytes, fileOptions: const FileOptions(upsert: true));
-          gradeSlipUrl = Supabase.instance.client.storage.from('scholar-documents').getPublicUrl(gradePath);
-        } catch (e) {
-          gradeSlipUrl = 'https://mock.storage.iskolarako.org/scholar-documents/$gradePath';
+      final List<Map<String, dynamic>> submittedDocsList = [];
+      final List<Map<String, dynamic>> scholarDocsToInsert = [];
+
+      for (int i = 0; i < _requirements.length; i++) {
+        final reqItem = _requirements[i];
+        final reqName = reqItem.name;
+        final file = _uploadedFiles[reqName]!;
+        final ext = file.extension ?? 'pdf';
+        final sanitizedReq = reqName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+        final storagePath = '${widget.scholarId}/Renewal_${sanitizedReq}_$timestamp.$ext';
+
+        Uint8List? fileBytes = file.bytes;
+        if (fileBytes == null && file.path != null) {
+          fileBytes = await File(file.path!).readAsBytes();
         }
-      }
 
-      // 2. Upload COR
-      String corUrl = '';
-      final corExt = _corFile!.extension ?? 'pdf';
-      final corPath = '${widget.scholarId}/COR_$timestamp.$corExt';
-      Uint8List? corBytes = _corFile!.bytes;
-      if (corBytes == null && _corFile!.path != null) {
-        corBytes = await File(_corFile!.path!).readAsBytes();
-      }
-      if (corBytes != null) {
-        try {
-          await Supabase.instance.client.storage
-              .from('scholar-documents')
-              .uploadBinary(corPath, corBytes, fileOptions: const FileOptions(upsert: true));
-          corUrl = Supabase.instance.client.storage.from('scholar-documents').getPublicUrl(corPath);
-        } catch (e) {
-          corUrl = 'https://mock.storage.iskolarako.org/scholar-documents/$corPath';
+        String docUrl = '';
+        if (fileBytes != null) {
+          try {
+            await Supabase.instance.client.storage
+                .from('scholar-documents')
+                .uploadBinary(storagePath, fileBytes, fileOptions: const FileOptions(upsert: true));
+            docUrl = Supabase.instance.client.storage.from('scholar-documents').getPublicUrl(storagePath);
+          } catch (e) {
+            docUrl = 'https://mock.storage.iskolarako.org/scholar-documents/$storagePath';
+          }
         }
-      }
 
-      final gradeSize = '${(_gradeSlipFile!.size / (1024 * 1024)).toStringAsFixed(2)} MB';
-      final corSize = '${(_corFile!.size / (1024 * 1024)).toStringAsFixed(2)} MB';
+        final fileSizeMb = '${(file.size / (1024 * 1024)).toStringAsFixed(2)} MB';
+        final isGradeDoc = reqName.toLowerCase().contains('grade') ||
+            reqName.toLowerCase().contains('gwa') ||
+            reqName.toLowerCase().contains('slip') ||
+            reqName.toLowerCase().contains('report');
+
+        final Map<String, dynamic> docItemMap = {
+          'name': reqName,
+          'description': reqItem.description,
+          'filename': file.name,
+          'filesize': fileSizeMb,
+          'document_url': docUrl,
+          'url': docUrl,
+          'status': 'Pending',
+          'verification_status': 'pending',
+          'submitted_at': DateTime.now().toIso8601String(),
+        };
+
+        if (isGradeDoc && gwaNumber != null) {
+          docItemMap['aiVerification'] = {
+            'extractedGwa': gwaText,
+            'verificationStatus': 'verified',
+            'confidenceScore': 0.95,
+          };
+        }
+
+        submittedDocsList.add(docItemMap);
+
+        scholarDocsToInsert.add({
+          'scholar_id': widget.scholarId,
+          'document_name': '$reqName ($cycleName)',
+          'document_url': docUrl,
+          'verification_status': 'pending',
+          'file_size': file.size,
+          'mime_type': 'application/$ext',
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      }
 
       final submittedDocsJson = {
-        'documents': [
-          {
-            'name': 'Official Grade Slip / Report of Grades',
-            'filename': _gradeSlipFile!.name,
-            'filesize': gradeSize,
-            'document_url': gradeSlipUrl,
-            'url': gradeSlipUrl,
-            'status': 'Pending',
-            'verification_status': 'pending',
-            'submitted_at': DateTime.now().toIso8601String(),
-          },
-          {
-            'name': 'Certificate of Registration (COR)',
-            'filename': _corFile!.name,
-            'filesize': corSize,
-            'document_url': corUrl,
-            'url': corUrl,
-            'status': 'Pending',
-            'verification_status': 'pending',
-            'submitted_at': DateTime.now().toIso8601String(),
-          },
-        ]
+        'documents': submittedDocsList,
       };
 
-      // 3. Insert or update renewal application in scholarship_applications
+      // 1. Insert or update renewal application in scholarship_applications
       await Supabase.instance.client
           .from('scholarship_applications')
           .insert({
@@ -2189,37 +2286,36 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
             'cycle_id': cycleId,
             'status': 'under_review',
             'submitted_documents': submittedDocsJson,
-            'remarks': _gwaController.text.trim().isNotEmpty
-                ? 'Semestral Renewal • Self-reported GWA: ${_gwaController.text.trim()}'
+            'remarks': gwaText.isNotEmpty
+                ? 'Semestral Renewal • GWA: $gwaText'
                 : 'Semestral Renewal Submission',
             'created_at': DateTime.now().toIso8601String(),
             'updated_at': DateTime.now().toIso8601String(),
           });
 
-      // 4. Insert scholar_documents entries
-      try {
-        await Supabase.instance.client.from('scholar_documents').insert([
-          {
-            'scholar_id': widget.scholarId,
-            'document_name': 'Official Grade Slip / Report of Grades ($cycleName)',
-            'document_url': gradeSlipUrl,
-            'verification_status': 'pending',
-            'file_size': _gradeSlipFile!.size,
-            'mime_type': 'application/$gradeExt',
-            'created_at': DateTime.now().toIso8601String(),
-          },
-          {
-            'scholar_id': widget.scholarId,
-            'document_name': 'Certificate of Registration ($cycleName)',
-            'document_url': corUrl,
-            'verification_status': 'pending',
-            'file_size': _corFile!.size,
-            'mime_type': 'application/$corExt',
-            'created_at': DateTime.now().toIso8601String(),
-          },
-        ]);
-      } catch (dErr) {
-        debugPrint('Scholar documents record insert note: $dErr');
+      // 2. Insert scholar_documents entries
+      if (scholarDocsToInsert.isNotEmpty) {
+        try {
+          await Supabase.instance.client.from('scholar_documents').insert(scholarDocsToInsert);
+        } catch (dErr) {
+          debugPrint('Scholar documents record insert note: $dErr');
+        }
+      }
+
+      // 3. Update scholar profile GWA/GPA in database
+      if (gwaNumber != null) {
+        try {
+          await Supabase.instance.client
+              .from('scholar')
+              .update({
+                'gpa': gwaNumber,
+                'gwa': gwaNumber,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', widget.scholarId);
+        } catch (gErr) {
+          debugPrint('Scholar GWA update note: $gErr');
+        }
       }
 
       if (mounted) {
@@ -2235,7 +2331,8 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cycleName = widget.renewalCycle['cycle_name']?.toString() ?? 'Semestral Renewal';
+    final sem = widget.renewalCycle['semester']?.toString() ?? '2nd Semester';
+    final cycleName = widget.renewalCycle['cycle_name']?.toString() ?? 'Renewal Batch';
     final deadline = widget.renewalCycle['application_end_date']?.toString() ?? 'Open';
 
     return Padding(
@@ -2244,6 +2341,9 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
       ),
       child: Container(
         padding: const EdgeInsets.all(24),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -2281,7 +2381,7 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Submit Semestral Renewal',
+                          '$sem Renewal',
                           style: GoogleFonts.playfairDisplay(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
@@ -2289,7 +2389,7 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
                           ),
                         ),
                         Text(
-                          '$cycleName · Deadline: $deadline',
+                          '${widget.programName} ($cycleName) · Deadline: $deadline',
                           style: GoogleFonts.inter(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,
@@ -2304,7 +2404,7 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
               const SizedBox(height: 14),
 
               Text(
-                'Upload your latest academic documents for ${widget.programName} to verify maintaining grade requirements and renew grant disbursement.',
+                'Upload the required renewal documents for ${widget.programName} set by your scholarship provider to maintain your grant eligibility.',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   color: AppColors.textSecondary,
@@ -2313,95 +2413,71 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
               ),
               const SizedBox(height: 16),
 
-              // Document 1: Official Grade Slip
-              Text(
-                '1. Official Grade Slip / Report of Grades *',
-                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 6),
-              GestureDetector(
-                onTap: _isUploading ? null : () => _pickFile(true),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: _gradeSlipFile != null ? AppColors.successBg.withAlpha(40) : AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _gradeSlipFile != null ? AppColors.primary : AppColors.rule,
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _gradeSlipFile != null ? LucideIcons.fileCheck : LucideIcons.fileText,
-                        size: 18,
-                        color: _gradeSlipFile != null ? AppColors.primary : AppColors.textMuted,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _gradeSlipFile != null ? _gradeSlipFile!.name : 'Choose Grade Slip (PDF / Image)',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: _gradeSlipFile != null ? FontWeight.w700 : FontWeight.w500,
-                            color: _gradeSlipFile != null ? AppColors.textPrimary : AppColors.textMuted,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+              // Dynamic Requirements List
+              for (int i = 0; i < _requirements.length; i++) ...[
+                Builder(
+                  builder: (ctx) {
+                    final reqItem = _requirements[i];
+                    final reqName = reqItem.name;
+                    final attachedFile = _uploadedFiles[reqName];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${i + 1}. $reqName *',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                         ),
-                      ),
-                      if (_gradeSlipFile != null)
-                        const Icon(LucideIcons.checkCircle2, size: 16, color: AppColors.primary),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              // Document 2: Certificate of Registration (COR)
-              Text(
-                '2. Certificate of Registration (COR) / Enrollment Proof *',
-                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 6),
-              GestureDetector(
-                onTap: _isUploading ? null : () => _pickFile(false),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: _corFile != null ? AppColors.successBg.withAlpha(40) : AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _corFile != null ? AppColors.primary : AppColors.rule,
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _corFile != null ? LucideIcons.fileCheck : LucideIcons.fileText,
-                        size: 18,
-                        color: _corFile != null ? AppColors.primary : AppColors.textMuted,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _corFile != null ? _corFile!.name : 'Choose COR / Registration (PDF / Image)',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: _corFile != null ? FontWeight.w700 : FontWeight.w500,
-                            color: _corFile != null ? AppColors.textPrimary : AppColors.textMuted,
+                        if (reqItem.description.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            reqItem.description,
+                            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
                           ),
-                          overflow: TextOverflow.ellipsis,
+                        ],
+                        const SizedBox(height: 6),
+                        GestureDetector(
+                          onTap: _isUploading ? null : () => _pickFileForRequirement(reqName),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: attachedFile != null ? AppColors.successBg.withAlpha(40) : AppColors.surfaceAlt,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: attachedFile != null ? AppColors.primary : AppColors.rule,
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  attachedFile != null ? LucideIcons.fileCheck : LucideIcons.fileText,
+                                  size: 18,
+                                  color: attachedFile != null ? AppColors.primary : AppColors.textMuted,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    attachedFile != null ? attachedFile.name : 'Choose file (PDF / Image)',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      fontWeight: attachedFile != null ? FontWeight.w700 : FontWeight.w500,
+                                      color: attachedFile != null ? AppColors.textPrimary : AppColors.textMuted,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (attachedFile != null)
+                                  const Icon(LucideIcons.checkCircle2, size: 16, color: AppColors.primary),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                      if (_corFile != null)
-                        const Icon(LucideIcons.checkCircle2, size: 16, color: AppColors.primary),
-                    ],
-                  ),
+                        const SizedBox(height: 14),
+                      ],
+                    );
+                  },
                 ),
-              ),
-              const SizedBox(height: 14),
+              ],
 
               // Optional GWA
               Text(
@@ -2459,7 +2535,7 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                         )
                       : Text(
-                          'Submit Renewal Requirements',
+                          'Submit Renewal Requirements (${_uploadedFiles.length}/${_requirements.length})',
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,

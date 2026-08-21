@@ -88,6 +88,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         .select(`
           *,
           scholar:scholar_id(first_name, last_name),
+          cycle:cycle_id(cycle_name, semester, cycle_type),
           scholarship_programs:program_id(title, provider:provider_id(name), disbursement_mode),
           payment_account:payment_account_id(bank_name, account_number, account_name, document_proof_url)
         `)
@@ -108,7 +109,15 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           const scholar = item.scholar
             ? `${item.scholar.first_name || ''} ${item.scholar.last_name || ''}`.trim()
             : 'Scholar Recipient';
-          const prog = item.scholarship_programs?.title || 'Scholarship Grant';
+          const baseProg = item.scholarship_programs?.title || 'Scholarship Grant';
+          const isRenewal = item.cycle?.cycle_type === 'renewal' ||
+            (item.cycle?.cycle_name || '').toLowerCase().includes('renewal') ||
+            (item.cycle?.cycle_name || '').toLowerCase().includes('2nd sem') ||
+            (item.cycle?.semester || '').toLowerCase().includes('2nd');
+          const prog = isRenewal
+            ? `${baseProg} • 2nd Sem Renewal (${item.cycle?.cycle_name || '2nd Semester'})`
+            : (item.cycle?.cycle_name ? `${baseProg} (${item.cycle?.cycle_name})` : baseProg);
+
           const amt = item.amount
             ? `₱${Number(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
             : '₱0.00';
@@ -187,7 +196,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         }
       });
 
-      // 2. Fetch ONLY approved scholarship applications
+      // 2. Fetch ONLY approved scholarship applications with cycle info
       const { data: appsData, error: appsErr } = await supabase
         .from('scholarship_applications')
         .select(`
@@ -196,7 +205,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           scholar_id,
           status,
           scholar:scholar_id(id, first_name, last_name, school),
-          cycle:cycle_id(id, program_id, program:program_id(id, title, disbursement_mode, banking_policy))
+          cycle:cycle_id(id, cycle_name, semester, cycle_type, program_id, program:program_id(id, title, disbursement_mode, banking_policy))
         `)
         .eq('status', 'approved')
         .order('created_at', { ascending: false });
@@ -205,7 +214,28 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
       const scholarIds = (appsData || []).map((a: any) => a.scholar_id);
 
-      // 3. Fetch payment accounts for these scholars
+      // 3. Fetch existing fund_releases to exclude scholars whose payout for this cycle is already complete
+      const { data: frData } = await supabase
+        .from('fund_releases')
+        .select('application_id, scholar_id, cycle_id, status, blockchain_verified');
+
+      const releasedAppIds = new Set<string>();
+      const releasedScholarCycleKeys = new Set<string>();
+
+      (frData || []).forEach((fr: any) => {
+        const isComplete =
+          fr.status === 'released' ||
+          fr.status === 'processing' ||
+          fr.blockchain_verified === true ||
+          fr.status === 'Completed';
+
+        if (isComplete) {
+          if (fr.application_id) releasedAppIds.add(fr.application_id);
+          if (fr.scholar_id && fr.cycle_id) releasedScholarCycleKeys.add(`${fr.scholar_id}_${fr.cycle_id}`);
+        }
+      });
+
+      // 4. Fetch payment accounts for these scholars
       let paymentAccountsMap: Record<string, any> = {};
       if (scholarIds.length > 0) {
         const { data: pAccounts } = await supabase
@@ -243,13 +273,30 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             return;
           }
 
+          // Exclude scholars whose payout for this cycle/semester is already completed
+          const isAlreadyReleased = releasedAppIds.has(app.id) || releasedScholarCycleKeys.has(`${app.scholar_id}_${app.cycle_id}`);
+          if (isAlreadyReleased) {
+            return;
+          }
+
           const scholarObj = app.scholar;
           const scholarName = scholarObj
             ? `${scholarObj.first_name || ''} ${scholarObj.last_name || ''}`.trim()
             : 'Approved Scholar';
-          const progTitle = progConfig.title || app.cycle?.program?.title || 'Scholarship Grant';
-          const bankingPolicy = progConfig.banking_policy || 'any_bank';
 
+          const baseProgTitle = progConfig.title || app.cycle?.program?.title || 'Scholarship Grant';
+          const cycleName = app.cycle?.cycle_name || 'Active Cycle';
+          const semester = app.cycle?.semester || '1st Semester';
+          const isRenewal = app.cycle?.cycle_type === 'renewal' ||
+            cycleName.toLowerCase().includes('renewal') ||
+            cycleName.toLowerCase().includes('2nd sem') ||
+            semester.toLowerCase().includes('2nd');
+
+          const formattedProgTitle = isRenewal
+            ? `${baseProgTitle} • 2nd Sem Renewal (${cycleName})`
+            : `${baseProgTitle} (${cycleName})`;
+
+          const bankingPolicy = progConfig.banking_policy || 'any_bank';
           const pAcc = paymentAccountsMap[app.scholar_id];
 
           list.push({
@@ -258,7 +305,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             scholarName,
             school: scholarObj?.school || 'University',
             programId: progId || 'program-id',
-            programTitle: progTitle,
+            programTitle: formattedProgTitle,
             cycleId: app.cycle_id,
             disbursementMode,
             bankingPolicy,

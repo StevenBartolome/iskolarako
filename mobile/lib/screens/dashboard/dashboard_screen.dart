@@ -35,6 +35,7 @@ class DashboardScreenState extends State<DashboardScreen> {
   List<dynamic> _allPrograms = [];
   List<dynamic> _qualifiedPrograms = [];
   List<dynamic> _recentActivities = [];
+  List<Map<String, dynamic>> _openRenewalAlerts = [];
   bool _isProfileComplete = false;
   bool _isLoadingData = true;
   int _unreadNotifCount = 0;
@@ -81,103 +82,173 @@ class DashboardScreenState extends State<DashboardScreen> {
           callback: (payload) {
             if (mounted) _loadDashboardData();
           },
-        );
-    _realtimeChannel?.subscribe();
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_programs',
+          callback: (payload) {
+            if (mounted) _loadDashboardData();
+          },
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
-    if (_realtimeChannel != null) {
-      Supabase.instance.client.removeChannel(_realtimeChannel!);
-    }
+    _realtimeChannel?.unsubscribe();
     super.dispose();
   }
 
   Future<void> _loadDashboardData() async {
     final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) {
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          _isLoadingData = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      final scholarData = await Supabase.instance.client
+          .from('scholar')
+          .select()
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      final programsData = await Supabase.instance.client
+          .from('scholarship_programs')
+          .select('*, provider:provider_id(*), cycles:application_cycles(*)')
+          .eq('status', 'active');
+
+      // Fetch unread notifications count from Supabase
       try {
-        final scholarData = await Supabase.instance.client
-            .from('scholar')
-            .select()
+        final notifRes = await Supabase.instance.client
+            .from('notifications')
+            .select('id')
             .eq('user_id', user.id)
-            .maybeSingle();
-
-        final programsData = await Supabase.instance.client
-            .from('scholarship_programs')
-            .select('*, provider:provider_id(*), cycles:application_cycles(*)')
-            .eq('status', 'active');
-
-        // Fetch unread notifications count from Supabase
-        try {
-          final notifRes = await Supabase.instance.client
-              .from('notifications')
-              .select('id')
-              .eq('user_id', user.id)
-              .eq('is_read', false);
-          if (mounted) {
-            setState(() {
-              _unreadNotifCount = notifRes.length;
-            });
-          }
-        } catch (notifErr) {
-          debugPrint('[Unread Notifs Count Error]: $notifErr');
+            .eq('is_read', false);
+        if (mounted) {
+          setState(() {
+            _unreadNotifCount = notifRes.length;
+          });
         }
+      } catch (notifErr) {
+        debugPrint('[Unread Notifs Count Error]: $notifErr');
+      }
 
-        final List<String> scholarIds = [user.id];
-        if (scholarData != null && scholarData['id'] != null) {
-          scholarIds.add(scholarData['id'].toString());
-        }
+      final List<String> scholarIds = [user.id];
+      if (scholarData != null && scholarData['id'] != null) {
+        scholarIds.add(scholarData['id'].toString());
+      }
 
-        List<dynamic> activities = [];
-        try {
-          activities = await Supabase.instance.client
-              .from('scholarship_applications')
-              .select('''
+      List<dynamic> activities = [];
+      try {
+        activities = await Supabase.instance.client
+            .from('scholarship_applications')
+            .select('''
+              *,
+              cycle:application_cycles (
                 *,
-                cycle:application_cycles (
+                program:scholarship_programs (
                   *,
-                  program:scholarship_programs (
-                    *,
-                    provider:provider (*)
-                  )
+                  provider:provider (*)
                 )
-              ''')
-              .filter('scholar_id', 'in', scholarIds)
-              .order('created_at', ascending: false)
-              .limit(5);
-        } catch (actErr) {
-          debugPrint('Note loading recent activities: $actErr');
-        }
+              )
+            ''')
+            .filter('scholar_id', 'in', scholarIds)
+            .order('created_at', ascending: false)
+            .limit(5);
+      } catch (actErr) {
+        debugPrint('Note loading recent activities: $actErr');
+      }
 
-        if (mounted) {
-          setState(() {
-            _scholarProfile = scholarData;
-            _isProfileComplete = EligibilityHelper.isProfileComplete(scholarData);
-            _scholarName = (scholarData != null && scholarData['first_name'] != null)
-                ? (scholarData['first_name'] as String).toUpperCase()
-                : 'SCHOLAR';
+      // Check for approved scholarships with open renewal cycles
+      final List<Map<String, dynamic>> renewalAlerts = [];
+      try {
+        final approvedApps = await Supabase.instance.client
+            .from('scholarship_applications')
+            .select('''
+              id,
+              scholar_id,
+              cycle_id,
+              status,
+              cycle:application_cycles (
+                *,
+                program:scholarship_programs (
+                  *,
+                  provider:provider (*)
+                )
+              )
+            ''')
+            .filter('scholar_id', 'in', scholarIds)
+            .eq('status', 'approved');
 
-            _allPrograms = programsData;
-            _recentActivities = activities;
+        for (final app in approvedApps) {
+          final cycle = app['cycle'] as Map<String, dynamic>?;
+          final program = cycle?['program'] as Map<String, dynamic>?;
+          final programId = program?['id']?.toString();
+          if (programId != null) {
+            final renewalRes = await Supabase.instance.client
+                .from('application_cycles')
+                .select('*, program:scholarship_programs(*)')
+                .eq('program_id', programId)
+                .eq('status', 'open');
 
-            if (_isProfileComplete && scholarData != null) {
-              _qualifiedPrograms = _allPrograms
-                  .where((p) => EligibilityHelper.isQualified(scholarData, p))
-                  .toList();
-            } else {
-              _qualifiedPrograms = [];
+            for (final r in renewalRes) {
+              final cType = r['cycle_type']?.toString().toLowerCase() ?? '';
+              final cName = r['cycle_name']?.toString().toLowerCase() ?? '';
+              if (cType == 'renewal' || cName.contains('renewal') || cName.contains('sem')) {
+                renewalAlerts.add({
+                  'application_id': app['id'],
+                  'scholar_id': app['scholar_id'],
+                  'program': program,
+                  'renewal_cycle': r,
+                });
+                break;
+              }
             }
-            _isLoadingData = false;
-          });
+          }
         }
-      } catch (e) {
-        debugPrint('Error loading dashboard data: $e');
-        if (mounted) {
-          setState(() {
-            _isLoadingData = false;
-          });
-        }
+      } catch (rErr) {
+        debugPrint('Note loading renewal alerts for home: $rErr');
+      }
+
+      if (mounted) {
+        setState(() {
+          _scholarProfile = scholarData;
+          _isProfileComplete = EligibilityHelper.isProfileComplete(scholarData);
+          _scholarName = (scholarData != null && scholarData['first_name'] != null)
+              ? (scholarData['first_name'] as String).toUpperCase()
+              : 'SCHOLAR';
+
+          // Strictly filter out closed programs (no open cycle or past deadline)
+          final openPrograms = (programsData as List<dynamic>?)
+                  ?.where((p) => EligibilityHelper.isProgramOpen(p as Map<String, dynamic>?))
+                  .toList() ??
+              [];
+          _allPrograms = openPrograms;
+          _recentActivities = activities;
+          _openRenewalAlerts = renewalAlerts;
+
+          if (_isProfileComplete && scholarData != null) {
+            _qualifiedPrograms = _allPrograms
+                .where((p) => EligibilityHelper.isQualified(scholarData, p))
+                .toList();
+          } else {
+            _qualifiedPrograms = [];
+          }
+          _isLoadingData = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading dashboard data: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingData = false;
+        });
       }
     }
   }
@@ -197,28 +268,36 @@ class DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
 
-            // Scrollable Content Body
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 2. Headlines
-                    _buildHeadlines(),
-                    const SizedBox(height: 20),
+          // Scrollable Content Body
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 2. Headlines
+                  _buildHeadlines(),
+                  const SizedBox(height: 16),
 
-              // 3. Stat Cards Row (3 horizontal cards)
-              _buildStatCardsRow(),
-              const SizedBox(height: 20),
+                  // 📢 Top-priority Semestral Renewal Alerts on Home Page
+                  if (_openRenewalAlerts.isNotEmpty) ...[
+                    for (final alert in _openRenewalAlerts) ...[
+                      _buildRenewalHomeBanner(context, alert),
+                      const SizedBox(height: 16),
+                    ],
+                  ],
 
-              // 4. Search Bar
-              _buildSearchBar(),
-              const SizedBox(height: 16),
+                  // 3. Stat Cards Row (3 horizontal cards)
+                  _buildStatCardsRow(),
+                  const SizedBox(height: 20),
 
-              // 5. Scrollable Filter Chips
-              _buildFilterChipsRow(),
-              const SizedBox(height: 20),
+                  // 4. Search Bar
+                  _buildSearchBar(),
+                  const SizedBox(height: 16),
+
+                  // 5. Scrollable Filter Chips
+                  _buildFilterChipsRow(),
+                  const SizedBox(height: 20),
 
               // 6. Urgent Alert Card with Sawtooth / Stamp Bottom Edge
               _buildUrgentBanner(context),
@@ -380,6 +459,127 @@ class DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ─── 2.5. Semestral Renewal Banner on Home ──────────────────────────────────
+  Widget _buildRenewalHomeBanner(BuildContext context, Map<String, dynamic> alert) {
+    final program = alert['program'] as Map<String, dynamic>?;
+    final renewalCycle = alert['renewal_cycle'] as Map<String, dynamic>?;
+    final programName = program?['title']?.toString() ?? 'Scholarship Program';
+    final sem = renewalCycle?['semester']?.toString() ?? '2nd Semester';
+    final cycleName = renewalCycle?['cycle_name']?.toString() ?? 'Renewal Batch';
+    final deadline = renewalCycle?['application_end_date']?.toString() ?? 'Open';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A3C2E), Color(0xFF2D5941)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1A3C2E).withAlpha(40),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.amber,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(LucideIcons.refreshCw, size: 12, color: AppColors.primaryDark),
+                    const SizedBox(width: 5),
+                    Text(
+                      'ACTION REQUIRED',
+                      style: GoogleFonts.inter(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primaryDark,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Deadline: $deadline',
+                style: GoogleFonts.dmMono(
+                  fontSize: 10.5,
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '$sem Renewal Open',
+            style: GoogleFonts.playfairDisplay(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '$programName ($cycleName)',
+            style: GoogleFonts.inter(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withAlpha(225),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Your scholarship provider has opened the semestral renewal submission. Upload your required documents now to renew your grant eligibility.',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: Colors.white70,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pushNamed(context, AppRouter.applicationTracker);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.amber,
+                foregroundColor: AppColors.primaryDark,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              child: Text(
+                'Submit Renewal Requirements →',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

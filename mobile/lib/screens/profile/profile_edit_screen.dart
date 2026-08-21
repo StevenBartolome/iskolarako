@@ -242,8 +242,15 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         _gpaController.text = dataList['gpa'] != null ? dataList['gpa'].toString() : '';
         _selectedGender = dataList['gender'];
         _educationLevel = dataList['education_level'] ?? 'college';
-        _gpaScale = dataList['gpa_scale'] ?? 'scale_5';
-        _avatarUrl = user.userMetadata?['avatar_url']?.toString() ?? dataList['avatar_url']?.toString();
+        final scholarAvatar = dataList['avatar_url']?.toString().trim();
+        final metaAvatar = user.userMetadata?['avatar_url']?.toString().trim();
+        if (scholarAvatar != null && scholarAvatar.isNotEmpty && scholarAvatar != 'null') {
+          _avatarUrl = scholarAvatar;
+        } else if (metaAvatar != null && metaAvatar.isNotEmpty && metaAvatar != 'null') {
+          _avatarUrl = metaAvatar;
+        } else {
+          _avatarUrl = null;
+        }
 
         _selectedRegionName = dataList['region']?.toString();
         _selectedProvinceName = dataList['province']?.toString();
@@ -778,31 +785,54 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       setState(() => _isUploadingPhoto = true);
 
       String uploadedUrl = '';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final path = 'avatars/avatar_${user.id}_$timestamp.$extension';
 
       try {
-        final path = 'avatar_${user.id}.$extension';
-        await Supabase.instance.client.storage.from('avatars').uploadBinary(
+        await Supabase.instance.client.storage.from('scholar-documents').uploadBinary(
               path,
               bytes,
               fileOptions: const FileOptions(upsert: true),
             );
-        uploadedUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(path);
-      } catch (_) {
-        final base64Str = base64Encode(bytes);
-        uploadedUrl = 'data:image/$extension;base64,$base64Str';
+        uploadedUrl = Supabase.instance.client.storage.from('scholar-documents').getPublicUrl(path);
+      } catch (e1) {
+        debugPrint('[ProfileEdit] Upload to scholar-documents failed: $e1. Trying avatars bucket...');
+        try {
+          await Supabase.instance.client.storage.from('avatars').uploadBinary(
+                path,
+                bytes,
+                fileOptions: const FileOptions(upsert: true),
+              );
+          uploadedUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(path);
+        } catch (e2) {
+          debugPrint('[ProfileEdit] Upload to avatars failed: $e2');
+          final base64Str = base64Encode(bytes);
+          uploadedUrl = 'data:image/$extension;base64,$base64Str';
+        }
       }
-
-      try {
-        await Supabase.instance.client.auth.updateUser(
-          UserAttributes(data: {'avatar_url': uploadedUrl}),
-        );
-      } catch (_) {}
 
       try {
         await Supabase.instance.client
             .from('scholar')
             .update({'avatar_url': uploadedUrl})
             .eq('user_id', user.id);
+      } catch (e) {
+        debugPrint('[ProfileEdit] Failed updating scholar table avatar_url: $e');
+      }
+
+      try {
+        await Supabase.instance.client
+            .from('users')
+            .update({'avatar_url': uploadedUrl})
+            .eq('id', user.id);
+      } catch (_) {}
+
+      try {
+        if (uploadedUrl.startsWith('http')) {
+          await Supabase.instance.client.auth.updateUser(
+            UserAttributes(data: {'avatar_url': uploadedUrl}),
+          );
+        }
       } catch (_) {}
 
       if (mounted) {

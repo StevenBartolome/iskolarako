@@ -11,7 +11,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/services/face_verification_service.dart';
 
-// ─── Step Enum ────────────────────────────────────────────────────────────────
+// ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum _VerificationStep {
   intro,
@@ -22,6 +22,15 @@ enum _VerificationStep {
   selfie,
   analyzing,
   result,
+}
+
+enum _LivenessStatus {
+  idle,
+  capturingBaseline,
+  waitingAction,
+  actionPassed,
+  analyzing,
+  failed,
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -50,6 +59,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   Uint8List? _selfieBytes;
 
   // Liveness
+  _LivenessStatus _livenessStatus = _LivenessStatus.idle;
   bool _blinkDone = false;
   bool _turnLeftDone = false;
   bool _turnRightDone = false;
@@ -70,6 +80,10 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   late Animation<double> _pulse;
   late AnimationController _checkController;
   late Animation<double> _checkScale;
+  late AnimationController _turnProgressController;
+  late Animation<double> _turnProgressAnimation;
+  late AnimationController _actionPassedController;
+  late Animation<double> _actionPassedScale;
 
   @override
   void initState() {
@@ -78,7 +92,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
-    _pulse = Tween<double>(begin: 0.95, end: 1.05).animate(
+    _pulse = Tween<double>(begin: 0.96, end: 1.04).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     _checkController = AnimationController(
@@ -86,12 +100,32 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       duration: const Duration(milliseconds: 600),
     );
     _checkScale = CurvedAnimation(parent: _checkController, curve: Curves.elasticOut);
+
+    _turnProgressController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _turnProgressAnimation = CurvedAnimation(
+      parent: _turnProgressController,
+      curve: Curves.easeInOutCubic,
+    );
+
+    _actionPassedController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _actionPassedScale = CurvedAnimation(
+      parent: _actionPassedController,
+      curve: Curves.elasticOut,
+    );
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
     _checkController.dispose();
+    _turnProgressController.dispose();
+    _actionPassedController.dispose();
     _livenessTimer?.cancel();
     _cameraController?.dispose();
     super.dispose();
@@ -187,15 +221,19 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   Future<void> _runGuidedLivenessCheck(LivenessAction action) async {
     if (!_cameraReady || _cameraController == null || _isAnalyzingFrame) return;
     _isAnalyzingFrame = true;
+    _turnProgressController.reset();
+    _actionPassedController.reset();
+
     setState(() {
       _isCheckingLiveness = true;
       _faceDetected = false;
+      _livenessStatus = _LivenessStatus.capturingBaseline;
       _livenessHint = 'Step 1: Hold still facing forward...';
     });
 
     try {
       // Step 1: Capture baseline frame (facing forward)
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 350));
       if (!mounted) return;
       final baselineFile = await _cameraController!.takePicture();
       final baselineBytes = await baselineFile.readAsBytes();
@@ -203,56 +241,90 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       if (!mounted) return;
 
       setState(() {
-        _faceDetected = true; // Turn blue as soon as forward face is locked
-        _livenessHint = action == LivenessAction.blink
-            ? 'Step 2: Blink / close your eyes now!'
-            : (action == LivenessAction.turnLeft
-                ? 'Step 2: Now TURN HEAD to the LEFT!'
-                : 'Step 2: Now TURN HEAD to the RIGHT!');
+        _faceDetected = true; // Forward face locked
+        _livenessStatus = _LivenessStatus.waitingAction;
+        if (action == LivenessAction.blink) {
+          _livenessHint = 'Step 2: Blink your eyes once now!';
+        } else if (action == LivenessAction.turnLeft) {
+          _livenessHint = 'Step 2: Turn your head to the LEFT';
+          _turnProgressController.forward();
+        } else {
+          _livenessHint = 'Step 2: Turn your head to the RIGHT';
+          _turnProgressController.forward();
+        }
       });
 
-      // Step 2: Action-specific fast delay (500ms for blink, 800ms for turn)
-      final actionDelay = action == LivenessAction.blink ? 500 : 800;
-      await Future.delayed(Duration(milliseconds: actionDelay));
+      Uint8List actionBytes;
+      List<Uint8List> additionalFrames = [];
+
+      if (action == LivenessAction.blink) {
+        // Capture 2 rapid frames across the single natural blink (at ~200ms and ~450ms)
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (!mounted) return;
+        final f1 = await _cameraController!.takePicture();
+        actionBytes = await f1.readAsBytes();
+
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (!mounted) return;
+        final f2 = await _cameraController!.takePicture();
+        final f2Bytes = await f2.readAsBytes();
+        additionalFrames.add(f2Bytes);
+      } else {
+        // For turn actions: allow 1100ms for head turn
+        await Future.delayed(const Duration(milliseconds: 1100));
+        if (!mounted) return;
+        final f = await _cameraController!.takePicture();
+        actionBytes = await f.readAsBytes();
+      }
+
       if (!mounted) return;
 
-      final actionFile = await _cameraController!.takePicture();
-      final actionBytes = await actionFile.readAsBytes();
-
-      if (!mounted) return;
-
+      // Start analyzing immediately after user blinks once / turns
       setState(() {
-        _livenessHint = 'Step 3: Analyzing movement...';
+        _livenessStatus = _LivenessStatus.analyzing;
+        _livenessHint = action == LivenessAction.blink
+            ? 'Analyzing blink...'
+            : 'Analyzing movement...';
       });
 
-      // Step 3: Send comparative frames to AI
+      // Step 3: Send comparative frames to AI for verification
       final result = await FaceVerificationService.checkLiveness(
         frameBytes: actionBytes,
         baselineFrameBytes: baselineBytes,
+        additionalActionFramesBytes: additionalFrames.isNotEmpty ? additionalFrames : null,
         expectedAction: action,
       );
 
       if (!mounted) return;
 
       if (result.actionDetected) {
-        _checkController.forward();
+        // Show "Action Passed" confirmation state
         setState(() {
           _faceDetected = true;
-          _isCheckingLiveness = false;
-          _livenessHint = 'Action detected! ✓';
+          _livenessStatus = _LivenessStatus.actionPassed;
+          _livenessHint = 'Action Passed! ✓';
           if (action == LivenessAction.blink) _blinkDone = true;
           if (action == LivenessAction.turnLeft) _turnLeftDone = true;
           if (action == LivenessAction.turnRight) _turnRightDone = true;
         });
-        if (mounted) _advanceLivenessStep(action);
+        _actionPassedController.forward();
+        _checkController.forward();
+
+        // Display "Action Passed" for ~1000ms then advance
+        await Future.delayed(const Duration(milliseconds: 1000));
+        if (!mounted) return;
+
+        _advanceLivenessStep(action);
       } else {
         setState(() {
           _isCheckingLiveness = false;
-          _faceDetected = false; // Blue line disappears if face not recognized in position
+          _faceDetected = false;
+          _livenessStatus = _LivenessStatus.failed;
           _livenessHint = result.reason.isNotEmpty
               ? 'AI: ${result.reason}\nTap "Start Check" to retry.'
               : 'Action not detected. Please tap "Start Check" to retry.';
         });
+        _turnProgressController.reset();
       }
     } catch (e) {
       debugPrint('[FaceVerification] Guided check error: $e');
@@ -260,6 +332,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         setState(() {
           _isCheckingLiveness = false;
           _faceDetected = false;
+          _livenessStatus = _LivenessStatus.failed;
           _livenessHint = 'Camera error. Please tap "Start Check" to try again.';
         });
       }
@@ -270,6 +343,8 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
 
   void _advanceLivenessStep(LivenessAction completedAction) {
     _checkController.reset();
+    _actionPassedController.reset();
+    _turnProgressController.reset();
     if (completedAction == LivenessAction.blink) {
       _goToStep(_VerificationStep.turnLeft);
     } else if (completedAction == LivenessAction.turnLeft) {
@@ -401,6 +476,10 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
 
   void _goToStep(_VerificationStep step) async {
     _livenessTimer?.cancel();
+    _turnProgressController.reset();
+    _actionPassedController.reset();
+    _checkController.reset();
+
     String defaultHint = '';
     if (step == _VerificationStep.blink) {
       defaultHint = 'Look straight at the camera, then tap "Start Check"';
@@ -412,6 +491,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
 
     setState(() {
       _step = step;
+      _livenessStatus = _LivenessStatus.idle;
       _livenessHint = defaultHint;
       _isCheckingLiveness = false;
       _faceDetected = false;
@@ -434,10 +514,13 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     _livenessTimer?.cancel();
     _disposeCamera();
     _checkController.reset();
+    _turnProgressController.reset();
+    _actionPassedController.reset();
     setState(() {
       _step = _VerificationStep.intro;
       _idImageBytes = null;
       _selfieBytes = null;
+      _livenessStatus = _LivenessStatus.idle;
       _blinkDone = false;
       _turnLeftDone = false;
       _turnRightDone = false;
@@ -980,428 +1063,574 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     required LivenessAction action,
     required bool done,
   }) {
-    return Column(
-      key: key,
-      children: [
-        _buildProgressBar(stepNumber + 1, 4),
-        Expanded(
-          child: Stack(
-            children: [
-              // Camera preview
-              if (_cameraReady && _cameraController != null)
-                Positioned.fill(
-                  child: ClipRRect(
-                    child: CameraPreview(_cameraController!),
-                  ),
-                )
-              else if (_cameraError)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(LucideIcons.cameraOff,
-                            color: AppColors.error, size: 48),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Camera access denied.\nPlease enable camera permission in Settings.',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(
-                              fontSize: 14, color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                const Center(child: CircularProgressIndicator()),
+    final isTurnAction = action == LivenessAction.turnLeft || action == LivenessAction.turnRight;
+    final isTurnLeft = action == LivenessAction.turnLeft;
+    final isActionPassed = done || _livenessStatus == _LivenessStatus.actionPassed;
+    final isAnalyzing = _livenessStatus == _LivenessStatus.analyzing;
 
-              // Overlay
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withAlpha(120),
-                        Colors.transparent,
-                        Colors.transparent,
-                        Colors.black.withAlpha(200),
-                      ],
-                      stops: const [0.0, 0.25, 0.65, 1.0],
-                    ),
-                  ),
-                ),
-              ),
+    return AnimatedBuilder(
+      animation: Listenable.merge([_pulseController, _turnProgressAnimation, _actionPassedScale]),
+      builder: (context, _) {
+        return Container(
+          key: key,
+          color: AppColors.background,
+          child: SafeArea(
+            child: Column(
+              children: [
+                _buildProgressBar(stepNumber + 1, 4),
+                const SizedBox(height: 12),
 
-              // Oval face guide
-              Center(
-                child: ScaleTransition(
-                  scale: _pulse,
+                // Top instruction badge
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Container(
-                    width: 210,
-                    height: 270,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(105),
-                      border: Border.all(
-                        color: done
-                            ? AppColors.primary
-                            : (_faceDetected
-                                ? Colors.blueAccent
-                                : Colors.white),
-                        width: done || _faceDetected ? 4.0 : 2.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Visual center label overlay
-              if (!done && _isCheckingLiveness)
-                Positioned(
-                  top: MediaQuery.of(context).size.height * 0.44,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withAlpha(150),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24, width: 0.5),
-                      ),
-                      child: Text(
-                        'Align Face Here',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.rule),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(6),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
-                      ),
+                      ],
                     ),
-                  ),
-                ),
-
-              // Top instruction
-              Positioned(
-                top: 24,
-                left: 0,
-                right: 0,
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryDark.withAlpha(200),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(icon, color: Colors.white, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            title,
-                            style: GoogleFonts.inter(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle,
-                      style: GoogleFonts.inter(
-                          fontSize: 12, color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Bottom controls
-              Positioned(
-                bottom: 24,
-                left: 24,
-                right: 24,
-                child: Column(
-                  children: [
-                    if (done) ...[
-                      ScaleTransition(
-                        scale: _checkScale,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
                           decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(24),
+                            gradient: AppColors.signatureGradient,
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          child: Icon(icon, color: Colors.white, size: 18),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(LucideIcons.checkCircle,
-                                  color: Colors.white, size: 18),
-                              const SizedBox(width: 8),
                               Text(
-                                'Action Detected!',
+                                title,
                                 style: GoogleFonts.inter(
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
                                   fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ] else ...[
-                      if (_livenessHint.isNotEmpty) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withAlpha(180),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white24, width: 0.5),
-                          ),
-                          child: Text(
-                            _livenessHint,
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              height: 1.4,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
                       ],
-                      ElevatedButton.icon(
-                        onPressed: _isAnalyzingFrame
-                            ? null
-                            : () => _runGuidedLivenessCheck(action),
-                        icon: _isAnalyzingFrame
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(LucideIcons.play, size: 16),
-                        label: Text(
-                          _isAnalyzingFrame
-                              ? 'Checking Movement...'
-                              : (_isCheckingLiveness ? 'In Progress...' : 'Start Check'),
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
+                    ),
+                  ),
+                ),
+
+                const Spacer(),
+
+                // Center Oval Face Cutout Viewport with Side Turn Indicator
+                _buildOvalFaceViewport(
+                  child: _buildCameraWidget(),
+                  isActionPassed: isActionPassed,
+                  isFaceDetected: _faceDetected,
+                  isTurnAction: isTurnAction,
+                  isTurnLeft: isTurnLeft,
+                  turnProgress: _turnProgressAnimation.value,
+                ),
+
+                const Spacer(),
+
+                // Status / Guidance Card & Controls
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: _buildLivenessFeedback(
+                    action: action,
+                    done: done,
+                    isActionPassed: isActionPassed,
+                    isAnalyzing: isAnalyzing,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOvalFaceViewport({
+    required Widget child,
+    required bool isActionPassed,
+    required bool isFaceDetected,
+    required bool isTurnAction,
+    required bool isTurnLeft,
+    double turnProgress = 0.0,
+  }) {
+    const ovalWidth = 230.0;
+    const ovalHeight = 300.0;
+    const ovalRadius = 115.0;
+
+    List<BoxShadow> shadows = [];
+    if (isActionPassed) {
+      shadows = [
+        BoxShadow(
+          color: AppColors.primary.withAlpha(90),
+          blurRadius: 24,
+          spreadRadius: 3,
+        ),
+      ];
+    } else if (isFaceDetected) {
+      shadows = [
+        BoxShadow(
+          color: Colors.blueAccent.withAlpha(70),
+          blurRadius: 18,
+          spreadRadius: 2,
+        ),
+      ];
+    } else {
+      shadows = [
+        BoxShadow(
+          color: Colors.black.withAlpha(15),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
+        ),
+      ];
+    }
+
+    return Center(
+      child: ScaleTransition(
+        scale: isActionPassed ? _actionPassedScale : _pulse,
+        child: Container(
+          width: ovalWidth,
+          height: ovalHeight,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(ovalRadius),
+            boxShadow: shadows,
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Camera preview inside the oval (pure video, NO lines inside)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(ovalRadius - 3),
+                child: Container(
+                  color: AppColors.surfaceAlt,
+                  child: child,
+                ),
+              ),
+
+              // 2. Circle line itself as the dynamic indicator
+              CustomPaint(
+                painter: _CircleBorderPainter(
+                  baseColor: AppColors.primary.withAlpha(130),
+                  activeColor: AppColors.primary,
+                  progress: turnProgress,
+                  isTurnLeft: isTurnAction && isTurnLeft,
+                  isTurnRight: isTurnAction && !isTurnLeft,
+                  isActionPassed: isActionPassed,
+                  isFaceDetected: isFaceDetected,
+                ),
+              ),
+
+              // 3. Action Passed Checkmark Overlay
+              if (isActionPassed)
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withAlpha(35),
+                    borderRadius: BorderRadius.circular(ovalRadius - 3),
+                  ),
+                  child: Center(
+                    child: ScaleTransition(
+                      scale: _checkScale,
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withAlpha(100),
+                              blurRadius: 16,
+                            ),
+                          ],
                         ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _faceDetected
-                              ? Colors.blueAccent
-                              : AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 28,
-                            vertical: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          elevation: 4,
+                        child: const Icon(
+                          LucideIcons.check,
+                          color: Colors.white,
+                          size: 36,
                         ),
                       ),
-                    ],
-                  ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCameraWidget() {
+    if (_cameraReady && _cameraController != null) {
+      final previewSize = _cameraController!.value.previewSize;
+      final previewHeight = previewSize?.height ?? 300.0;
+      final previewWidth = previewSize?.width ?? 400.0;
+
+      return FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: previewHeight,
+          height: previewWidth,
+          child: CameraPreview(_cameraController!),
+        ),
+      );
+    } else if (_cameraError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(LucideIcons.cameraOff, color: AppColors.error, size: 36),
+              const SizedBox(height: 8),
+              Text(
+                'Camera Error',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.error,
                 ),
               ),
             ],
           ),
+        ),
+      );
+    } else {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: AppColors.primary,
+          strokeWidth: 2.5,
+        ),
+      );
+    }
+  }
+
+  Widget _buildLivenessFeedback({
+    required LivenessAction action,
+    required bool done,
+    required bool isActionPassed,
+    required bool isAnalyzing,
+  }) {
+    if (isActionPassed) {
+      return ScaleTransition(
+        scale: _actionPassedScale,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.successBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.primary, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withAlpha(30),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(LucideIcons.checkCircle, color: AppColors.primary, size: 20),
+              const SizedBox(width: 10),
+              Text(
+                'Action Passed!',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (isAnalyzing) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.primary.withAlpha(60), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(8),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              _livenessHint.isNotEmpty ? _livenessHint : 'Analyzing Face Movement...',
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w700,
+                color: AppColors.primaryDark,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        if (_livenessHint.isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: _livenessStatus == _LivenessStatus.failed
+                  ? AppColors.errorBg
+                  : AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: _livenessStatus == _LivenessStatus.failed
+                    ? AppColors.error
+                    : AppColors.rule,
+                width: 1,
+              ),
+            ),
+            child: Text(
+              _livenessHint,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: _livenessStatus == _LivenessStatus.failed
+                    ? AppColors.error
+                    : AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _buildPrimaryButton(
+          label: _isAnalyzingFrame
+              ? 'Analyzing Movement...'
+              : (_isCheckingLiveness ? 'Checking In Progress...' : 'Start Check'),
+          icon: LucideIcons.play,
+          onTap: _isAnalyzingFrame || _isCheckingLiveness
+              ? null
+              : () => _runGuidedLivenessCheck(action),
         ),
       ],
     );
   }
 
   Widget _buildSelfieStep() {
-    return Column(
+    return Container(
       key: const ValueKey('selfie'),
-      children: [
-        _buildProgressBar(4, 4),
-        Expanded(
-          child: Stack(
-            children: [
-              if (_selfieBytes != null)
-                // Preview taken selfie
-                Positioned.fill(
-                  child: Image.memory(_selfieBytes!, fit: BoxFit.cover),
-                )
-              else if (_cameraReady && _cameraController != null)
-                Positioned.fill(
-                  child: CameraPreview(_cameraController!),
-                )
-              else
-                const Center(child: CircularProgressIndicator()),
+      color: AppColors.background,
+      child: SafeArea(
+        child: Column(
+          children: [
+            _buildProgressBar(4, 4),
+            const SizedBox(height: 12),
 
-              // Gradient overlay
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withAlpha(80),
-                        Colors.transparent,
-                        Colors.black.withAlpha(200),
-                      ],
-                      stops: const [0.0, 0.5, 1.0],
+            // Top instruction badge
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.rule),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(6),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
-                  ),
+                  ],
                 ),
-              ),
-
-              // Top label
-              Positioned(
-                top: 24,
-                left: 0,
-                right: 0,
-                child: Column(
+                child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                      width: 38,
+                      height: 38,
                       decoration: BoxDecoration(
-                        color: AppColors.primaryDark.withAlpha(200),
-                        borderRadius: BorderRadius.circular(24),
+                        gradient: AppColors.signatureGradient,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: const Icon(LucideIcons.camera, color: Colors.white, size: 18),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(LucideIcons.camera,
-                              color: Colors.white, size: 18),
-                          const SizedBox(width: 8),
                           Text(
-                            _selfieBytes != null ? 'Selfie Ready' : 'Take Selfie',
+                            _selfieBytes != null ? 'Selfie Captured' : 'Take a Selfie',
                             style: GoogleFonts.inter(
-                              fontSize: 15,
+                              fontSize: 14,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _selfieBytes != null
+                                ? 'Looking good! Proceed or retake.'
+                                : 'Look straight at the camera and take your photo',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _selfieBytes != null
-                          ? 'Looking good! Proceed or retake.'
-                          : 'Look straight at the camera and tap capture',
-                      style: GoogleFonts.inter(
-                          fontSize: 12, color: Colors.white70),
                     ),
                   ],
                 ),
               ),
+            ),
 
-              // Oval guide
-              if (_selfieBytes == null)
-                Center(
-                  child: Container(
-                    width: 210,
-                    height: 270,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(105),
-                      border: Border.all(color: Colors.white, width: 2.5),
-                    ),
-                  ),
-                ),
+            const Spacer(),
 
-              // Bottom buttons
-              Positioned(
-                bottom: 32,
-                left: 24,
-                right: 24,
-                child: _selfieBytes != null
-                    ? Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () =>
-                                  setState(() => _selfieBytes = null),
-                              icon: const Icon(LucideIcons.refreshCw, size: 16),
-                              label: Text('Retake',
-                                  style: GoogleFonts.inter(
-                                      fontWeight: FontWeight.w600)),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: const BorderSide(color: Colors.white54),
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14)),
+            // Center Oval Face Cutout Viewport
+            _buildOvalFaceViewport(
+              child: _selfieBytes != null
+                  ? Image.memory(
+                      _selfieBytes!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                    )
+                  : _buildCameraWidget(),
+              isActionPassed: false,
+              isFaceDetected: _selfieBytes != null,
+              isTurnAction: false,
+              isTurnLeft: false,
+            ),
+
+            const Spacer(),
+
+            // Bottom action buttons
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: _selfieBytes != null
+                  ? Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => setState(() => _selfieBytes = null),
+                            icon: const Icon(LucideIcons.refreshCw, size: 16),
+                            label: Text(
+                              'Retake',
+                              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.textPrimary,
+                              side: const BorderSide(color: AppColors.rule, width: 1.5),
+                              backgroundColor: AppColors.surface,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 2,
-                            child: ElevatedButton.icon(
-                              onPressed: _runAnalysis,
-                              icon: const Icon(LucideIcons.brain, size: 16),
-                              label: Text('Run AI Analysis',
-                                  style: GoogleFonts.inter(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            onPressed: _runAnalysis,
+                            icon: const Icon(LucideIcons.brain, size: 16),
+                            label: Text(
+                              'Run AI Match',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
                               ),
                             ),
-                          ),
-                        ],
-                      )
-                    : Center(
-                        child: GestureDetector(
-                          onTap: _captureSelfie,
-                          child: Container(
-                            width: 72,
-                            height: 72,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                              border: Border.all(
-                                  color: AppColors.primary, width: 3),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withAlpha(80),
-                                  blurRadius: 16,
-                                  spreadRadius: 2,
-                                ),
-                              ],
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              elevation: 2,
                             ),
-                            child: const Icon(LucideIcons.camera,
-                                color: AppColors.primary, size: 28),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Center(
+                      child: GestureDetector(
+                        onTap: _captureSelfie,
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            border: Border.all(color: AppColors.primary, width: 3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withAlpha(80),
+                                blurRadius: 16,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            LucideIcons.camera,
+                            color: AppColors.primary,
+                            size: 28,
                           ),
                         ),
                       ),
-              ),
-            ],
-          ),
+                    ),
+            ),
+
+            const SizedBox(height: 20),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -1680,4 +1909,67 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       ),
     );
   }
+}
+
+// ─── Reticle Painter ──────────────────────────────────────────────────────────
+
+class _CircleBorderPainter extends CustomPainter {
+  final Color baseColor;
+  final Color activeColor;
+  final double progress;
+  final bool isTurnLeft;
+  final bool isTurnRight;
+  final bool isActionPassed;
+  final bool isFaceDetected;
+
+  const _CircleBorderPainter({
+    required this.baseColor,
+    required this.activeColor,
+    required this.progress,
+    required this.isTurnLeft,
+    required this.isTurnRight,
+    required this.isActionPassed,
+    required this.isFaceDetected,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(2, 2, size.width - 4, size.height - 4);
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular((size.width - 4) / 2));
+
+    final basePaint = Paint()
+      ..color = isActionPassed
+          ? activeColor
+          : (isFaceDetected ? Colors.blueAccent : baseColor)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = isActionPassed || isFaceDetected ? 4.0 : 2.5;
+
+    canvas.drawRRect(rrect, basePaint);
+
+    if ((isTurnLeft || isTurnRight) && progress > 0.0 && !isActionPassed) {
+      final turnPaint = Paint()
+        ..color = Color.lerp(Colors.blueAccent, activeColor, progress) ?? activeColor
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = 4.5;
+
+      const startAngle = -3.14159265 / 2;
+      final sweepAngle = isTurnLeft
+          ? -3.14159265 * progress
+          : 3.14159265 * progress;
+
+      final path = Path()..addArc(rect, startAngle, sweepAngle);
+      canvas.drawPath(path, turnPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CircleBorderPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
+      oldDelegate.isActionPassed != isActionPassed ||
+      oldDelegate.isFaceDetected != isFaceDetected ||
+      oldDelegate.isTurnLeft != isTurnLeft ||
+      oldDelegate.isTurnRight != isTurnRight ||
+      oldDelegate.baseColor != baseColor ||
+      oldDelegate.activeColor != activeColor;
 }

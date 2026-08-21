@@ -115,6 +115,8 @@ export interface ScholarAward {
   award_amount?: any;
   programTitle?: any;
   status?: any;
+  payoutHistory?: any[];
+  payoutStatus?: string;
   [key: string]: any;
 }
 

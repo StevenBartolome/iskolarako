@@ -35,6 +35,21 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   );
   const [description, setDescription] = useState(programToEdit?.description || '');
 
+  // Step 1: Application Intake Period (Opening & Closing Dates)
+  const defaultStartDate = new Date().toISOString().split('T')[0];
+  const defaultEndDate = new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0];
+  const initialCycle = programToEdit?.cycles && programToEdit.cycles.length > 0 ? programToEdit.cycles[0] : null;
+
+  const [cycleName, setCycleName] = useState(
+    initialCycle?.name || `AY ${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
+  );
+  const [applicationStartDate, setApplicationStartDate] = useState(
+    initialCycle?.startDate || defaultStartDate
+  );
+  const [applicationEndDate, setApplicationEndDate] = useState(
+    initialCycle?.endDate || defaultEndDate
+  );
+
   // Freshmen specifics
   const [allowFreshmanIntendedSchool, setAllowFreshmanIntendedSchool] = useState<boolean>(
     programToEdit?.allow_freshman_intended_school ?? true
@@ -198,6 +213,14 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         }
       }
 
+      // Pre-populate intake cycle dates
+      const cyc = programToEdit.cycles && programToEdit.cycles.length > 0 ? programToEdit.cycles[0] : null;
+      if (cyc) {
+        setCycleName(cyc.name || `AY ${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+        if (cyc.startDate) setApplicationStartDate(cyc.startDate);
+        if (cyc.endDate) setApplicationEndDate(cyc.endDate);
+      }
+
       // Pre-populate requirements
       const rawReqs =
         programToEdit.application_requirements ??
@@ -358,6 +381,9 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         category,
         target_education_level: targetLevel,
         description,
+        cycle_name: cycleName || `AY ${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+        application_start_date: applicationStartDate || defaultStartDate,
+        application_end_date: applicationEndDate || defaultEndDate,
         amount: parseFloat(amount) || 0,
         funding_frequency: fundingFreq,
         total_slots: parseInt(totalSlots, 10) || 0,
@@ -550,6 +576,61 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   onChange={(e) => setTotalSlots(e.target.value)}
                   className="w-full px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none text-sm"
                 />
+              </div>
+            </div>
+
+            {/* Application Intake Schedule (Opening & Closing Dates) */}
+            <div className="p-5 rounded-3xl bg-[#F9F5EF] border border-[#D9D2C5] space-y-4">
+              <div>
+                <h4 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-2">
+                  <span>📅</span> Application Intake Schedule (Opening & Closing Dates)
+                </h4>
+                <p className="text-[11px] text-[#6C6C70] mt-0.5 font-medium">
+                  Set when student applications open and the closing deadline. The scholarship will automatically close when the deadline passes.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                    Intake Cycle Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. AY 2026-2027 1st Sem"
+                    value={cycleName}
+                    onChange={(e) => setCycleName(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] focus:outline-none focus:border-[#1A3C2E] bg-white text-xs font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                    Opening Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={applicationStartDate}
+                    onChange={(e) => setApplicationStartDate(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] focus:outline-none focus:border-[#1A3C2E] bg-white text-xs font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                    Closing Deadline *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    min={applicationStartDate}
+                    value={applicationEndDate}
+                    onChange={(e) => setApplicationEndDate(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] focus:outline-none focus:border-[#1A3C2E] bg-white text-xs font-medium"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1345,7 +1426,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   />
                   <input
                     type="text"
-                    placeholder="Instructions / Hint (e.g., From school registrar or dean)"
+                    placeholder="Instructions / Hint (Optional - e.g., From school registrar or dean)"
                     value={newRequirementDesc}
                     onChange={(e) => setNewRequirementDesc(e.target.value)}
                     className="px-4 py-3 rounded-2xl border border-[#D9D2C5] text-sm focus:outline-none bg-white"
@@ -1432,6 +1513,12 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 <div>
                   <span className="text-[#6C6C70] block uppercase font-bold text-[10px]">Slots</span>
                   <span className="text-sm font-bold text-[#1A3C2E]">{totalSlots || 'Unlimited'} Available Slots</span>
+                </div>
+                <div className="col-span-2 p-3 bg-white rounded-2xl border border-[#D9D2C5]">
+                  <span className="text-[#6C6C70] block uppercase font-bold text-[10px]">📅 Application Intake Period</span>
+                  <span className="text-xs font-bold text-[#1A3C2E] block mt-0.5">
+                    {cycleName || 'Active Intake Cycle'}: {applicationStartDate} → {applicationEndDate}
+                  </span>
                 </div>
               </div>
 
