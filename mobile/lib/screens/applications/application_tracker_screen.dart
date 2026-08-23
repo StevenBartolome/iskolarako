@@ -18,6 +18,7 @@ class AppliedScholarship {
   final Map<String, dynamic>? activeRenewalCycle;
   final String providerName;
   final String scholarshipName;
+  final String cycleLabel;
   final String status;
   final StatusType statusType;
   final String appliedDate;
@@ -36,6 +37,7 @@ class AppliedScholarship {
     this.activeRenewalCycle,
     required this.providerName,
     required this.scholarshipName,
+    this.cycleLabel = 'Initial Cycle',
     required this.status,
     required this.statusType,
     required this.appliedDate,
@@ -46,6 +48,30 @@ class AppliedScholarship {
     this.isCycleOpen = true,
     this.cycleEndDate,
   });
+}
+
+class ProgramApplicationGroup {
+  final String programId;
+  final String scholarshipName;
+  final String providerName;
+  final List<AppliedScholarship> cycles;
+  int selectedCycleIndex;
+
+  ProgramApplicationGroup({
+    required this.programId,
+    required this.scholarshipName,
+    required this.providerName,
+    required this.cycles,
+    this.selectedCycleIndex = 0,
+  });
+
+  AppliedScholarship get currentCycle =>
+      cycles[selectedCycleIndex >= 0 && selectedCycleIndex < cycles.length
+          ? selectedCycleIndex
+          : 0];
+
+  StatusType get statusType => currentCycle.statusType;
+  DateTime get compareDate => currentCycle.compareDate;
 }
 
 enum StepState { done, active, future }
@@ -81,7 +107,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
   String _selectedSort = 'Date (Newest)'; // 'Date (Newest)', 'Date (Oldest)', 'Provider Name'
 
   bool _isLoading = true;
-  List<AppliedScholarship> _appliedScholarships = [];
+  List<ProgramApplicationGroup> _programGroups = [];
   RealtimeChannel? _realtimeChannel;
   Map<String, dynamic>? _paymentAccount;
   String _currentScholarId = '';
@@ -236,7 +262,6 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
         if (scholarshipName.isEmpty) scholarshipName = 'Scholarship Program';
         if (providerName.isEmpty) providerName = 'Scholarship Provider';
 
-        // If this specific application entry is for a renewal cycle, format the card title with Renewal info
         final cycleType = cycle?['cycle_type']?.toString().toLowerCase() ?? '';
         final cycleName = cycle?['cycle_name']?.toString() ?? '';
         final semester = cycle?['semester']?.toString() ?? '';
@@ -246,12 +271,13 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
             cycleName.toLowerCase().contains('sem') ||
             remarksStr.contains('renewal');
 
+        String cycleLabel = 'Initial Cycle';
         if (isRenewalApp) {
           final semTitle = semester.isNotEmpty ? semester : '2nd Semester';
-          final baseName = scholarshipName;
-          if (!baseName.toLowerCase().contains('renewal')) {
-            scholarshipName = '$semTitle Renewal — $baseName${cycleName.isNotEmpty ? ' ($cycleName)' : ''}';
-          }
+          cycleLabel = '$semTitle Renewal';
+        } else {
+          final semTitle = semester.isNotEmpty ? semester : '1st Semester';
+          cycleLabel = '$semTitle Initial';
         }
 
         String? programId = program?['id']?.toString() ?? row['program_id']?.toString();
@@ -466,6 +492,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           activeRenewalCycle: activeRenewalCycle,
           providerName: providerName,
           scholarshipName: scholarshipName,
+          cycleLabel: cycleLabel,
           status: statusLabel,
           statusType: statusType,
           appliedDate: appliedDate,
@@ -478,9 +505,33 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
         ));
       }
 
+      // Group loaded applications into single cards per program
+      final Map<String, List<AppliedScholarship>> groupedMap = {};
+      for (final app in loadedApps) {
+        final groupKey = (app.programId != null && app.programId!.isNotEmpty)
+            ? app.programId!
+            : app.scholarshipName.toLowerCase().trim();
+        if (!groupedMap.containsKey(groupKey)) {
+          groupedMap[groupKey] = [];
+        }
+        groupedMap[groupKey]!.add(app);
+      }
+
+      final List<ProgramApplicationGroup> groups = [];
+      groupedMap.forEach((key, list) {
+        list.sort((a, b) => b.compareDate.compareTo(a.compareDate));
+        groups.add(ProgramApplicationGroup(
+          programId: list.first.programId ?? key,
+          scholarshipName: list.first.scholarshipName,
+          providerName: list.first.providerName,
+          cycles: list,
+          selectedCycleIndex: 0,
+        ));
+      });
+
       if (mounted) {
         setState(() {
-          _appliedScholarships = loadedApps;
+          _programGroups = groups;
           _paymentAccount = paymentAcc;
           _currentScholarId = resolvedScholarId;
           _currentScholarName = scholarName;
@@ -493,18 +544,18 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     }
   }
 
-  List<AppliedScholarship> get _processedScholarships {
-    List<AppliedScholarship> list = List.from(_appliedScholarships);
+  List<ProgramApplicationGroup> get _processedGroups {
+    List<ProgramApplicationGroup> list = List.from(_programGroups);
 
     // Apply Filter
     if (_selectedFilter != 'All') {
-      list = list.where((item) {
+      list = list.where((group) {
         if (_selectedFilter == 'Pending') {
-          return item.statusType == StatusType.pending;
+          return group.statusType == StatusType.pending;
         } else if (_selectedFilter == 'Approved') {
-          return item.statusType == StatusType.approved;
+          return group.statusType == StatusType.approved;
         } else if (_selectedFilter == 'Rejected') {
-          return item.statusType == StatusType.rejected;
+          return group.statusType == StatusType.rejected;
         }
         return true;
       }).toList();
@@ -524,7 +575,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final displayedList = _processedScholarships;
+    final displayedList = _processedGroups;
 
     Widget contentWidget;
     if (_isLoading) {
@@ -548,7 +599,8 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
                 itemCount: displayedList.length,
                 itemBuilder: (context, index) {
-                  final scholarship = displayedList[index];
+                  final group = displayedList[index];
+                  final scholarship = group.currentCycle;
                   final isExpanded = _expandedIndex == index;
 
                   return AnimatedContainer(
@@ -645,6 +697,56 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                     fontSize: 10,
                                   ),
                                 ),
+                                if (group.cycles.length > 1) ...[
+                                  const SizedBox(height: 10),
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      children: List.generate(group.cycles.length, (cycleIdx) {
+                                        final cycleItem = group.cycles[cycleIdx];
+                                        final isSelected = group.selectedCycleIndex == cycleIdx;
+                                        return GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              group.selectedCycleIndex = cycleIdx;
+                                            });
+                                          },
+                                          child: Container(
+                                            margin: const EdgeInsets.only(right: 8),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                            decoration: BoxDecoration(
+                                              color: isSelected ? AppColors.primary : AppColors.surfaceAlt,
+                                              borderRadius: BorderRadius.circular(20),
+                                              border: Border.all(
+                                                color: isSelected ? AppColors.primary : AppColors.rule,
+                                                width: isSelected ? 1.2 : 0.8,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  cycleIdx == 0 ? LucideIcons.zap : LucideIcons.history,
+                                                  size: 12,
+                                                  color: isSelected ? Colors.white : AppColors.primary,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  cycleIdx == 0 ? '${cycleItem.cycleLabel} (Current)' : cycleItem.cycleLabel,
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 11,
+                                                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      }),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -679,7 +781,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                 if (scholarship.submittedDocuments.isNotEmpty) ...[
                                   const SizedBox(height: 8),
                                   const Divider(height: 24, thickness: 0.8),
-                                  _buildDocumentsSection(scholarship),
+                                  _buildDocumentsSection(scholarship, group),
                                 ],
                               ],
                             ),
@@ -999,16 +1101,34 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
   }
 
 
-  Widget _buildDocumentsSection(AppliedScholarship scholarship) {
+
+  Widget _buildDocumentsSection(AppliedScholarship scholarship, ProgramApplicationGroup group) {
     final hasFlagged = scholarship.submittedDocuments.any((d) =>
         d['status']?.toString().toLowerCase() == 'flagged' ||
         d['verification_status']?.toString().toLowerCase() == 'rejected');
 
+    final isRenewalEntry = scholarship.cycleLabel.toLowerCase().contains('renewal') ||
+        scholarship.cycleLabel.toLowerCase().contains('2nd');
+
+    final bool alreadySubmittedRenewal = group.cycles.any((c) =>
+        c.cycleId == scholarship.activeRenewalCycle?['id']?.toString() ||
+        c.cycleLabel.toLowerCase().contains('renewal') ||
+        c.cycleLabel.toLowerCase().contains('2nd'));
+
+    // Show initial prompt only if scholar has NOT YET submitted a renewal cycle
+    final bool showInitialRenewalPrompt = scholarship.activeRenewalCycle != null &&
+        scholarship.statusType == StatusType.approved &&
+        !alreadySubmittedRenewal;
+
+    // Scholar submitted renewal, but it is NOT YET approved (pending review / under review)
+    final bool isRenewalPending = isRenewalEntry &&
+        scholarship.statusType == StatusType.pending;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Semestral Renewal Period Open Banner for Approved Scholars
-        if (scholarship.activeRenewalCycle != null) ...[
+        // 1. Semestral Renewal Period Open Banner for Approved Scholars (Not yet submitted)
+        if (showInitialRenewalPrompt) ...[
           Container(
             margin: const EdgeInsets.only(bottom: 16),
             padding: const EdgeInsets.all(16),
@@ -1110,6 +1230,74 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                     label: Text(
                       'Submit Semestral Renewal Requirements',
                       style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        // 2. Pending Renewal Submission Card (Allows Unsubmit & Resubmit while under review)
+        if (isRenewalPending) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.primary.withAlpha(60)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(LucideIcons.fileCheck2, size: 16, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Semestral Renewal Requirements Submitted (Under Review)',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Your submitted renewal requirements are under provider evaluation. You can update or replace your uploaded files while under review.',
+                  style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      if (scholarship.scholarId != null && (scholarship.activeRenewalCycle != null || scholarship.cycleId != null)) {
+                        final cycleData = scholarship.activeRenewalCycle ?? {'id': scholarship.cycleId};
+                        _openSemestralRenewalModal(
+                          context,
+                          scholarId: scholarship.scholarId!,
+                          renewalCycle: cycleData,
+                          programName: scholarship.scholarshipName,
+                        );
+                      }
+                    },
+                    icon: const Icon(LucideIcons.uploadCloud, size: 14),
+                    label: Text(
+                      'Update / Resubmit Renewal Requirements',
+                      style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
                     ),
                   ),
                 ),

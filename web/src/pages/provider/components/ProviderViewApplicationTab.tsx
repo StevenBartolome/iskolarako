@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import type { ApplicationDetail, SubmittedDocItem, ApplicantStatus } from './ReviewApplicationModal';
-import { ScholarGuidelinesModal } from './ScholarGuidelinesModal';
 import {
   verifyDocumentAuthenticity,
   type DocVerificationResult,
@@ -31,7 +30,6 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
   const [documentsList, setDocumentsList] = useState<SubmittedDocItem[]>(application?.submittedDocuments || []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activePreviewDoc, setActivePreviewDoc] = useState<SubmittedDocItem | null>(null);
-  const [isGuidelinesModalOpen, setIsGuidelinesModalOpen] = useState(false);
 
   // AI Verification states
   const [isBatchScanning, setIsBatchScanning] = useState(false);
@@ -519,11 +517,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
     setIsSubmitting(true);
     try {
       await onUpdateStatus(application.id, statusToApply, remarks, documentsList);
-      if (statusToApply === 'Approved') {
-        setIsGuidelinesModalOpen(true);
-      } else {
-        onBack();
-      }
+      onBack();
     } catch (error) {
       console.error('Failed to update application status:', error);
     } finally {
@@ -632,15 +626,6 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap lg:justify-end shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsGuidelinesModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-xs font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs"
-              title="Draft and optionally send official maintaining guidelines and renewal terms with AI"
-            >
-              <span>📜</span> Scholar Guidelines (AI)
-            </button>
-
             <button
               onClick={() => handleSaveStatus('Approved')}
               disabled={isSubmitting}
@@ -1157,17 +1142,6 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
         </div>
 
       </div>
-
-      {/* Optional Scholar Guidelines / Maintaining Agreement Modal */}
-      <ScholarGuidelinesModal
-        isOpen={isGuidelinesModalOpen}
-        onClose={() => {
-          setIsGuidelinesModalOpen(false);
-          onBack();
-        }}
-        application={application}
-        providerName={application.program ? undefined : 'Scholarship Provider'}
-      />
     </div>
   );
 };

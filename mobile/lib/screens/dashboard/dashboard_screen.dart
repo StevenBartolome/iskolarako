@@ -112,41 +112,35 @@ class DashboardScreenState extends State<DashboardScreen> {
     }
 
     try {
+      // 1. Fetch scholar profile to resolve IDs
       final scholarData = await Supabase.instance.client
           .from('scholar')
           .select()
           .eq('user_id', user.id)
           .maybeSingle();
 
-      final programsData = await Supabase.instance.client
-          .from('scholarship_programs')
-          .select('*, provider:provider_id(*), cycles:application_cycles(*)')
-          .eq('status', 'active');
-
-      // Fetch unread notifications count from Supabase
-      try {
-        final notifRes = await Supabase.instance.client
-            .from('notifications')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('is_read', false);
-        if (mounted) {
-          setState(() {
-            _unreadNotifCount = notifRes.length;
-          });
-        }
-      } catch (notifErr) {
-        debugPrint('[Unread Notifs Count Error]: $notifErr');
-      }
-
       final List<String> scholarIds = [user.id];
       if (scholarData != null && scholarData['id'] != null) {
         scholarIds.add(scholarData['id'].toString());
       }
 
-      List<dynamic> activities = [];
-      try {
-        activities = await Supabase.instance.client
+      // 2. Execute independent queries IN PARALLEL for sub-second loading speed
+      final results = await Future.wait([
+        // [0] Active Programs with provider & cycles
+        Supabase.instance.client
+            .from('scholarship_programs')
+            .select('*, provider:provider_id(*), cycles:application_cycles(*)')
+            .eq('status', 'active'),
+
+        // [1] Unread notifications count
+        Supabase.instance.client
+            .from('notifications')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('is_read', false),
+
+        // [2] All applications for this scholar
+        Supabase.instance.client
             .from('scholarship_applications')
             .select('''
               *,
@@ -159,61 +153,67 @@ class DashboardScreenState extends State<DashboardScreen> {
               )
             ''')
             .filter('scholar_id', 'in', scholarIds)
-            .order('created_at', ascending: false)
-            .limit(5);
-      } catch (actErr) {
-        debugPrint('Note loading recent activities: $actErr');
+            .order('created_at', ascending: false),
+      ]);
+
+      final programsData = results[0] as List<dynamic>? ?? [];
+      final notifRes = results[1] as List<dynamic>? ?? [];
+      final allAppsData = results[2] as List<dynamic>? ?? [];
+
+      // Extract set of all cycle_ids the scholar has ALREADY submitted an application for
+      final Set<String> submittedCycleIds = {};
+      final Set<String> approvedProgramIds = {};
+
+      for (final app in allAppsData) {
+        final cycleId = app['cycle_id']?.toString();
+        if (cycleId != null) {
+          submittedCycleIds.add(cycleId);
+        }
+        final status = app['status']?.toString().toLowerCase();
+        final cycle = app['cycle'] as Map<String, dynamic>?;
+        final programId = cycle?['program_id']?.toString() ?? cycle?['program']?['id']?.toString();
+        if (status == 'approved' && programId != null) {
+          approvedProgramIds.add(programId);
+        }
       }
 
-      // Check for approved scholarships with open renewal cycles
+      // Filter open renewal cycles for approved programs WHERE scholar HAS NOT YET submitted an application
       final List<Map<String, dynamic>> renewalAlerts = [];
-      try {
-        final approvedApps = await Supabase.instance.client
-            .from('scholarship_applications')
-            .select('''
-              id,
-              scholar_id,
-              cycle_id,
-              status,
-              cycle:application_cycles (
-                *,
-                program:scholarship_programs (
-                  *,
-                  provider:provider (*)
-                )
-              )
-            ''')
-            .filter('scholar_id', 'in', scholarIds)
-            .eq('status', 'approved');
+      if (approvedProgramIds.isNotEmpty) {
+        try {
+          final openRenewalCycles = await Supabase.instance.client
+              .from('application_cycles')
+              .select('*, program:scholarship_programs(*, provider:provider(*))')
+              .filter('program_id', 'in', approvedProgramIds.toList())
+              .eq('status', 'open');
 
-        for (final app in approvedApps) {
-          final cycle = app['cycle'] as Map<String, dynamic>?;
-          final program = cycle?['program'] as Map<String, dynamic>?;
-          final programId = program?['id']?.toString();
-          if (programId != null) {
-            final renewalRes = await Supabase.instance.client
-                .from('application_cycles')
-                .select('*, program:scholarship_programs(*)')
-                .eq('program_id', programId)
-                .eq('status', 'open');
+          final Set<String> alertSeenPrograms = {};
+          for (final r in openRenewalCycles) {
+            final cycleId = r['id']?.toString();
+            final program = r['program'] as Map<String, dynamic>?;
+            final programId = program?['id']?.toString();
 
-            for (final r in renewalRes) {
-              final cType = r['cycle_type']?.toString().toLowerCase() ?? '';
-              final cName = r['cycle_name']?.toString().toLowerCase() ?? '';
-              if (cType == 'renewal' || cName.contains('renewal') || cName.contains('sem')) {
+            // DO NOT show alert if scholar has ALREADY submitted requirements for this renewal cycle!
+            if (cycleId != null && submittedCycleIds.contains(cycleId)) {
+              continue;
+            }
+
+            final cType = r['cycle_type']?.toString().toLowerCase() ?? '';
+            final cName = r['cycle_name']?.toString().toLowerCase() ?? '';
+            if (cType == 'renewal' || cName.contains('renewal') || cName.contains('sem')) {
+              if (programId != null && !alertSeenPrograms.contains(programId)) {
+                alertSeenPrograms.add(programId);
                 renewalAlerts.add({
-                  'application_id': app['id'],
-                  'scholar_id': app['scholar_id'],
+                  'scholar_id': scholarData?['id'] ?? user.id,
                   'program': program,
                   'renewal_cycle': r,
                 });
-                break;
               }
             }
           }
+        } catch (rErr) {
+          debugPrint('Note checking open renewal cycles: $rErr');
         }
-      } catch (rErr) {
-        debugPrint('Note loading renewal alerts for home: $rErr');
       }
 
       if (mounted) {
@@ -223,14 +223,15 @@ class DashboardScreenState extends State<DashboardScreen> {
           _scholarName = (scholarData != null && scholarData['first_name'] != null)
               ? (scholarData['first_name'] as String).toUpperCase()
               : 'SCHOLAR';
+          _unreadNotifCount = notifRes.length;
 
           // Strictly filter out closed programs (no open cycle or past deadline)
-          final openPrograms = (programsData as List<dynamic>?)
-                  ?.where((p) => EligibilityHelper.isProgramOpen(p as Map<String, dynamic>?))
-                  .toList() ??
-              [];
+          final openPrograms = programsData
+              .where((p) => EligibilityHelper.isProgramOpen(p as Map<String, dynamic>?))
+              .toList();
+
           _allPrograms = openPrograms;
-          _recentActivities = activities;
+          _recentActivities = allAppsData.take(5).toList();
           _openRenewalAlerts = renewalAlerts;
 
           if (_isProfileComplete && scholarData != null) {

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import type { ApplicantStatus } from '../types';
-import { ScholarGuidelinesModal } from './ScholarGuidelinesModal';
 import {
   verifyDocumentAuthenticity,
   type DocVerificationResult,
@@ -74,7 +73,6 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
   const [remarks, setRemarks] = useState('');
   const [documentsList, setDocumentsList] = useState<SubmittedDocItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isGuidelinesModalOpen, setIsGuidelinesModalOpen] = useState(false);
 
   // AI Verification states
   const [isBatchScanning, setIsBatchScanning] = useState(false);
@@ -1448,16 +1446,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsGuidelinesModalOpen(true)}
-                    className="px-4 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-xs font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center gap-1.5"
-                    title="Draft and optionally send official maintaining guidelines and renewal terms with AI"
-                  >
-                    <span>📜</span> Scholar Guidelines (AI)
-                  </button>
-
+                <div className="flex justify-end items-center gap-3 pt-2">
                   <div className="flex gap-3">
                     <button
                       type="button"
@@ -1481,13 +1470,6 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
         </div>
       </div>
-
-      {/* Optional Scholar Guidelines Modal */}
-      <ScholarGuidelinesModal
-        isOpen={isGuidelinesModalOpen}
-        onClose={() => setIsGuidelinesModalOpen(false)}
-        application={application}
-      />
     </div>
   );
 };

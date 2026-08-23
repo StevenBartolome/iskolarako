@@ -145,6 +145,10 @@ Perform forensic and content verification:
 2. TAMPERING DETECTION: Look for visual artifacts, mismatched fonts/sizes, copy-pasted signatures, edited GWA numbers, or digital erasure halos.
 3. PROFILE CROSS-CHECK:
    - Extract the student/person name on the document and compare with "${context.scholarName || ''}".
+   - IMPORTANT PHILIPPINE NAME MATCHING RULES:
+     a) Reversed Name Order: "LastName, FirstName" vs "FirstName LastName" (e.g. "Bartolome Steven" vs "Steven Bartolome") is a VALID MATCH.
+     b) Middle Initial & Omission: Full Middle Name vs Middle Initial (e.g. "Steven Mendoza Bartolome" vs "Steven M. Bartolome") or omitting middle name (e.g. "Steven Bartolome") is a VALID MATCH.
+     c) Do NOT mark verification_status as "flagged" or "rejected" solely for reversed name order or middle initial vs full name. Set verification_status to "verified" if the names match under these rules.
    - Extract school/institution name and compare with "${context.school || ''}".
    - If Transcript of Records or Grade Slip, extract the actual GWA or academic term grades. Compare with declared GWA: "${context.gwa || ''}".
    - If Indigency / ITR, extract the income amount.
@@ -166,7 +170,7 @@ Return ONLY raw valid JSON (no markdown backticks, no commentary) in this exact 
   "flags": [],
   "summary": "Authentic PUP Transcript of Records with verified dry seal and registrar signature. All details match applicant profile."
 }
-* Note for verification_status: use "verified" if authentic and data matches, "flagged" if suspicious or data mismatches, or "rejected" if fake/irrelevant.
+* Note for verification_status: use "verified" if authentic and data matches (including flexible name order and middle initials), "flagged" if suspicious or major data mismatches, or "rejected" if fake/irrelevant.
 `;
 };
 
@@ -335,6 +339,74 @@ function parseBase64DataUrl(dataUrl: string): { mimeType: string; base64: string
     return { mimeType, base64 };
   }
   return { mimeType: 'image/jpeg', base64: dataUrl };
+}
+
+// -------------------------------------------------------------
+// FLEXIBLE PHILIPPINE NAME MATCHING ENGINE
+// -------------------------------------------------------------
+
+/**
+ * Flexible Philippine Name Matching Engine
+ * Handles:
+ * 1. Reversed Name Order: "LastName, FirstName" vs "FirstName LastName" (e.g. "Bartolome Steven" vs "Steven Bartolome")
+ * 2. Middle Initial vs Full Middle Name: "Steven Mendoza Bartolome" vs "Steven M. Bartolome" or "Steven Bartolome"
+ * 3. Suffixes & Formatting: "Jr.", "Sr.", "III", "IV", commas, dots, and case insensitivity
+ */
+export function isFlexibleNameMatch(declaredName: string, documentName: string): boolean {
+  if (!declaredName || !documentName) return true;
+
+  const sanitize = (str: string) =>
+    str
+      .toLowerCase()
+      .replace(/[,./\-]/g, ' ')
+      .replace(/\b(jr|sr|iii|ii|iv)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const cleanDeclared = sanitize(declaredName);
+  const cleanDocument = sanitize(documentName);
+
+  if (cleanDeclared === cleanDocument) return true;
+  if (cleanDeclared.includes(cleanDocument) || cleanDocument.includes(cleanDeclared)) return true;
+
+  const declaredTokens = cleanDeclared.split(' ').filter(t => t.length > 0);
+  const documentTokens = cleanDocument.split(' ').filter(t => t.length > 0);
+
+  if (declaredTokens.length === 0 || documentTokens.length === 0) return true;
+
+  let matchedCount = 0;
+  const totalRequired = Math.min(declaredTokens.length, documentTokens.length);
+
+  for (const decToken of declaredTokens) {
+    // 1. Exact token match (order independent)
+    if (documentTokens.includes(decToken)) {
+      matchedCount++;
+      continue;
+    }
+
+    // 2. Declared token is initial (e.g. 'm') matching document word (e.g. 'mendoza')
+    if (decToken.length === 1) {
+      if (documentTokens.some(docTok => docTok.startsWith(decToken))) {
+        matchedCount++;
+        continue;
+      }
+    }
+
+    // 3. Document token is initial (e.g. 'm') matching declared word (e.g. 'mendoza')
+    if (documentTokens.some(docTok => docTok.length === 1 && decToken.startsWith(docTok))) {
+      matchedCount++;
+      continue;
+    }
+
+    // 4. Substring / prefix match for long names (>3 chars)
+    if (decToken.length > 3 && documentTokens.some(docTok => docTok.length > 3 && (docTok.includes(decToken) || decToken.includes(docTok)))) {
+      matchedCount++;
+      continue;
+    }
+  }
+
+  // If at least 2 key tokens match, or 60%+ of tokens match, consider it a valid match!
+  return matchedCount >= Math.min(2, totalRequired) || (matchedCount / totalRequired) >= 0.6;
 }
 
 // -------------------------------------------------------------
@@ -618,17 +690,16 @@ export async function verifyDocumentAuthenticity({
   const expectedName = (applicantContext.organizationName || applicantContext.scholarName || '').toLowerCase().trim();
   const repName = (applicantContext.representativeName || '').toLowerCase().trim();
   const extractedName = (rawResult.extracted_name || '').toLowerCase().trim();
-  const nameMatch =
+
+  const nameMatch: boolean =
     !extractedName ||
     !expectedName ||
-    expectedName.includes(extractedName) ||
-    extractedName.includes(expectedName) ||
-    (repName && (repName.includes(extractedName) || extractedName.includes(repName))) ||
-    expectedName.split(' ').some(p => p.length > 2 && extractedName.includes(p));
+    isFlexibleNameMatch(expectedName, extractedName) ||
+    (repName ? isFlexibleNameMatch(repName, extractedName) : false);
 
   const expectedSchool = (applicantContext.school || applicantContext.providerType || '').toLowerCase().trim();
   const extractedSchool = (rawResult.extracted_school || '').toLowerCase().trim();
-  const schoolMatch =
+  const schoolMatch: boolean =
     !extractedSchool ||
     !expectedSchool ||
     expectedSchool.includes(extractedSchool) ||
@@ -647,7 +718,19 @@ export async function verifyDocumentAuthenticity({
   };
 
   const rawFlags = Array.isArray(rawResult.flags) ? rawResult.flags : [];
-  const flags: string[] = rawFlags.map(normalizeFlagItem).filter(Boolean);
+
+  // Filter out false-alarm flags if flexible name matcher succeeded
+  const flags: string[] = rawFlags
+    .map(normalizeFlagItem)
+    .filter(Boolean)
+    .filter((flag: string) => {
+      const fLower = flag.toLowerCase();
+      // Drop false-positive name mismatch/order/initial flags if isFlexibleNameMatch passed
+      if (nameMatch && (fLower.includes('name') || fLower.includes('mismatch') || fLower.includes('order') || fLower.includes('initial'))) {
+        return false;
+      }
+      return true;
+    });
 
   if (!nameMatch && extractedName.length > 2) {
     flags.push(`Name Mismatch: Document states "${rawResult.extracted_name}" vs profile "${applicantContext.scholarName}"`);
@@ -660,7 +743,12 @@ export async function verifyDocumentAuthenticity({
     rawResult.verification_status === 'verified' ? 'verified' :
     rawResult.verification_status === 'rejected' ? 'rejected' : 'flagged';
 
-  if (flags.length > 0 && finalStatus === 'verified') {
+  // Override status to verified if layout is authentic and name matched flexibly!
+  if (nameMatch && !rawResult.tampering_detected && (finalStatus === 'flagged' || flags.length === 0)) {
+    if (flags.length === 0) {
+      finalStatus = 'verified';
+    }
+  } else if (flags.length > 0 && finalStatus === 'verified') {
     finalStatus = 'flagged';
   }
 
