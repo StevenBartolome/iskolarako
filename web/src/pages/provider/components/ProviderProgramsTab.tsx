@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Program, ProviderDetails } from '../types';
 import { supabase } from '@/services/supabaseClient';
 
@@ -29,16 +29,59 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
   handleOpenRenewModal,
   handleOpenEditCycle,
   handleDeleteCycle,
-  setProgramToClose,
-  setIsCloseConfirmOpen,
+  setProgramToClose: _setProgramToClose,
+  setIsCloseConfirmOpen: _setIsCloseConfirmOpen,
   fetchPrograms,
 }) => {
+  const [topUpProgram, setTopUpProgram] = useState<Program | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState<string>('');
+  const [isSubmittingTopUp, setIsSubmittingTopUp] = useState(false);
+
+  const handleTopUpSubmit = async () => {
+    if (!topUpProgram || !topUpAmount.trim()) return;
+    const addAmt = parseFloat(topUpAmount);
+    if (isNaN(addAmt) || addAmt <= 0) {
+      showToast('Please enter a valid top-up amount');
+      return;
+    }
+
+    setIsSubmittingTopUp(true);
+    try {
+      const currentBudget = Number(topUpProgram.budget_total || topUpProgram.budgetTotal || 0);
+      const newBudget = currentBudget + addAmt;
+
+      const { error } = await supabase
+        .from('scholarship_programs')
+        .update({
+          budget_total: newBudget,
+          status: topUpProgram.status === 'paused' ? 'active' : topUpProgram.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', topUpProgram.id);
+
+      if (error) {
+        console.error('Top up error:', error);
+        showToast('Failed to top up program budget.');
+      } else {
+        showToast(`Successfully added ₱${addAmt.toLocaleString()} to "${topUpProgram.title}" budget!`);
+        setTopUpProgram(null);
+        setTopUpAmount('');
+        fetchPrograms();
+      }
+    } catch (err) {
+      console.error('Top up exception:', err);
+      showToast('Error executing budget top up.');
+    } finally {
+      setIsSubmittingTopUp(false);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Scholarship Programs</h2>
-          <p className="text-sm text-[#6C6C70] mt-1 font-medium">Permanent scholarship schemas, active application cycles, and renewal rules</p>
+          <p className="text-sm text-[#6C6C70] mt-1 font-medium">Permanent scholarship schemas, active application cycles, and budget allocation controls</p>
         </div>
         <button
           onClick={() => {
@@ -96,174 +139,213 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {programsList.map((prog) => (
-            <div
-              key={prog.id}
-              className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-7 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[380px] animate-fade-in"
-            >
-              <div className="space-y-3.5">
-                <div className="flex justify-between items-center">
-                  <span className="px-3.5 py-1.5 rounded-xl bg-[#1A3C2E] text-white text-xs font-bold tracking-wider">
-                    {prog.provider}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                      prog.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                      prog.status === 'Pending Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
-                      prog.status === 'Rejected' ? 'bg-red-50 text-[#B34040]' :
-                      prog.status === 'Draft' ? 'bg-blue-50 text-blue-600' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {prog.status}
+          {programsList.map((prog) => {
+            const rawBudget = Number(prog.budget_total || prog.budgetTotal || 0);
+            const totalDisbursed = Number(prog.disbursed_total || prog.disbursedTotal || 0);
+            const remainingBudget = Math.max(0, rawBudget - totalDisbursed);
+            const thresholdPct = Number(prog.low_budget_threshold || 0.20);
+            const isLowBudget = rawBudget > 0 && remainingBudget <= (rawBudget * thresholdPct);
+            const isDepleted = rawBudget > 0 && remainingBudget <= 0;
+
+            return (
+              <div
+                key={prog.id}
+                className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-7 shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-h-[380px] animate-fade-in"
+              >
+                <div className="space-y-3.5">
+                  <div className="flex justify-between items-center">
+                    <span className="px-3.5 py-1.5 rounded-xl bg-[#1A3C2E] text-white text-xs font-bold tracking-wider">
+                      {prog.provider}
                     </span>
-                    <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5]">
-                      ⚙️ Policy: {prog.renewalPolicy}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                        prog.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                        prog.status === 'Pending Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
+                        prog.status === 'Rejected' ? 'bg-red-50 text-[#B34040]' :
+                        prog.status === 'Draft' ? 'bg-blue-50 text-blue-600' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {prog.status}
+                      </span>
+                      <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5]">
+                        ⚙️ Policy: {prog.renewalPolicy}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <h3 className="text-xl font-bold text-[#1A3C2E] font-serif leading-snug truncate">
-                    {prog.title}
-                  </h3>
-                  <p className="text-xs text-[#6C6C70] mt-0.5 font-medium line-clamp-1">
-                    {prog.description}
-                  </p>
-                </div>
-
-                {/* Application Cycles checklist sub-layout */}
-                <div className="space-y-1.5 pt-1">
-                  <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wide block">Registered Cycles</span>
-                  <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                    {prog.cycles?.map((cyc: any) => (
-                      <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
-                        <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                            cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                            cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
-                            cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' :
-                            'bg-gray-200 text-gray-600'
-                          }`}>
-                            {cyc.status}
-                          </span>
-                          {handleOpenEditCycle && (
-                            <button onClick={(e) => { e.stopPropagation(); handleOpenEditCycle(prog, cyc); }} className="p-0.5 hover:text-[#2D5941] cursor-pointer bg-transparent border-0" title="Edit cycle">✏️</button>
-                          )}
-                          {handleDeleteCycle && (
-                            <button onClick={(e) => { e.stopPropagation(); handleDeleteCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-red-700 cursor-pointer bg-transparent border-0" title="Delete cycle">🗑️</button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Rejection Banner */}
-              {prog.status === 'Rejected' && prog.rejectionRemarks && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 my-2">
-                  <span className="text-[9px] uppercase font-bold text-[#B34040] tracking-wider block mb-0.5">Rejection Remarks</span>
-                  <p className="text-[11px] text-[#B34040] leading-snug line-clamp-2">{prog.rejectionRemarks}</p>
-                </div>
-              )}
-
-              {/* Footer Meta & Structured Action Button Grid */}
-              <div className="border-t border-[#D9D2C5]/50 pt-4 mt-4 space-y-3">
-                {/* Meta stats bar */}
-                <div className="flex items-center justify-between text-xs">
                   <div>
-                    <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
-                    <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency || 'Per Semester'}</span>
+                    <h3 className="text-xl font-bold text-[#1A3C2E] font-serif leading-snug truncate">
+                      {prog.title}
+                    </h3>
+                    <p className="text-xs text-[#6C6C70] mt-0.5 font-medium line-clamp-1">
+                      {prog.description}
+                    </p>
                   </div>
-                  {prog.budgetTotal && (
-                    <div className="text-right">
-                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Total Allocation</span>
-                      <span className="text-[#1A3C2E] font-bold text-xs mt-0.5 block">{prog.budgetTotal}</span>
+
+                  {/* Low Budget Alert Banner */}
+                  {(isLowBudget || isDepleted) && (
+                    <div className={`p-3 rounded-2xl border flex items-center justify-between gap-2 text-xs font-medium ${
+                      isDepleted ? 'bg-[#FDF2F2] border-[#FADBD8] text-[#B34040]' : 'bg-[#FFF8EE] border-[#F5EAD6] text-[#C97B2E]'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span>⚠️</span>
+                        <span>
+                          {isDepleted
+                            ? 'Program Budget Depleted! Top up to enable scholar payouts.'
+                            : `Low Budget Alert: ₱${remainingBudget.toLocaleString()} remaining.`}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setTopUpProgram(prog)}
+                        className="px-2.5 py-1 rounded-lg bg-[#C97B2E] text-white text-3xs font-extrabold cursor-pointer border-0 shrink-0 shadow-2xs"
+                      >
+                        + Top-Up
+                      </button>
                     </div>
                   )}
+
+                  {/* Application Cycles checklist sub-layout */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wide block">Registered Cycles</span>
+                    <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
+                      {prog.cycles?.map((cyc: any) => (
+                        <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
+                          <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                              cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                              cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
+                              cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' :
+                              'bg-gray-200 text-gray-600'
+                            }`}>
+                              {cyc.status}
+                            </span>
+                            {handleOpenEditCycle && (
+                              <button onClick={(e) => { e.stopPropagation(); handleOpenEditCycle(prog, cyc); }} className="p-0.5 hover:text-[#2D5941] cursor-pointer bg-transparent border-0" title="Edit cycle">✏️</button>
+                            )}
+                            {handleDeleteCycle && (
+                              <button onClick={(e) => { e.stopPropagation(); handleDeleteCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-red-700 cursor-pointer bg-transparent border-0" title="Delete cycle">🗑️</button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Action Buttons Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                  <button
-                    onClick={() => handleViewDetails(prog)}
-                    className="py-2 px-3 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[11px] font-bold border-0 cursor-pointer transition-all text-center shadow-2xs flex items-center justify-center gap-1.5"
-                  >
-                    <span>👁️</span> View
-                  </button>
-                  <button
-                    onClick={() => handleEditProgram(prog)}
-                    className="py-2 px-3 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[11px] font-bold border-0 cursor-pointer transition-all text-center shadow-2xs flex items-center justify-center gap-1.5"
-                  >
-                    <span>✏️</span> Edit
-                  </button>
-                  <button
-                    onClick={() => handleOpenRenewModal(prog)}
-                    className="py-2 px-3 rounded-xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-[11px] font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-2xs"
-                  >
-                    <span>🔄</span> Renew
-                  </button>
-                  {prog.status === 'Rejected' ? (
+                {/* Rejection Banner */}
+                {prog.status === 'Rejected' && prog.rejectionRemarks && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 my-2">
+                    <span className="text-[9px] uppercase font-bold text-[#B34040] tracking-wider block mb-0.5">Rejection Remarks</span>
+                    <p className="text-[11px] text-[#B34040] leading-snug line-clamp-2">{prog.rejectionRemarks}</p>
+                  </div>
+                )}
+
+                {/* Footer Meta & Structured Action Button Grid */}
+                <div className="border-t border-[#D9D2C5]/50 pt-4 mt-4 space-y-3">
+                  {/* Meta stats bar */}
+                  <div className="flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
+                      <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency || 'Per Semester'}</span>
+                    </div>
+                    {rawBudget > 0 && (
+                      <div className="text-right">
+                        <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Total Budget / Remaining</span>
+                        <span className="text-[#1A3C2E] font-bold text-xs mt-0.5 block">
+                          ₱{rawBudget.toLocaleString()} <span className="text-[#C97B2E] text-[10px]">(₱{remainingBudget.toLocaleString()} left)</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Buttons Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                     <button
-                      onClick={async () => {
-                        try {
-                          const { error } = await supabase
-                            .from('scholarship_programs')
-                            .update({ status: 'pending', rejection_remarks: null })
-                            .eq('id', prog.id);
-                          if (error) {
-                            console.error('Error resubmitting program:', error);
-                            showToast('Error resubmitting program.');
-                          } else {
-                            showToast(`"${prog.title}" has been resubmitted for review.`);
-                            await fetchPrograms();
-                          }
-                        } catch (err) {
-                          console.error('Unexpected error resubmitting program:', err);
-                          showToast('An unexpected error occurred.');
-                        }
-                      }}
-                      className="col-span-2 sm:col-span-2 py-2 px-3 rounded-xl bg-[#FFF8EE] hover:bg-amber-100 text-[#C97B2E] text-[11px] font-bold border border-amber-200 cursor-pointer transition-all text-center flex items-center justify-center gap-1.5 shadow-2xs"
+                      onClick={() => handleViewDetails(prog)}
+                      className="py-2 px-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[11px] font-bold border-0 cursor-pointer transition-all text-center shadow-2xs flex items-center justify-center gap-1"
                     >
-                      <span>🔄</span> Resubmit for Review
+                      <span>👁️</span> View
                     </button>
-                  ) : prog.status !== 'Closed' && prog.status !== 'closed' ? (
                     <button
-                      onClick={() => { setProgramToClose(prog); setIsCloseConfirmOpen(true); }}
-                      className="col-span-2 sm:col-span-2 py-2 px-3 rounded-xl bg-[#FDF2F2] hover:bg-red-100 text-[#B34040] text-[11px] font-bold border border-red-200 cursor-pointer transition-all text-center flex items-center justify-center gap-1.5 shadow-2xs"
+                      onClick={() => handleEditProgram(prog)}
+                      className="py-2 px-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[11px] font-bold border-0 cursor-pointer transition-all text-center shadow-2xs flex items-center justify-center gap-1"
                     >
-                      <span>🔒</span> Close Program
+                      <span>✏️</span> Edit
                     </button>
-                  ) : (
                     <button
-                      onClick={async () => {
-                        try {
-                          const { error } = await supabase
-                            .from('scholarship_programs')
-                            .update({ status: 'active' })
-                            .eq('id', prog.id);
-                          if (error) {
-                            console.error('Error re-opening program:', error);
-                            showToast('Error re-opening program.');
-                          } else {
-                            showToast(`"${prog.title}" has been re-opened.`);
-                            await fetchPrograms();
-                          }
-                        } catch (err) {
-                          console.error('Unexpected error re-opening program:', err);
-                          showToast('An unexpected error occurred.');
-                        }
-                      }}
-                      className="col-span-2 sm:col-span-2 py-2 px-3 rounded-xl bg-[#EBF5EE] hover:bg-green-100 text-[#2D5941] text-[11px] font-bold border border-green-200 cursor-pointer transition-all text-center flex items-center justify-center gap-1.5 shadow-2xs"
+                      onClick={() => handleOpenRenewModal(prog)}
+                      className="py-2 px-2.5 rounded-xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-[11px] font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center justify-center gap-1 shadow-2xs"
                     >
-                      <span>🔓</span> Re-open Program
+                      <span>🔄</span> Renew
                     </button>
-                  )}
+                    <button
+                      onClick={() => setTopUpProgram(prog)}
+                      className="py-2 px-2.5 rounded-xl bg-[#FFF8EE] hover:bg-[#F5EAD6] text-[#C97B2E] text-[11px] font-extrabold border border-[#F5EAD6] cursor-pointer transition-all flex items-center justify-center gap-1 shadow-2xs"
+                    >
+                      <span>➕</span> Top-Up
+                    </button>
+                  </div>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Top-Up Budget Modal */}
+      {topUpProgram && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-[#D9D2C5] shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#EDE8DE] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">➕</span>
+                <h3 className="text-lg font-bold text-[#1A3C2E]">Top-Up Program Budget</h3>
+              </div>
+              <button
+                onClick={() => setTopUpProgram(null)}
+                className="text-gray-400 hover:text-gray-600 text-lg cursor-pointer bg-transparent border-0"
+              >
+                ✕
+              </button>
             </div>
-          ))}
+
+            <p className="text-xs text-[#6C6C70]">
+              Add additional funding to <strong>"{topUpProgram.title}"</strong>. Current Total Allocation: ₱{Number(topUpProgram.budget_total || topUpProgram.budgetTotal || 0).toLocaleString()}.
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-[#1A3C2E] mb-1.5 uppercase">
+                Top-Up Amount (PHP) *
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-2.5 text-xs font-bold text-[#8E8E93]">₱</span>
+                <input
+                  type="number"
+                  placeholder="e.g. 200000"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(e.target.value)}
+                  className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] focus:outline-none focus:border-[#1A3C2E]"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#EDE8DE]">
+              <button
+                onClick={() => setTopUpProgram(null)}
+                className="px-4 py-2 rounded-xl bg-[#F9F5EF] text-[#6C6C70] text-xs font-bold cursor-pointer border-0"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleTopUpSubmit}
+                disabled={isSubmittingTopUp}
+                className="px-5 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold cursor-pointer border-0 shadow-sm disabled:opacity-50"
+              >
+                {isSubmittingTopUp ? 'Adding Funds...' : 'Confirm Top-Up'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

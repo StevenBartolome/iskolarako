@@ -48,6 +48,15 @@ const getTodayMidnight = () => {
 
 export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWelcome }) => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+
+  // Automatically switch to the disbursements tab if returned from PayMongo redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const disbursementStatus = params.get('disbursement');
+    if (disbursementStatus === 'success' || disbursementStatus === 'cancelled') {
+      setActiveTab('disbursements');
+    }
+  }, []);
   
   // Current authenticated user ID
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
@@ -297,16 +306,18 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       courseEligibility: dbProg.course_eligibility || [],
       yearLevelEligibility: dbProg.year_level_eligibility || [],
       minimumGwa: dbProg.minimum_gwa ? String(dbProg.minimum_gwa) : '',
-      availabilityScope: dbProg.availability_scope,
-      availableRegions: dbProg.available_regions || [],
-      availableSchools: dbProg.available_schools ? dbProg.available_schools.join(', ') : '',
-      totalSlots: dbProg.total_slots ? String(dbProg.total_slots) : '',
-      applicationRequirements: dbProg.application_requirements || [],
-      renewalPolicy: dbProg.renewal_policy,
-      fundingFrequency: dbProg.funding_frequency,
-      disbursement_mode: dbProg.disbursement_mode,
-      banking_policy: dbProg.banking_policy,
-      required_bank_name: dbProg.required_bank_name,
+      covers_tuition: dbProg.covers_tuition,
+      covers_stipend: dbProg.covers_stipend,
+      stipend_amount: dbProg.stipend_amount,
+      covers_allowance: dbProg.covers_allowance,
+      allowance_amount: dbProg.allowance_amount,
+      other_benefits: dbProg.other_benefits,
+      budget_total: dbProg.budget_total,
+      tuition_payout_mode: dbProg.tuition_payout_mode || 'direct_to_student',
+      tuition_coverage_type: dbProg.tuition_coverage_type || 'fixed_cap',
+      tuition_max_amount: dbProg.tuition_max_amount ? String(dbProg.tuition_max_amount) : '',
+      custom_benefits: dbProg.custom_benefits || [],
+      low_budget_threshold: dbProg.low_budget_threshold || 0.20,
       renewalGwa: dbProg.renewal_gwa_requirement ? String(dbProg.renewal_gwa_requirement) : '',
       cycles: (dbProg.cycles || []).map((cyc: any) => {
         const today = new Date();
@@ -2676,6 +2687,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   course_eligibility: parseStringArray(formData.eligible_courses).length > 0 ? parseStringArray(formData.eligible_courses) : ['All Degree Programs'],
                   year_level_eligibility: parseYearLevels(formData.eligible_year_levels),
                   application_requirements: formData.applicationRequirements || [],
+                  tuition_payout_mode: formData.tuition_payout_mode || 'direct_to_student',
+                  tuition_coverage_type: formData.tuition_coverage_type || 'fixed_cap',
+                  tuition_max_amount: formData.tuition_max_amount ? parseFloat(formData.tuition_max_amount) : 0,
+                  custom_benefits: formData.custom_benefits || [],
+                  low_budget_threshold: formData.low_budget_threshold ? parseFloat(formData.low_budget_threshold) : 0.20,
                 };
                 if (categoryId) {
                   updatePayload.category_id = categoryId;
@@ -2747,6 +2763,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   course_eligibility: parseStringArray(formData.eligible_courses).length > 0 ? parseStringArray(formData.eligible_courses) : ['All Degree Programs'],
                   year_level_eligibility: parseYearLevels(formData.eligible_year_levels),
                   application_requirements: formData.applicationRequirements || [],
+                  tuition_payout_mode: formData.tuition_payout_mode || 'direct_to_student',
+                  tuition_coverage_type: formData.tuition_coverage_type || 'fixed_cap',
+                  tuition_max_amount: formData.tuition_max_amount ? parseFloat(formData.tuition_max_amount) : 0,
+                  custom_benefits: formData.custom_benefits || [],
+                  low_budget_threshold: formData.low_budget_threshold ? parseFloat(formData.low_budget_threshold) : 0.20,
                   status: 'pending',
                 };
                 const { data: progData, error } = await supabase
@@ -2811,6 +2832,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             disbursementsList={disbursementsList}
             setIsPayoutModalOpen={setIsPayoutModalOpen}
             programsList={programsList}
+            fetchPrograms={fetchPrograms}
+            showToast={showToast}
           />
         )}
 

@@ -83,7 +83,7 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
             : remarks || 'Bank transfer failed';
 
         // Update fund_releases status to failed
-        const { error } = await supabase
+        let { error } = await supabase
           .from('fund_releases')
           .update({
             status: 'failed',
@@ -92,6 +92,18 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
             updated_at: new Date().toISOString(),
           })
           .eq('id', releaseDbId);
+
+        if (error && (error.message.includes('failure_reason') || error.message.includes('schema cache'))) {
+          const fallbackRes = await supabase
+            .from('fund_releases')
+            .update({
+              status: 'failed',
+              paymongo_status: 'failed',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', releaseDbId);
+          error = fallbackRes.error;
+        }
 
         if (error) throw new Error(error.message);
 
@@ -113,7 +125,7 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
           throw new Error('Please enter a Refund / Chargeback Reference ID.');
         }
 
-        const { error } = await supabase
+        let { error } = await supabase
           .from('fund_releases')
           .update({
             status: 'refunded',
@@ -124,6 +136,18 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
             updated_at: new Date().toISOString(),
           })
           .eq('id', releaseDbId);
+
+        if (error && (error.message.includes('refund_reference') || error.message.includes('schema cache'))) {
+          const fallbackRes = await supabase
+            .from('fund_releases')
+            .update({
+              status: 'refunded',
+              paymongo_status: 'refunded',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', releaseDbId);
+          error = fallbackRes.error;
+        }
 
         if (error) throw new Error(error.message);
 

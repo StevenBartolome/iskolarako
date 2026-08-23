@@ -56,6 +56,18 @@ export interface Program {
   minimumGwa?: any;
   availabilityScope?: any;
   budgetTotal?: any;
+  budget_total?: any;
+  covers_tuition?: boolean;
+  covers_stipend?: boolean;
+  stipend_amount?: any;
+  covers_allowance?: boolean;
+  allowance_amount?: any;
+  other_benefits?: any;
+  tuition_payout_mode?: 'direct_to_student' | 'direct_to_school_off_system';
+  tuition_coverage_type?: 'fixed_cap' | 'actual_matriculation';
+  tuition_max_amount?: any;
+  custom_benefits?: any;
+  low_budget_threshold?: any;
   applicationRequirements?: any;
   cycles?: any;
   [key: string]: any;

@@ -88,6 +88,34 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
       : (programToEdit?.otherBenefits || '')
   );
 
+  // Tuition & Budget Allocation Modes
+  const [tuitionPayoutMode, setTuitionPayoutMode] = useState<'direct_to_student' | 'direct_to_school_off_system'>(
+    programToEdit?.tuition_payout_mode || 'direct_to_student'
+  );
+  const [tuitionCoverageType, setTuitionCoverageType] = useState<'fixed_cap' | 'actual_matriculation'>(
+    programToEdit?.tuition_coverage_type || 'fixed_cap'
+  );
+  const [tuitionMaxAmount, setTuitionMaxAmount] = useState(
+    programToEdit?.tuition_max_amount ? String(programToEdit.tuition_max_amount) : ''
+  );
+  const [customBenefitsList, setCustomBenefitsList] = useState<{ title: string; amount: string; frequency: string }[]>(() => {
+    if (Array.isArray(programToEdit?.custom_benefits)) {
+      return programToEdit.custom_benefits.map((b: any) => ({
+        title: b.title || b.name || '',
+        amount: String(b.amount || ''),
+        frequency: b.frequency || 'Per Semester',
+      }));
+    }
+    return [];
+  });
+  const [newBenefitTitle, setNewBenefitTitle] = useState('');
+  const [newBenefitAmount, setNewBenefitAmount] = useState('');
+  const [newBenefitFreq, setNewBenefitFreq] = useState('Per Semester');
+
+  const [lowBudgetThreshold, setLowBudgetThreshold] = useState(
+    programToEdit?.low_budget_threshold ? String(Number(programToEdit.low_budget_threshold) * 100) : '20'
+  );
+
   // Step 3: Eligibility & Grading
   const [gradingSystem, setGradingSystem] = useState<GradingSystem>(
     programToEdit?.grading_system || programToEdit?.gradingSystem || 'scale_5'
@@ -182,6 +210,27 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           : ''
       );
       setIncomeCeiling(programToEdit.income_ceiling ? String(programToEdit.income_ceiling) : '');
+
+      // Sync tuition modes, custom benefits & budget threshold
+      setTuitionPayoutMode(programToEdit.tuition_payout_mode || 'direct_to_student');
+      setTuitionCoverageType(programToEdit.tuition_coverage_type || 'fixed_cap');
+      setTuitionMaxAmount(
+        programToEdit.tuition_max_amount ? String(programToEdit.tuition_max_amount) : ''
+      );
+      if (Array.isArray(programToEdit.custom_benefits)) {
+        setCustomBenefitsList(
+          programToEdit.custom_benefits.map((b: any) => ({
+            title: b.title || b.name || '',
+            amount: String(b.amount || ''),
+            frequency: b.frequency || 'Per Semester',
+          }))
+        );
+      } else {
+        setCustomBenefitsList([]);
+      }
+      setLowBudgetThreshold(
+        programToEdit.low_budget_threshold ? String(Number(programToEdit.low_budget_threshold) * 100) : '20'
+      );
 
       // Pre-select the existing year levels when editing
       const rawYears =
@@ -401,6 +450,11 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         applicationRequirements: requirementsList,
         allow_freshman_intended_school: allowFreshmanIntendedSchool,
         is_incoming_freshman_supported: isFreshmanTarget,
+        tuition_payout_mode: tuitionPayoutMode,
+        tuition_coverage_type: tuitionCoverageType,
+        tuition_max_amount: parseFloat(tuitionMaxAmount) || 0,
+        custom_benefits: customBenefitsList,
+        low_budget_threshold: (parseFloat(lowBudgetThreshold) || 20) / 100,
       };
 
       await onSubmit(payload, isEditMode);
@@ -736,18 +790,20 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 </label>
               </div>
 
-              {coversStipend && (
+              {(coversStipend || coversAllowance) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  <div>
-                    <label className="block text-xs font-bold text-[#1C1C1E] mb-1">Stipend Amount (₱/mo)</label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 7000"
-                      value={stipendAmount}
-                      onChange={(e) => setStipendAmount(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] text-xs bg-white"
-                    />
-                  </div>
+                  {coversStipend && (
+                    <div>
+                      <label className="block text-xs font-bold text-[#1C1C1E] mb-1">Stipend Amount (₱/mo)</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 7000"
+                        value={stipendAmount}
+                        onChange={(e) => setStipendAmount(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] text-xs bg-white"
+                      />
+                    </div>
+                  )}
                   {coversAllowance && (
                     <div>
                       <label className="block text-xs font-bold text-[#1C1C1E] mb-1">Book Allowance (₱/sem)</label>
@@ -764,17 +820,164 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               )}
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
-                Other Benefits & Non-Monetary Privileges
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Free Laptop, Mentorship Sessions, Thesis Grant, Internship Placement (comma-separated)"
-                value={otherBenefits}
-                onChange={(e) => setOtherBenefits(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none text-sm"
-              />
+            {/* Tuition Payout & Coverage Details */}
+            {coversTuition && (
+              <div className="p-5 rounded-3xl bg-[#EBF5EE] border border-[#2D5941]/30 space-y-4">
+                <h4 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-2">
+                  <span>🏛️</span> Tuition Subsidy Settings & Disbursement Mode
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Tuition Payout Mode */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                      Tuition Disbursement Channel *
+                    </label>
+                    <select
+                      value={tuitionPayoutMode}
+                      onChange={(e: any) => setTuitionPayoutMode(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
+                    >
+                      <option value="direct_to_student">📱 Direct to Scholar E-Wallet / Bank (In System Scope)</option>
+                      <option value="direct_to_school_off_system">🏛️ Direct to University Treasury (Institutional Voucher / Off-System)</option>
+                    </select>
+                    {tuitionPayoutMode === 'direct_to_school_off_system' && (
+                      <p className="text-[10px] text-[#C97B2E] font-medium mt-1">
+                        ℹ️ Note: Institutional B2B university wire transfers are processed off-system via university billing invoices.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Tuition Coverage Mode */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                      Tuition Fee Amount Mode *
+                    </label>
+                    <select
+                      value={tuitionCoverageType}
+                      onChange={(e: any) => setTuitionCoverageType(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
+                    >
+                      <option value="fixed_cap">💵 Fixed Cap Amount per Semester</option>
+                      <option value="actual_matriculation">📑 Actual Matriculation Fee (Extracted from Assessment Bill)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {tuitionCoverageType === 'fixed_cap' && (
+                  <div className="pt-1">
+                    <label className="block text-[11px] font-bold text-[#1C1C1E] mb-1">Maximum Tuition Cap per Semester (₱)</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 20000"
+                      value={tuitionMaxAmount}
+                      onChange={(e) => setTuitionMaxAmount(e.target.value)}
+                      className="w-full md:w-1/2 px-4 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white font-semibold text-[#1A3C2E]"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Dynamic Custom Benefits List Builder */}
+            <div className="p-5 rounded-3xl bg-[#F9F5EF] border border-[#D9D2C5] space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wide">
+                    Custom Included Benefits & Allowances
+                  </h4>
+                  <p className="text-[11px] text-[#6C6C70] mt-0.5 font-medium">
+                    Add custom allowances like Thesis Grant, Laptop Subsidy, Uniform Allowance, or Connectivity Stipend.
+                  </p>
+                </div>
+              </div>
+
+              {/* Added Custom Benefits Chips/List */}
+              {customBenefitsList.length > 0 && (
+                <div className="space-y-2">
+                  {customBenefitsList.map((b, bIdx) => (
+                    <div key={bIdx} className="flex items-center justify-between bg-white p-3 rounded-2xl border border-[#D9D2C5]/80 text-xs">
+                      <div>
+                        <span className="font-extrabold text-[#1A3C2E]">{b.title}</span>
+                        <span className="text-[#6C6C70] text-[11px] ml-2 font-mono">
+                          ₱{Number(b.amount).toLocaleString()} ({b.frequency})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCustomBenefitsList(prev => prev.filter((_, i) => i !== bIdx))}
+                        className="text-xs font-bold text-red-600 hover:text-red-800 cursor-pointer bg-transparent border-0"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Custom Benefit Inputs */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 pt-1">
+                <input
+                  type="text"
+                  placeholder="Benefit Title (e.g. Thesis Grant)"
+                  value={newBenefitTitle}
+                  onChange={(e) => setNewBenefitTitle(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white"
+                />
+                <input
+                  type="number"
+                  placeholder="Amount (₱)"
+                  value={newBenefitAmount}
+                  onChange={(e) => setNewBenefitAmount(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white font-semibold"
+                />
+                <select
+                  value={newBenefitFreq}
+                  onChange={(e) => setNewBenefitFreq(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white cursor-pointer"
+                >
+                  <option value="Per Semester">Per Semester</option>
+                  <option value="Monthly">Monthly</option>
+                  <option value="Once a Year">Once a Year</option>
+                  <option value="One-time">One-Time</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newBenefitTitle.trim() || !newBenefitAmount.trim()) return;
+                    setCustomBenefitsList(prev => [
+                      ...prev,
+                      { title: newBenefitTitle.trim(), amount: newBenefitAmount.trim(), frequency: newBenefitFreq }
+                    ]);
+                    setNewBenefitTitle('');
+                    setNewBenefitAmount('');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-2xs"
+                >
+                  + Add Benefit
+                </button>
+              </div>
+            </div>
+
+            {/* Low Budget Alert Threshold */}
+            <div className="p-5 rounded-3xl bg-[#FFF8EE] border border-[#F5EAD6] space-y-2">
+              <h4 className="text-xs font-bold text-[#C97B2E] uppercase tracking-wide flex items-center gap-1.5">
+                <span>⚠️</span> Low Budget Warning Alert Threshold
+              </h4>
+              <p className="text-[11px] text-[#6C6C70] leading-relaxed">
+                Set at what percentage of remaining budget the system should trigger a <strong>Low Program Budget Warning Alert</strong>.
+              </p>
+              <div className="flex items-center gap-3 pt-1">
+                <input
+                  type="number"
+                  min="5"
+                  max="50"
+                  value={lowBudgetThreshold}
+                  onChange={(e) => setLowBudgetThreshold(e.target.value)}
+                  className="w-24 px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white font-bold text-[#1A3C2E] text-center"
+                />
+                <span className="text-xs font-bold text-[#1A3C2E]">% Remaining Budget</span>
+              </div>
             </div>
           </div>
         )}

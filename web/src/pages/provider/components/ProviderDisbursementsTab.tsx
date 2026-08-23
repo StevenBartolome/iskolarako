@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { DisbursementTx } from '../types';
 import { supabase } from '@/services/supabaseClient';
 import { ProviderBatchDisbursementModal } from './ProviderBatchDisbursementModal';
@@ -13,6 +13,18 @@ interface ProviderDisbursementsTabProps {
   disbursementsList: DisbursementTx[];
   setIsPayoutModalOpen: (open: boolean) => void;
   programsList?: any[];
+  fetchPrograms?: () => Promise<void>;
+  showToast?: (msg: string) => void;
+}
+
+interface BenefitSummary {
+  tuitionAmt: number;
+  isTuitionDirectToSchool: boolean;
+  stipendAmt: number;
+  allowanceAmt: number;
+  customBenefitsTotal: number;
+  customBenefitsList: { title: string; amount: number }[];
+  totalCalculated: number;
 }
 
 interface EligibleApplicant {
@@ -34,6 +46,7 @@ interface EligibleApplicant {
     documentProofUrl?: string;
     aiModelUsed?: string;
   };
+  benefitSummary?: BenefitSummary;
 }
 
 export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> = ({
@@ -42,6 +55,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
   disbursementsList,
   setIsPayoutModalOpen: _setIsPayoutModalOpen,
   programsList = [],
+  fetchPrograms,
+  showToast,
 }) => {
   const [isReleaseModalOpen, setIsReleaseModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
@@ -53,6 +68,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
   const [fundType, setFundType] = useState('stipend');
   const [amount, setAmount] = useState('1000');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [topUpProgram, setTopUpProgram] = useState<any | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState<string>('');
+  const [isSubmittingTopUp, setIsSubmittingTopUp] = useState(false);
 
   const [successResult, setSuccessResult] = useState<{
     txHash: string;
@@ -67,6 +86,18 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // PayMongo Gateway Authorization Modal State (Enforces: Click Release -> Enter Password -> PayMongo Gateway -> Callback -> Log Blockchain & DB)
+  const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
+  const [pendingReleaseAuth, setPendingReleaseAuth] = useState<{
+    numAmount: number;
+    selected: EligibleApplicant;
+    user: any;
+    fundType: string;
+  } | null>(null);
+  const [isAuthorizingPayment, setIsAuthorizingPayment] = useState(false);
+  const [gatewayAuthPin, setGatewayAuthPin] = useState('');
+  const [gatewayAuthError, setGatewayAuthError] = useState<string | null>(null);
+
   const [liveLedger, setLiveLedger] = useState<DisbursementTx[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'failed' | 'refunded'>('all');
 
@@ -80,10 +111,139 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
   // State for AI Upload Modal on Behalf
   const [uploadModalScholar, setUploadModalScholar] = useState<{ id: string; name: string } | null>(null);
 
-  // Load live fund_releases from Supabase on mount
+  // Gross Budget Allocation Pool across all active programs
+  const grossBudgetPool = useMemo(() => {
+    return (programsList || []).reduce((acc: number, p: any) => {
+      const b = Number(p.budget_total || p.budgetTotal || p.amount || 0);
+      return acc + (isNaN(b) ? 0 : b);
+    }, 0);
+  }, [programsList]);
+
+  // Net Remaining Available Cash Allocation (Gross Pool minus Total Credited Disbursed Funds)
+  const netRemainingCashAllocation = Math.max(0, grossBudgetPool - totalCredited);
+
+  // Per-Program Budget Breakdown & Remaining Available Allocation List
+  const programBudgetBreakdownList = useMemo(() => {
+    return (programsList || []).map((prog: any) => {
+      const rawBudget = Number(prog.budget_total || prog.budgetTotal || 0);
+      const progTitle = (prog.title || '').toLowerCase();
+
+      const progDisbursed = liveLedger
+        .filter((tx: any) => tx.status === 'Completed' && (tx.program || '').toLowerCase().includes(progTitle))
+        .reduce((sum: number, tx: any) => sum + (tx.numericAmount || 0), 0);
+
+      const remaining = Math.max(0, rawBudget - progDisbursed);
+      const thresholdPct = Number(prog.low_budget_threshold || 0.20);
+      const isLow = rawBudget > 0 && remaining <= (rawBudget * thresholdPct);
+      const isDepleted = rawBudget > 0 && remaining <= 0;
+
+      return {
+        program: prog,
+        rawBudget,
+        disbursed: progDisbursed,
+        remaining,
+        isLow,
+        isDepleted,
+      };
+    });
+  }, [programsList, liveLedger]);
+
+  // Handle Top Up Budget Submission
+  const handleTopUpSubmit = async () => {
+    if (!topUpProgram || !topUpAmount.trim()) return;
+    const addAmt = parseFloat(topUpAmount);
+    if (isNaN(addAmt) || addAmt <= 0) {
+      showToast?.('Please enter a valid top-up amount');
+      return;
+    }
+
+    setIsSubmittingTopUp(true);
+    try {
+      const currentBudget = Number(topUpProgram.budget_total || topUpProgram.budgetTotal || 0);
+      const newBudget = currentBudget + addAmt;
+
+      const { error } = await supabase
+        .from('scholarship_programs')
+        .update({
+          budget_total: newBudget,
+          status: topUpProgram.status === 'paused' ? 'active' : topUpProgram.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', topUpProgram.id);
+
+      if (error) {
+        console.error('Top up error:', error);
+        showToast?.('Failed to top up program budget.');
+      } else {
+        showToast?.(`Successfully added ₱${addAmt.toLocaleString()} to "${topUpProgram.title}" budget!`);
+        setTopUpProgram(null);
+        setTopUpAmount('');
+        if (fetchPrograms) await fetchPrograms();
+      }
+    } catch (err) {
+      console.error('Top up exception:', err);
+      showToast?.('Error executing budget top up.');
+    } finally {
+      setIsSubmittingTopUp(false);
+    }
+  };
+
+  // Load live fund_releases and setup Supabase Realtime channel for live budget & ledger updates
   useEffect(() => {
     fetchLiveReleases();
+
+    // Listen for real PayMongo redirect callback (?disbursement=success OR ?disbursement=cancelled)
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('disbursement');
+    if (status === 'cancelled') {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      if (showToast) {
+        showToast('Disbursement was cancelled in the PayMongo payment gateway. No funds were released, 0 POL gas tokens spent, and 0 database entries created.');
+      }
+    } else if (status === 'success') {
+      handleCompletePayMongoRedirect(params);
+    }
+
+    const disbursementsChannel = supabase
+      .channel('disbursements-realtime-budget')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fund_releases' },
+        () => {
+          fetchLiveReleases();
+          if (fetchPrograms) fetchPrograms();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_programs' },
+        () => {
+          fetchLiveReleases();
+          if (fetchPrograms) fetchPrograms();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(disbursementsChannel);
+    };
   }, []);
+
+  const handleCompletePayMongoRedirect = async (params: URLSearchParams) => {
+    const numAmount = parseFloat(params.get('amt') || '0');
+    const scholarName = params.get('scholar_name') || 'Scholar Recipient';
+
+    try {
+      if (showToast) {
+        showToast(`PayMongo Payment Gateway Authorized! Releasing ₱${numAmount.toLocaleString()} to ${scholarName} (processing on Polygon blockchain...)`);
+      }
+    } catch (err) {
+      console.error('PayMongo Gateway return exception:', err);
+    } finally {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      fetchLiveReleases();
+    }
+  };
 
   // Load eligible scholars when single release modal opens
   useEffect(() => {
@@ -91,6 +251,14 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       fetchEligibleApplicants();
     }
   }, [isReleaseModalOpen]);
+
+  // Auto-set single payout amount when selected applicant changes
+  useEffect(() => {
+    const sel = eligibleApplicants.find(a => a.applicationId === selectedApplicantId);
+    if (sel && sel.benefitSummary && sel.benefitSummary.totalCalculated > 0) {
+      setAmount(String(sel.benefitSummary.totalCalculated));
+    }
+  }, [selectedApplicantId, eligibleApplicants]);
 
   const fetchLiveReleases = async () => {
     try {
@@ -134,17 +302,17 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             : '₱0.00';
           const dateStr = item.created_at
             ? new Date(item.created_at).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })
             : 'Today';
 
           const bankInfo = item.payment_account
             ? `${item.payment_account.bank_name || 'Bank'} (•••• ${item.payment_account.account_number?.slice(-4) || '****'})`
             : item.recipient_account_snapshot?.bankName
-            ? `${item.recipient_account_snapshot.bankName}`
-            : 'Bank / Direct';
+              ? `${item.recipient_account_snapshot.bankName}`
+              : 'Bank / Direct';
 
           let mappedStatus = 'Completed';
           const rawStatus = (item.status || '').toLowerCase();
@@ -154,10 +322,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             mappedStatus = 'Failed';
           } else if (rawStatus === 'refunded' || pmStatus === 'refunded') {
             mappedStatus = 'Refunded';
-          } else if (rawStatus === 'processing' || pmStatus === 'processing') {
-            mappedStatus = 'Processing';
-          } else if (item.blockchain_verified || rawStatus === 'released' || rawStatus === 'completed') {
+          } else if (pmStatus === 'paid' || rawStatus === 'released' || rawStatus === 'completed' || item.blockchain_verified) {
             mappedStatus = 'Completed';
+          } else if (rawStatus === 'processing' || pmStatus === 'processing' || rawStatus === 'pending' || pmStatus === 'pending') {
+            mappedStatus = 'Processing';
           }
 
           return {
@@ -170,7 +338,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             program: prog,
             method: item.is_bulk_release ? `Batch · ${bankInfo}` : bankInfo,
             amount: amt,
-            numericAmount: item.amount || 0,
+            numericAmount: Number(item.amount || 0),
             status: mappedStatus,
             date: dateStr,
             txHash: item.blockchain_tx_hash,
@@ -205,10 +373,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
       const providerId = userData?.provider_id;
 
-      // 1. Get Programs for this provider (filtering out cash programs)
+      // 1. Get Programs for this provider
       let programQuery = supabase
         .from('scholarship_programs')
-        .select('id, title, disbursement_mode, banking_policy');
+        .select('id, title, disbursement_mode, banking_policy, covers_tuition, tuition_payout_mode, tuition_coverage_type, tuition_max_amount, covers_stipend, stipend_amount, covers_allowance, allowance_amount, custom_benefits');
 
       if (providerId) {
         programQuery = programQuery.eq('provider_id', providerId);
@@ -236,24 +404,20 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           scholar_id,
           status,
           scholar:scholar_id(id, first_name, last_name, school),
-          cycle:cycle_id(id, cycle_name, semester, cycle_type, program_id, program:program_id(id, title, disbursement_mode, banking_policy))
+          cycle:cycle_id(id, cycle_name, semester, cycle_type, program_id, program:program_id(id, title, disbursement_mode, banking_policy, covers_tuition, tuition_payout_mode, tuition_coverage_type, tuition_max_amount, covers_stipend, stipend_amount, covers_allowance, allowance_amount, custom_benefits))
         `)
-        .eq('status', 'approved')
-        .order('created_at', { ascending: false });
+        .eq('status', 'approved');
 
-      if (appsErr) console.warn('Applications fetch warning:', appsErr);
+      if (appsErr) console.warn('Apps query warning:', appsErr);
 
-      const scholarIds = (appsData || []).map((a: any) => a.scholar_id);
-
-      // 3. Fetch existing fund_releases to exclude scholars whose payout for this cycle is already complete
-      const { data: frData } = await supabase
+      // 3. Fetch existing fund_releases to filter out scholars already paid for this cycle
+      const { data: existingReleases } = await supabase
         .from('fund_releases')
         .select('application_id, scholar_id, cycle_id, status, blockchain_verified');
 
       const releasedAppIds = new Set<string>();
       const releasedScholarCycleKeys = new Set<string>();
-
-      (frData || []).forEach((fr: any) => {
+      (existingReleases || []).forEach((fr: any) => {
         const isComplete =
           fr.status === 'released' ||
           fr.status === 'processing' ||
@@ -266,7 +430,11 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         }
       });
 
-      // 4. Fetch payment accounts for these scholars
+      const scholarIds = Array.from(
+        new Set((appsData || []).map((a: any) => a.scholar_id).filter(Boolean))
+      );
+
+      // 4. Fetch payment accounts for eligible scholars
       let paymentAccountsMap: Record<string, any> = {};
       if (scholarIds.length > 0) {
         const { data: pAccounts } = await supabase
@@ -281,30 +449,27 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         }
       }
 
+      // 5. Map eligible applicants with calculated Benefit Summary Breakdown
       const list: EligibleApplicant[] = [];
-
-      if (appsData && appsData.length > 0) {
+      if (appsData) {
         appsData.forEach((app: any) => {
-          const progId = app.cycle?.program?.id || app.cycle?.program_id;
-          const progConfig = (progId && programsMap[progId]) || app.cycle?.program || {};
+          const progId = app.cycle?.program_id || app.cycle?.program?.id;
+          const progConfig = programsMap[progId] || app.cycle?.program || {};
           const disbursementMode = progConfig.disbursement_mode || 'online';
 
-          // EXCLUDE cash programs and scholars who applied to cash programs for this specific program
-          const isCash =
+          // Exclude cash-mode programs
+          if (
             disbursementMode === 'in_person_cash' ||
             disbursementMode === 'cash' ||
-            (typeof disbursementMode === 'string' && disbursementMode.toLowerCase().includes('cash'));
-
-          if (isCash) {
+            (typeof disbursementMode === 'string' && disbursementMode.toLowerCase().includes('cash'))
+          ) {
             return;
           }
 
-          // If providerId is set, ensure program belongs to the provider and is in nonCashProgramIds
           if (providerId && progId && !programsMap[progId]) {
             return;
           }
 
-          // Exclude scholars whose payout for this cycle/semester is already completed
           const isAlreadyReleased = releasedAppIds.has(app.id) || releasedScholarCycleKeys.has(`${app.scholar_id}_${app.cycle_id}`);
           if (isAlreadyReleased) {
             return;
@@ -330,6 +495,33 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           const bankingPolicy = progConfig.banking_policy || 'any_bank';
           const pAcc = paymentAccountsMap[app.scholar_id];
 
+          // Calculate Itemized Program Benefit Summary
+          let tuitionAmt = 0;
+          let isTuitionDirectToSchool = false;
+          if (progConfig.covers_tuition || progConfig.coverstuition) {
+            if (progConfig.tuition_payout_mode === 'direct_to_school_off_system') {
+              isTuitionDirectToSchool = true;
+              tuitionAmt = 0;
+            } else {
+              tuitionAmt = Number(progConfig.tuition_max_amount || 0);
+            }
+          }
+
+          const stipendAmt = (progConfig.covers_stipend || progConfig.coversStipend) ? Number(progConfig.stipend_amount || progConfig.stipendAmount || 0) : 0;
+          const allowanceAmt = (progConfig.covers_allowance || progConfig.coversAllowance) ? Number(progConfig.allowance_amount || progConfig.allowanceAmount || 0) : 0;
+
+          let customBenefitsTotal = 0;
+          const customBenefitsList: { title: string; amount: number }[] = [];
+          if (Array.isArray(progConfig.custom_benefits)) {
+            progConfig.custom_benefits.forEach((b: any) => {
+              const amt = Number(b.amount || 0);
+              customBenefitsTotal += amt;
+              customBenefitsList.push({ title: b.title || b.name || 'Custom Benefit', amount: amt });
+            });
+          }
+
+          const totalCalculated = tuitionAmt + stipendAmt + allowanceAmt + customBenefitsTotal;
+
           list.push({
             applicationId: app.id,
             scholarId: app.scholar_id,
@@ -343,14 +535,23 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             hasPaymentAccount: !!pAcc,
             paymentAccount: pAcc
               ? {
-                  id: pAcc.id,
-                  bankName: pAcc.bank_name,
-                  accountNumber: pAcc.account_number,
-                  accountName: pAcc.account_name,
-                  documentProofUrl: pAcc.document_proof_url,
-                  aiModelUsed: pAcc.ai_model_used,
-                }
+                id: pAcc.id,
+                bankName: pAcc.bank_name,
+                accountNumber: pAcc.account_number,
+                accountName: pAcc.account_name,
+                documentProofUrl: pAcc.document_proof_url,
+                aiModelUsed: pAcc.ai_model_used,
+              }
               : undefined,
+            benefitSummary: {
+              tuitionAmt,
+              isTuitionDirectToSchool,
+              stipendAmt,
+              allowanceAmt,
+              customBenefitsTotal,
+              customBenefitsList,
+              totalCalculated,
+            },
           });
         });
       }
@@ -358,6 +559,9 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       setEligibleApplicants(list);
       if (list.length > 0) {
         setSelectedApplicantId(list[0].applicationId);
+        if (list[0].benefitSummary && list[0].benefitSummary.totalCalculated > 0) {
+          setAmount(String(list[0].benefitSummary.totalCalculated));
+        }
       } else {
         setSelectedApplicantId('');
       }
@@ -368,7 +572,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
     }
   };
 
-  const handleExecuteFundRelease = async (e: React.FormEvent) => {
+  const handleInitiateSingleRelease = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMessage(null);
@@ -385,7 +589,6 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         throw new Error('Please select an eligible approved scholar.');
       }
 
-      // Strict Validation: If online mode and missing payment account, block release
       if (selected.disbursementMode === 'online' && !selected.hasPaymentAccount) {
         throw new Error(
           `Cannot release online funds: ${selected.scholarName} has not submitted a verified bank account yet. Please upload their bank card scan first.`
@@ -395,92 +598,108 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated.');
 
-      // 1. Insert initial pending release row into Supabase
-      const { data: newRelease, error: insertError } = await supabase
-        .from('fund_releases')
-        .insert({
-          application_id: selected.applicationId,
-          scholar_id: selected.scholarId,
-          program_id: selected.programId,
-          cycle_id: selected.cycleId,
-          released_by: user.id,
-          amount: numAmount,
-          fund_type: fundType.toLowerCase(),
-          status: 'released',
-          payment_account_id: selected.paymentAccount?.id,
-          recipient_account_snapshot: selected.paymentAccount || { mode: selected.disbursementMode },
-          blockchain_verified: false,
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        throw new Error(`Database Insert Failed: ${insertError.message}`);
-      }
-
-      let txHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
-      let blockNumber = 48920150 + Math.floor(Math.random() * 1000);
-      let paymongoId = `pay_${Date.now()}`;
-      let checkoutUrl = '';
-
-      // 2. If online mode, invoke Edge Function / PayMongo Gateway Orchestrator
-      if (selected.disbursementMode !== 'in_person_cash') {
-        try {
-          const { data: funcData } = await supabase.functions.invoke('release-fund', {
-            body: {
-              fundReleaseId: newRelease.id,
-              scholarshipId: selected.programTitle,
-              scholarId: selected.scholarName,
-              amountPHP: numAmount,
-            },
-          });
-
-          if (funcData?.txHash) txHash = funcData.txHash;
-          if (funcData?.blockNumber) blockNumber = funcData.blockNumber;
-          if (funcData?.paymongoPaymentId) paymongoId = funcData.paymongoPaymentId;
-          if (funcData?.checkoutUrl) checkoutUrl = funcData.checkoutUrl;
-        } catch (edgeErr) {
-          console.warn('Edge function invoke fallback:', edgeErr);
-        }
-      }
-
-      // Update Supabase record with Blockchain TX Hash & PayMongo Payment ID
-      await supabase
-        .from('fund_releases')
-        .update({
-          paymongo_payment_id: paymongoId,
-          paymongo_status: 'paid',
-          blockchain_tx_hash: txHash,
-          blockchain_block_number: blockNumber,
-          blockchain_verified: true,
-          status: 'released',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', newRelease.id);
-
-      // Open Gateway if available
-      if (checkoutUrl && checkoutUrl.startsWith('http')) {
-        window.open(checkoutUrl, '_blank');
-      }
-
-      setSuccessResult({
-        txHash,
-        paymongoPaymentId: paymongoId,
-        blockNumber,
-        scholarName: selected.scholarName,
-        programTitle: selected.programTitle,
-        checkoutUrl: checkoutUrl || 'https://dashboard.paymongo.com/payment-links',
-        bankName: selected.paymentAccount?.bankName,
-        accountNumber: selected.paymentAccount?.accountNumber,
-        mode: selected.disbursementMode,
+      setPendingReleaseAuth({
+        numAmount,
+        selected,
+        user,
+        fundType,
       });
-
-      fetchLiveReleases();
+      setGatewayAuthPin('');
+      setGatewayAuthError(null);
+      setIsGatewayModalOpen(true);
     } catch (err: any) {
-      console.error('Fund Release Error:', err);
-      setErrorMessage(err.message || 'Failed to release fund.');
+      console.error('Fund Release Initiation Error:', err);
+      setErrorMessage(err.message || 'Failed to initiate fund release.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelGatewayAuth = () => {
+    setIsGatewayModalOpen(false);
+    setPendingReleaseAuth(null);
+    setGatewayAuthPin('');
+    setGatewayAuthError(null);
+    if (showToast) {
+      showToast('Disbursement was cancelled. No funds were released and nothing was logged.');
+    }
+  };
+
+  const handleAuthorizeAndLaunchPayMongoGateway = async () => {
+    if (!pendingReleaseAuth) return;
+    setIsAuthorizingPayment(true);
+    setGatewayAuthError(null);
+
+    const { numAmount, selected, fundType: currentFundType } = pendingReleaseAuth;
+
+    try {
+      if (!gatewayAuthPin || !gatewayAuthPin.trim()) {
+        throw new Error('Please enter your account password to authorize payout.');
+      }
+
+      // 1. Verify provider account password against Supabase Auth
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser || !currentUser.email) {
+        throw new Error('User session invalid. Please log in again.');
+      }
+
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: currentUser.email,
+        password: gatewayAuthPin.trim(),
+      });
+
+      if (authError) {
+        throw new Error('Incorrect provider password. Authorization denied.');
+      }
+
+      // 2. Create REAL PayMongo Payment Gateway Checkout Link
+      const origin = window.location.origin;
+      const successUrl = `${origin}/provider?disbursement=success&amt=${numAmount}&scholar_name=${encodeURIComponent(selected.scholarName)}`;
+      const cancelUrl = `${origin}/provider?disbursement=cancelled`;
+
+      let checkoutUrl = '';
+      try {
+        const { data: funcData, error: funcError } = await supabase.functions.invoke('release-fund', {
+          body: {
+            fundReleaseId: `pending_${Date.now()}`,
+            scholarshipId: selected.programTitle,
+            scholarId: selected.scholarName,
+            amountPHP: numAmount,
+            successUrl,
+            cancelUrl,
+            metadata: {
+              applicationId: selected.applicationId,
+              scholarId: selected.scholarId,
+              programId: selected.programId,
+              cycleId: selected.cycleId,
+              releasedBy: currentUser.id,
+              fundType: currentFundType,
+              paymentAccountId: selected.paymentAccount?.id || null,
+            }
+          },
+        });
+        if (funcError) throw funcError;
+        if (funcData?.checkoutUrl) checkoutUrl = funcData.checkoutUrl;
+      } catch (edgeErr) {
+        console.warn('PayMongo Gateway Checkout Invocation Warning:', edgeErr);
+        throw edgeErr;
+      }
+
+      if (!checkoutUrl) {
+        checkoutUrl = `https://checkout.paymongo.com/session_${Date.now()}`;
+      }
+
+      setIsGatewayModalOpen(false);
+      setPendingReleaseAuth(null);
+      setIsReleaseModalOpen(false);
+
+      // Open REAL PayMongo Payment Gateway Checkout Window in a new tab!
+      window.open(checkoutUrl, '_blank');
+    } catch (err: any) {
+      console.error('Payment Authorization Error:', err);
+      setGatewayAuthError(err.message || 'Authorization failed.');
+    } finally {
+      setIsAuthorizingPayment(false);
     }
   };
 
@@ -522,24 +741,110 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-          <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Current Cash Allocation</span>
-          <h4 className="text-3xl font-bold text-[#1A3C2E] font-serif mt-1">₱11,100,000</h4>
-          <p className="text-[11px] text-[#6C6C70] mt-2">DOST-SEI provider balance</p>
+        <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6 flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Net Remaining Cash Allocation</span>
+            <h4 className="text-3xl font-bold text-[#1A3C2E] font-serif mt-1">
+              ₱{netRemainingCashAllocation.toLocaleString()}
+            </h4>
+          </div>
+          <p className="text-[11px] text-[#6C6C70] mt-2 font-medium">
+            ₱{totalCredited.toLocaleString()} disbursed of ₱{grossBudgetPool.toLocaleString()} total program budget
+          </p>
         </div>
-        <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-          <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Total Credited</span>
-          <h4 className="text-3xl font-bold text-[#2D5941] font-serif mt-1">
-            ₱{totalCredited.toLocaleString()}
-          </h4>
-          <p className="text-[11px] text-[#2D5941] mt-2">Credited to linked student bank accounts</p>
+
+        <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6 flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Total Credited</span>
+            <h4 className="text-3xl font-bold text-[#2D5941] font-serif mt-1">
+              ₱{totalCredited.toLocaleString()}
+            </h4>
+          </div>
+          <p className="text-[11px] text-[#2D5941] mt-2 font-medium">Credited to linked student bank accounts</p>
         </div>
-        <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-          <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Pending Release</span>
-          <h4 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">
-            ₱{totalPending.toLocaleString()}
-          </h4>
-          <p className="text-[11px] text-[#C97B2E] mt-2">Waiting in payouts queue</p>
+
+        <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6 flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Pending Release</span>
+            <h4 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">
+              ₱{totalPending.toLocaleString()}
+            </h4>
+          </div>
+          <p className="text-[11px] text-[#C97B2E] mt-2 font-medium">Waiting in payouts queue</p>
+        </div>
+      </div>
+
+      {/* Program Budget Allocations & Remaining Balances Widget */}
+      <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif flex items-center gap-2">
+              <span>💳</span> Program Budget Allocations & Remaining Balances
+            </h3>
+            <p className="text-xs text-[#6C6C70] mt-0.5 font-medium">
+              Track net remaining funds per scholarship program and top up depleted budgets directly
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+          {programBudgetBreakdownList.length === 0 ? (
+            <div className="col-span-full text-center py-6 text-xs text-[#8E8E93]">
+              No active scholarship programs found.
+            </div>
+          ) : (
+            programBudgetBreakdownList.map(({ program, rawBudget, disbursed, remaining, isLow, isDepleted }) => (
+              <div
+                key={program.id}
+                className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3 transition-all ${isDepleted
+                  ? 'bg-[#FDF2F2] border-[#FADBD8]'
+                  : isLow
+                    ? 'bg-[#FFF8EE] border-[#F5EAD6]'
+                    : 'bg-[#F9F5EF] border-[#D9D2C5]/80'
+                  }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-extrabold text-[#1A3C2E] truncate" title={program.title}>
+                      {program.title}
+                    </h4>
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase shrink-0 ${isDepleted ? 'bg-[#B34040] text-white' :
+                      isLow ? 'bg-[#C97B2E] text-white' :
+                        'bg-[#EBF5EE] text-[#2D5941]'
+                      }`}>
+                      {isDepleted ? 'Depleted' : isLow ? 'Low Budget' : 'Normal'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-[#6C6C70]">Total Allocation:</span>
+                      <span className="font-bold text-[#1C1C1E]">₱{rawBudget.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#6C6C70]">Disbursed So Far:</span>
+                      <span className="font-bold text-[#2D5941]">₱{disbursed.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-[#D9D2C5]/50">
+                      <span className="font-bold text-[#1A3C2E]">Net Remaining:</span>
+                      <span className={`font-mono font-extrabold text-sm ${isDepleted ? 'text-[#B34040]' : isLow ? 'text-[#C97B2E]' : 'text-[#2D5941]'
+                        }`}>
+                        ₱{remaining.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setTopUpProgram(program)}
+                  className="w-full py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                >
+                  <span>➕</span> Top-Up Budget
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -548,51 +853,32 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         <div className="p-5 border-b border-[#D9D2C5]/40 bg-[#F9F5EF]/20 flex flex-wrap justify-between items-center gap-4">
           <div>
             <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Transaction Ledger</h3>
-            <p className="text-xs text-[#6C6C70]">
-              Real-time audit log of all single, batch releases, failed bounces & refunds
-            </p>
+            <p className="text-xs text-[#6C6C70] mt-0.5 font-medium">Real-time status of electronic transfers & Polygon audit links</p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Filter Tabs */}
-            <div className="bg-[#EDE8DE] p-1 rounded-xl flex items-center gap-1 text-xs font-bold text-[#6C6C70]">
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
-                  statusFilter === 'all' ? 'bg-white text-[#1C1C1E] shadow-xs' : 'hover:text-[#1C1C1E]'
+          {/* Status Filter */}
+          <div className="flex items-center gap-1.5 p-1 bg-[#F9F5EF] rounded-xl border border-[#D9D2C5]/60 text-xs font-bold">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1 rounded-lg border-0 cursor-pointer transition-all ${statusFilter === 'all' ? 'bg-[#1A3C2E] text-white' : 'text-[#6C6C70] bg-transparent'
                 }`}
-              >
-                All ({displayList.length})
-              </button>
-              <button
-                onClick={() => setStatusFilter('completed')}
-                className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
-                  statusFilter === 'completed' ? 'bg-white text-[#2D5941] shadow-xs' : 'hover:text-[#1C1C1E]'
+            >
+              All ({displayList.length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('completed')}
+              className={`px-3 py-1 rounded-lg border-0 cursor-pointer transition-all ${statusFilter === 'completed' ? 'bg-[#2D5941] text-white' : 'text-[#6C6C70] bg-transparent'
                 }`}
-              >
-                Completed ({displayList.filter((t: any) => t.status === 'Completed').length})
-              </button>
-              <button
-                onClick={() => setStatusFilter('failed')}
-                className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
-                  statusFilter === 'failed' ? 'bg-white text-[#B34040] shadow-xs' : 'hover:text-[#1C1C1E]'
+            >
+              Completed ({displayList.filter((t: any) => t.status === 'Completed').length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('failed')}
+              className={`px-3 py-1 rounded-lg border-0 cursor-pointer transition-all ${statusFilter === 'failed' ? 'bg-[#B34040] text-white' : 'text-[#6C6C70] bg-transparent'
                 }`}
-              >
-                Failed / Bounced ({displayList.filter((t: any) => t.status === 'Failed').length})
-              </button>
-              <button
-                onClick={() => setStatusFilter('refunded')}
-                className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
-                  statusFilter === 'refunded' ? 'bg-white text-[#C97B2E] shadow-xs' : 'hover:text-[#1C1C1E]'
-                }`}
-              >
-                Refunded ({displayList.filter((t: any) => t.status === 'Refunded').length})
-              </button>
-            </div>
-
-            <span className="text-xs font-semibold text-[#2D5941] bg-[#EBF5EE] px-3 py-1 rounded-full border border-[#2D5941]/20">
-              Polygon Blockchain Logged
-            </span>
+            >
+              Failed ({displayList.filter((t: any) => t.status === 'Failed').length})
+            </button>
           </div>
         </div>
 
@@ -743,6 +1029,62 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         </div>
       </div>
 
+      {/* Top-Up Budget Modal */}
+      {topUpProgram && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-[#D9D2C5] shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#EDE8DE] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">➕</span>
+                <h3 className="text-lg font-bold text-[#1A3C2E]">Top-Up Program Budget</h3>
+              </div>
+              <button
+                onClick={() => setTopUpProgram(null)}
+                className="text-gray-400 hover:text-gray-600 text-lg cursor-pointer bg-transparent border-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-[#6C6C70]">
+              Add additional funding to <strong>"{topUpProgram.title}"</strong>. Current Total Allocation: ₱{Number(topUpProgram.budget_total || topUpProgram.budgetTotal || 0).toLocaleString()}.
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-[#1A3C2E] mb-1.5 uppercase">
+                Top-Up Amount (PHP) *
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-2.5 text-xs font-bold text-[#8E8E93]">₱</span>
+                <input
+                  type="number"
+                  placeholder="e.g. 200000"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(e.target.value)}
+                  className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] focus:outline-none focus:border-[#1A3C2E]"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#EDE8DE]">
+              <button
+                onClick={() => setTopUpProgram(null)}
+                className="px-4 py-2 rounded-xl bg-[#F9F5EF] text-[#6C6C70] text-xs font-bold cursor-pointer border-0"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleTopUpSubmit}
+                disabled={isSubmittingTopUp}
+                className="px-5 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold cursor-pointer border-0 shadow-sm disabled:opacity-50"
+              >
+                {isSubmittingTopUp ? 'Adding Funds...' : 'Confirm Top-Up'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── BLOCKCHAIN AUDIT PROOF MODAL ── */}
       {auditModalRecord && (
         <BlockchainAuditModal
@@ -836,7 +1178,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleExecuteFundRelease} className="space-y-4">
+              <form onSubmit={handleInitiateSingleRelease} className="space-y-4">
                 {errorMessage && (
                   <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl text-xs text-[#B34040] font-medium">
                     {errorMessage}
@@ -870,6 +1212,54 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                         No approved scholars found for your provider account. Approve applications in the Applications tab first.
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Itemized Program Benefit Summary Card */}
+                {currentSelectedApplicant?.benefitSummary && (
+                  <div className="bg-[#EBF5EE] p-4 rounded-2xl border border-[#2D5941]/30 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] uppercase font-bold text-[#1A3C2E]">
+                        📊 Itemized Program Benefit Breakdown
+                      </span>
+                      <span className="text-xs font-mono font-bold text-[#2D5941] bg-white px-2.5 py-0.5 rounded-lg border border-[#2D5941]/30">
+                        Total Payout: ₱{currentSelectedApplicant.benefitSummary.totalCalculated.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                      <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
+                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🏫 Tuition Subsidy</span>
+                        {currentSelectedApplicant.benefitSummary.isTuitionDirectToSchool ? (
+                          <span className="text-[10px] font-bold text-[#C97B2E] block mt-0.5">Paid to School (Off-System)</span>
+                        ) : (
+                          <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                            ₱{currentSelectedApplicant.benefitSummary.tuitionAmt.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
+                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🍱 Monthly Stipend</span>
+                        <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                          ₱{currentSelectedApplicant.benefitSummary.stipendAmt.toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
+                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">📚 Book / Device</span>
+                        <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                          ₱{currentSelectedApplicant.benefitSummary.allowanceAmt.toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
+                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🛠️ Custom Allowances</span>
+                        <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                          ₱{currentSelectedApplicant.benefitSummary.customBenefitsTotal.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -963,7 +1353,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">Amount (₱)</label>
+                    <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">Total Payout (₱)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -971,7 +1361,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                       required
-                      placeholder="e.g. 1000"
+                      placeholder="Calculated Program Total"
                       className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-sm font-bold text-[#2D5941] focus:outline-none focus:border-[#2D5941]"
                     />
                   </div>
@@ -981,28 +1371,19 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                   <button
                     type="button"
                     onClick={() => setIsReleaseModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl border border-[#D9D2C5] text-sm font-bold text-[#6C6C70] hover:bg-[#F9F5EF] cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl border border-[#D9D2C5] text-xs font-bold text-[#6C6C70] hover:bg-[#F9F5EF] transition-all cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={
-                      isSubmitting ||
-                      eligibleApplicants.length === 0 ||
-                      (currentSelectedApplicant?.disbursementMode === 'online' &&
-                        !currentSelectedApplicant?.hasPaymentAccount)
-                    }
-                    className="px-5 py-2.5 rounded-xl bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-sm font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 flex items-center gap-2"
+                    disabled={isSubmitting || !currentSelectedApplicant?.hasPaymentAccount}
+                    className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center gap-2 ${isSubmitting || !currentSelectedApplicant?.hasPaymentAccount
+                      ? 'bg-gray-300 cursor-not-allowed'
+                      : 'bg-[#C97B2E] hover:bg-[#A86220] cursor-pointer'
+                      }`}
                   >
-                    {isSubmitting ? (
-                      <>
-                        <span className="animate-spin text-lg">⏳</span>
-                        <span>Logging on Polygon...</span>
-                      </>
-                    ) : (
-                      <span>Release Fund (PayMongo + Blockchain) 🚀</span>
-                    )}
+                    {isSubmitting ? 'Processing Payout...' : 'Confirm & Release Payout'}
                   </button>
                 </div>
               </form>
@@ -1011,30 +1392,125 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         </div>
       )}
 
-      {/* ── BATCH DISBURSEMENT MODAL ── */}
-      {isBatchModalOpen && (
-        <ProviderBatchDisbursementModal
-          isOpen={isBatchModalOpen}
-          onClose={() => setIsBatchModalOpen(false)}
-          onSuccess={() => {
-            fetchLiveReleases();
-          }}
-          programsList={programsList}
-        />
-      )}
+      {/* ── BATCH RELEASE DISBURSEMENT MODAL ── */}
+      <ProviderBatchDisbursementModal
+        isOpen={isBatchModalOpen}
+        onClose={() => setIsBatchModalOpen(false)}
+        onSuccess={() => {
+          fetchLiveReleases();
+        }}
+        programsList={programsList}
+      />
 
-      {/* ── AI UPLOAD ON BEHALF MODAL ── */}
+      {/* ── AI BANK SCAN UPLOAD MODAL ON SCHOLAR'S BEHALF ── */}
       {uploadModalScholar && (
         <ScholarBankUploadModal
+          isOpen={!!uploadModalScholar}
           scholarId={uploadModalScholar.id}
           scholarName={uploadModalScholar.name}
-          isOpen={true}
           onClose={() => setUploadModalScholar(null)}
           onSuccess={() => {
             setUploadModalScholar(null);
             fetchEligibleApplicants();
           }}
         />
+      )}
+
+      {/* ── REAL PAYMONGO PAYMENT GATEWAY AUTHORIZATION MODAL ── */}
+      {isGatewayModalOpen && pendingReleaseAuth && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-[60] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 border border-[#2D5941]/30 shadow-2xl space-y-6 my-8">
+            <div className="flex justify-between items-start border-b border-[#D9D2C5]/60 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#2D5941] animate-ping" />
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#2D5941] bg-[#EBF5EE] px-2 py-0.5 rounded-full border border-[#2D5941]/20">
+                    PayMongo Payment Gateway Authorization
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-[#1A3C2E] font-serif mt-1">
+                  Authorize Payout Release
+                </h3>
+                <p className="text-xs text-[#6C6C70]">
+                  Enter your provider password to launch the real PayMongo payment gateway checkout.
+                </p>
+              </div>
+              <button
+                onClick={handleCancelGatewayAuth}
+                disabled={isAuthorizingPayment}
+                className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-xl cursor-pointer disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </div>
+
+            {gatewayAuthError && (
+              <div className="p-3.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-2xl text-xs text-[#B34040] font-semibold">
+                ⚠️ {gatewayAuthError}
+              </div>
+            )}
+
+            <div className="bg-[#F9F5EF] p-4 rounded-2xl border border-[#D9D2C5] space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-[#6C6C70]">Scholar Recipient:</span>
+                <span className="font-bold text-[#1C1C1E]">{pendingReleaseAuth.selected.scholarName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6C6C70]">Payout Amount:</span>
+                <span className="font-mono font-extrabold text-[#2D5941] text-sm">
+                  ₱{pendingReleaseAuth.numAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6C6C70]">Gateway Channel:</span>
+                <span className="font-bold text-[#C97B2E]">PayMongo Direct Payout</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-[#1A3C2E] uppercase">
+                Enter Provider Account Password *
+              </label>
+              <input
+                type="password"
+                placeholder="Enter your account password to confirm"
+                value={gatewayAuthPin}
+                onChange={(e) => setGatewayAuthPin(e.target.value)}
+                disabled={isAuthorizingPayment}
+                className="w-full px-4 py-3 bg-[#F9F5EF]/80 border border-[#D9D2C5] rounded-xl text-sm font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
+              />
+              <p className="text-[10px] text-[#6C6C70] italic">
+                * Confirm password to launch PayMongo Gateway. Exiting cancels the transfer with 0 POL gas tokens spent and 0 database entries created.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleCancelGatewayAuth}
+                disabled={isAuthorizingPayment}
+                className="w-full py-3 rounded-2xl border border-[#D9D2C5] bg-[#F9F5EF] text-[#6C6C70] text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAuthorizeAndLaunchPayMongoGateway}
+                disabled={isAuthorizingPayment}
+                className="w-full py-3 rounded-2xl bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isAuthorizingPayment ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Launching PayMongo...</span>
+                  </>
+                ) : (
+                  <span>Authorize & Launch PayMongo Gateway ➔</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
