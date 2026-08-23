@@ -16,6 +16,7 @@ import { ProviderReportsTab } from './components/ProviderReportsTab';
 import { ProviderVerificationTab } from './components/ProviderVerificationTab';
 import { ProviderViewApplicationTab } from './components/ProviderViewApplicationTab';
 import { ProviderProgramFormTab } from './components/ProviderProgramFormTab';
+import { ProviderAppealsTab } from './components/ProviderAppealsTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
 import { ProviderNotificationDrawer } from './components/ProviderNotificationDrawer';
 import { sendProviderAnnouncement, fetchProviderBroadcasts, deleteNotification, sendDecisionNotification } from '@/services/notificationService';
@@ -2387,6 +2388,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 <div className="space-y-1 animate-fade-in">
                   {renderSidebarItem('dashboard', 'Dashboard', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>)}
                   {renderSidebarItem('applicants', 'Applicants & Scholars', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>)}
+                  {renderSidebarItem('appeals', 'Appeals & Disputes', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l9-4 9 4v10a12 12 0 01-18 0V6z" /></svg>)}
                   {renderSidebarItem('programs', 'Programs', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>)}
                   {renderSidebarItem('verification', 'Verification Org', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>)}
                   {renderSidebarItem('profile', 'Profile Settings', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>)}
@@ -2573,6 +2575,13 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               setActiveTab('view-application');
             }}
             handleUpdateStatus={handleUpdateStatus}
+          />
+        )}
+
+        {activeTab === 'appeals' && (
+          <ProviderAppealsTab
+            providerId={providerDetails?.id}
+            showToast={showToast}
           />
         )}
 

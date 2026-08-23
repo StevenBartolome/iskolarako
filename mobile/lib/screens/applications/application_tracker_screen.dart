@@ -8,6 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/widgets/bank_account_modal.dart';
+import 'package:iskoako/widgets/appeal_modal.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AppliedScholarship {
@@ -766,6 +767,10 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                   _buildBankRequirementCard(scholarship),
                                   const SizedBox(height: 12),
                                 ],
+                                if (scholarship.statusType == StatusType.rejected) ...[
+                                  _buildAppealCard(scholarship),
+                                  const SizedBox(height: 12),
+                                ],
                                 ...List.generate(scholarship.steps.length, (stepIdx) {
                                   final step = scholarship.steps[stepIdx];
                                   return _buildStep(
@@ -877,6 +882,70 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                 backgroundColor: hasBank ? AppColors.primary : const Color(0xFFC97B2E),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppealCard(AppliedScholarship scholarship) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8EE),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFC97B2E).withAlpha(100)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.scale, size: 18, color: Color(0xFFC97B2E)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Application Decision Dispute & Appeal',
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: const Color(0xFFC97B2E)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'If you believe your application decision was mistaken or requires re-evaluation (e.g. grade calculation error, document clarification), you can file a formal appeal.',
+            style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF4A4A4A), height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                if (scholarship.applicationId != null && scholarship.scholarId != null) {
+                  AppealModal.show(
+                    context,
+                    applicationId: scholarship.applicationId!,
+                    scholarId: scholarship.scholarId!,
+                    programId: scholarship.programId,
+                    scholarshipName: scholarship.scholarshipName,
+                    onSuccess: () => _fetchApplications(),
+                  );
+                }
+              },
+              icon: const Icon(LucideIcons.scale, size: 14),
+              label: Text(
+                'Submit Formal Appeal / Contest Decision ⚖️',
+                style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFC97B2E),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 9),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
               ),

@@ -28,8 +28,33 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
 
   Future<void> _fetchFundReleases() async {
     setState(() => _isLoading = true);
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    // Resolve both user.id and scholar.id for the logged in scholar
+    final List<String> targetScholarIds = [user.id];
     try {
-      // PostgREST query to join scholar, scholarship_programs and provider
+      final scholarRow = await Supabase.instance.client
+          .from('scholar')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (scholarRow != null && scholarRow['id'] != null) {
+        final sId = scholarRow['id'].toString();
+        if (!targetScholarIds.contains(sId)) {
+          targetScholarIds.add(sId);
+        }
+      }
+    } catch (sErr) {
+      debugPrint('Scholar ID lookup note: $sErr');
+    }
+
+    try {
+      // PostgREST query to join scholar, scholarship_programs and provider filtered by current scholar ID
       final response = await Supabase.instance.client
           .from('fund_releases')
           .select('''
@@ -37,6 +62,7 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
             scholar:scholar_id(first_name, last_name, school),
             scholarship_programs:program_id(title, provider:provider_id(name))
           ''')
+          .filter('scholar_id', 'in', targetScholarIds)
           .order('created_at', ascending: false);
 
       if (mounted) {
@@ -51,6 +77,7 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
         final simpleResponse = await Supabase.instance.client
             .from('fund_releases')
             .select('*')
+            .filter('scholar_id', 'in', targetScholarIds)
             .order('created_at', ascending: false);
 
         if (mounted) {
