@@ -625,6 +625,27 @@ export const sendProviderAnnouncement = async (params: ProviderAnnouncementParam
           return { success: false, count: 0, error: insErr.message || 'Permission denied on notifications table' };
         }
       }
+
+      // Trigger FCM Push Notifications to target users
+      if (recipientList.length > 0) {
+        try {
+          supabase.functions.invoke('send-push-notification', {
+            body: {
+              userIds: recipientList,
+              title: `📢 ${title}`,
+              body: message,
+              type: notifType,
+              data: {
+                senderName: authorName,
+              },
+            },
+          }).then((res) => {
+            console.log(`[FCM Provider Push Result]:`, res.data || res.error || res);
+          });
+        } catch (pushErr) {
+          console.warn('[FCM Provider Push Trigger Note]:', pushErr);
+        }
+      }
     }
 
     return { success: true, count: recipientList.length };
