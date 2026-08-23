@@ -31,11 +31,15 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
   const [activeDataTab, setActiveDataTab] = useState<'applicants' | 'disbursements' | 'aiAudits'>('applicants');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter applicants based on selected program
+  // Helper to get unique student key (prevents double-counting renewals or multiple program applications)
+  const getScholarKey = (app: ApplicationDetail) => app.scholarId || app.email || app.name.toLowerCase().trim();
+
+  // Filter applicants based on selected program and timeframe search
   const filteredApplicants = useMemo(() => {
     return applicants.filter(app => {
       const matchProg = selectedProgramId === 'all' || 
         (app.program && app.program.toLowerCase().includes(selectedProgramId.toLowerCase())) ||
+        (app.program_id && app.program_id === selectedProgramId) ||
         (app.rawApplication?.cycle?.program_id === selectedProgramId);
       const matchSearch = !searchQuery || 
         app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -50,7 +54,8 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
   const filteredDisbursements = useMemo(() => {
     return disbursements.filter(tx => {
       const matchProg = selectedProgramId === 'all' || 
-        (tx.programTitle && tx.programTitle.toLowerCase().includes(selectedProgramId.toLowerCase()));
+        (tx.programTitle && tx.programTitle.toLowerCase().includes(selectedProgramId.toLowerCase())) ||
+        (tx.program_id && tx.program_id === selectedProgramId);
       const matchSearch = !searchQuery ||
         (tx.scholarName && tx.scholarName.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (tx.batchRef && tx.batchRef.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -59,7 +64,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
     });
   }, [disbursements, selectedProgramId, searchQuery]);
 
-  // Filter scholars
+  // Filter scholars list
   const filteredScholars = useMemo(() => {
     return scholars.filter(sch => {
       const matchProg = selectedProgramId === 'all' || 
@@ -68,48 +73,95 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
     });
   }, [scholars, selectedProgramId]);
 
-  // Total active scholars count
-  const activeScholarsCount = filteredScholars.length;
+  // Total Applications vs Unique Students Metric Computation
+  const {
+    totalApplicationsCount,
+    uniqueApplicantsCount,
+    uniqueApprovedScholarsCount,
+    uniqueUnderReviewCount,
+    uniqueForExamCount,
+    uniqueRejectedCount,
+    approvedSubmissionsCount,
+  } = useMemo(() => {
+    const totalApps = filteredApplicants.length;
 
-  // Computed Metrics
-  const totalApplicantsCount = applicants.length;
-  const approvedCount = applicants.filter(a => a.status === 'Approved').length;
-  const underReviewCount = applicants.filter(a => a.status === 'Under Review' || a.status === 'Pending').length;
-  const forExamCount = applicants.filter(a => a.status === 'For Exam').length;
-  const rejectedCount = applicants.filter(a => a.status === 'Rejected').length;
+    // Distinct set of all applicants
+    const allApplicantKeys = new Set(filteredApplicants.map(getScholarKey));
+    
+    // Distinct set of approved scholars
+    const approvedApps = filteredApplicants.filter(a => a.status === 'Approved');
+    const approvedKeys = new Set(approvedApps.map(getScholarKey));
 
-  const approvalRate = totalApplicantsCount > 0 
-    ? ((approvedCount / totalApplicantsCount) * 100).toFixed(1) 
+    // Distinct set of under review students
+    const underReviewApps = filteredApplicants.filter(a => a.status === 'Under Review' || a.status === 'Pending');
+    const underReviewKeys = new Set(underReviewApps.map(getScholarKey));
+
+    // Distinct set of exam students
+    const forExamApps = filteredApplicants.filter(a => a.status === 'For Exam');
+    const forExamKeys = new Set(forExamApps.map(getScholarKey));
+
+    // Distinct set of rejected students
+    const rejectedApps = filteredApplicants.filter(a => a.status === 'Rejected');
+    const rejectedKeys = new Set(rejectedApps.map(getScholarKey));
+
+    return {
+      totalApplicationsCount: totalApps,
+      uniqueApplicantsCount: allApplicantKeys.size,
+      uniqueApprovedScholarsCount: approvedKeys.size,
+      uniqueUnderReviewCount: underReviewKeys.size,
+      uniqueForExamCount: forExamKeys.size,
+      uniqueRejectedCount: rejectedKeys.size,
+      approvedSubmissionsCount: approvedApps.length,
+    };
+  }, [filteredApplicants]);
+
+  // Unique Scholars Count (combining scholar awards list + approved applications)
+  const activeScholarsCount = useMemo(() => {
+    if (filteredScholars.length > 0) {
+      return new Set(filteredScholars.map(s => s.email || s.scholarName || s.id)).size;
+    }
+    return uniqueApprovedScholarsCount;
+  }, [filteredScholars, uniqueApprovedScholarsCount]);
+
+  // Approval Rate calculated per UNIQUE STUDENT
+  const approvalRate = uniqueApplicantsCount > 0 
+    ? ((uniqueApprovedScholarsCount / uniqueApplicantsCount) * 100).toFixed(1) 
     : '0.0';
 
-  // Budget vs Disbursed
+  // Budget vs Disbursed Calculation
   const totalBudget = useMemo(() => {
     return programs.reduce((acc, prog) => {
-      const budgetNum = Number(prog.totalBudget) || (Number(prog.stipendAmount || 0) * Number(prog.slots || 10) * 10);
+      const budgetNum = Number(prog.totalBudget || prog.budget_total) || (Number(prog.stipendAmount || prog.stipend_amount || 0) * Number(prog.totalSlots || prog.total_slots || 10) * 2);
       return acc + (isNaN(budgetNum) ? 0 : budgetNum);
     }, 0);
   }, [programs]);
 
   const totalDisbursed = useMemo(() => {
-    return disbursements.reduce((acc, d) => {
+    return filteredDisbursements.reduce((acc, d) => {
       const amount = typeof d.amount === 'number' ? d.amount : Number(d.amount) || 0;
       return acc + amount;
     }, 0);
-  }, [disbursements]);
+  }, [filteredDisbursements]);
 
   const budgetUtilization = totalBudget > 0 ? ((totalDisbursed / totalBudget) * 100).toFixed(1) : '0.0';
 
-  // Average GWA
+  // Average GWA calculated across UNIQUE STUDENTS (no duplicates for semestral renewals)
   const avgGwa = useMemo(() => {
-    const validGwas = applicants
-      .map(a => parseFloat(a.grade))
-      .filter(g => !isNaN(g) && g > 0 && g <= 5.0);
-    if (validGwas.length === 0) return '1.45';
+    const scholarGwaMap = new Map<string, number>();
+    filteredApplicants.forEach(a => {
+      const g = parseFloat(a.grade);
+      if (!isNaN(g) && g > 0 && g <= 5.0) {
+        scholarGwaMap.set(getScholarKey(a), g);
+      }
+    });
+
+    const validGwas = Array.from(scholarGwaMap.values());
+    if (validGwas.length === 0) return 'N/A';
     const sum = validGwas.reduce((a, b) => a + b, 0);
     return (sum / validGwas.length).toFixed(2);
-  }, [applicants]);
+  }, [filteredApplicants]);
 
-  // Year Level Breakdown
+  // Year Level Breakdown (Deduplicated per Unique Student)
   const yearLevelDistribution = useMemo(() => {
     const counts: Record<string, number> = {
       '1st Year': 0,
@@ -119,8 +171,13 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
       '5th Year / Postgrad': 0,
     };
 
-    applicants.forEach(a => {
-      const yr = (a.yearLevel || '').toLowerCase();
+    const scholarYearMap = new Map<string, string>();
+    filteredApplicants.forEach(a => {
+      scholarYearMap.set(getScholarKey(a), a.yearLevel || '');
+    });
+
+    scholarYearMap.forEach(yrRaw => {
+      const yr = (yrRaw || '').toLowerCase();
       if (yr.includes('1') || yr.includes('fresh')) counts['1st Year']++;
       else if (yr.includes('2') || yr.includes('soph')) counts['2nd Year']++;
       else if (yr.includes('3') || yr.includes('jun')) counts['3rd Year']++;
@@ -129,25 +186,37 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
     });
 
     return counts;
-  }, [applicants]);
+  }, [filteredApplicants]);
 
-  // Top Universities
+  // Top Feeder Universities (Deduplicated per Unique Student)
   const topSchools = useMemo(() => {
-    const counts: Record<string, { total: number; approved: number }> = {};
-    applicants.forEach(a => {
-      const sch = a.school || 'Unspecified University';
-      if (!counts[sch]) counts[sch] = { total: 0, approved: 0 };
-      counts[sch].total++;
-      if (a.status === 'Approved') counts[sch].approved++;
+    const counts: Record<string, { totalScholars: number; approvedScholars: number }> = {};
+
+    const scholarSchoolMap = new Map<string, { school: string; isApproved: boolean }>();
+    filteredApplicants.forEach(a => {
+      const key = getScholarKey(a);
+      const existing = scholarSchoolMap.get(key);
+      if (!existing || a.status === 'Approved') {
+        scholarSchoolMap.set(key, {
+          school: a.school || 'Unspecified University',
+          isApproved: a.status === 'Approved' || existing?.isApproved || false,
+        });
+      }
+    });
+
+    scholarSchoolMap.forEach(({ school, isApproved }) => {
+      if (!counts[school]) counts[school] = { totalScholars: 0, approvedScholars: 0 };
+      counts[school].totalScholars++;
+      if (isApproved) counts[school].approvedScholars++;
     });
 
     return Object.entries(counts)
       .map(([school, stats]) => ({ school, ...stats }))
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => b.totalScholars - a.totalScholars)
       .slice(0, 5);
-  }, [applicants]);
+  }, [filteredApplicants]);
 
-  // GWA Distribution
+  // GWA Performance Spectrum (Deduplicated per Unique Student)
   const gwaDistribution = useMemo(() => {
     const ranges = {
       '1.00 – 1.25 (Summa/High Honors)': 0,
@@ -157,9 +226,15 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
       '2.01+ (Passed)': 0,
     };
 
-    applicants.forEach(a => {
+    const scholarGwaMap = new Map<string, number>();
+    filteredApplicants.forEach(a => {
       const g = parseFloat(a.grade);
-      if (isNaN(g)) return;
+      if (!isNaN(g) && g > 0 && g <= 5.0) {
+        scholarGwaMap.set(getScholarKey(a), g);
+      }
+    });
+
+    scholarGwaMap.forEach(g => {
       if (g <= 1.25) ranges['1.00 – 1.25 (Summa/High Honors)']++;
       else if (g <= 1.50) ranges['1.26 – 1.50 (Magna/Honors)']++;
       else if (g <= 1.75) ranges['1.51 – 1.75 (Dean\'s List)']++;
@@ -168,16 +243,16 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
     });
 
     return ranges;
-  }, [applicants]);
+  }, [filteredApplicants]);
 
-  // AI Verification Stats
+  // AI Verification Audit Statistics
   const aiAuditSummary = useMemo(() => {
     let totalDocs = 0;
     let verifiedCount = 0;
     let flaggedCount = 0;
     let pendingCount = 0;
 
-    applicants.forEach(app => {
+    filteredApplicants.forEach(app => {
       const docs = app.submittedDocuments || [];
       totalDocs += docs.length;
       docs.forEach((d: SubmittedDocItem) => {
@@ -191,10 +266,10 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
       });
     });
 
-    const authenticityRate = totalDocs > 0 ? ((verifiedCount / totalDocs) * 100).toFixed(1) : '98.5';
+    const authenticityRate = totalDocs > 0 ? ((verifiedCount / totalDocs) * 100).toFixed(1) : '100.0';
 
     return { totalDocs, verifiedCount, flaggedCount, pendingCount, authenticityRate };
-  }, [applicants]);
+  }, [filteredApplicants]);
 
   // CSV Exporters
   const exportApplicantsCsv = () => {
@@ -203,9 +278,10 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
       return;
     }
 
-    const headers = ['Application ID', 'Name', 'Email', 'Phone', 'Program', 'University', 'Course', 'Year Level', 'GWA', 'Status', 'Date Applied', 'Remarks'];
+    const headers = ['Application ID', 'Scholar ID', 'Name', 'Email', 'Phone', 'Program', 'University', 'Course', 'Year Level', 'GWA', 'Status', 'Date Applied', 'Remarks'];
     const rows = filteredApplicants.map(a => [
       `"${a.id}"`,
+      `"${a.scholarId || ''}"`,
       `"${a.name}"`,
       `"${a.email || ''}"`,
       `"${a.phone || ''}"`,
@@ -271,7 +347,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                 Analytics, Reports & Audit Hub
               </h2>
               <p className="text-xs text-[#6C6C70] mt-0.5 font-medium">
-                Comprehensive data intelligence, fund utilization velocity, and scholar demographics for {providerDetails?.name || 'Your Organization'}
+                Accurate scholar demographics, unique applicant counts, and fund utilization for {providerDetails?.name || 'Your Organization'}
               </p>
             </div>
           </div>
@@ -346,7 +422,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
               ₱{totalDisbursed.toLocaleString()}
             </div>
             <p className="text-[11px] text-[#6C6C70] mt-0.5">
-              of ₱{totalBudget.toLocaleString()} Total Allocated Budget
+              of ₱{totalBudget.toLocaleString()} Total Program Allocation
             </p>
           </div>
           <div>
@@ -358,12 +434,12 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
             </div>
             <div className="flex justify-between items-center text-[10px] font-bold text-[#2D5941] mt-1.5">
               <span>{budgetUtilization}% Disbursed</span>
-              <span className="text-[#6C6C70]">{(100 - Number(budgetUtilization)).toFixed(1)}% Available</span>
+              <span className="text-[#6C6C70]">{(100 - Number(budgetUtilization)).toFixed(1)}% Remaining</span>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Applicants Conversion */}
+        {/* Card 2: Applicants Conversion (Deduplicated per Unique Student) */}
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Approval Rate</span>
@@ -373,16 +449,13 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
               {approvalRate}%
             </div>
-            <p className="text-[11px] text-[#6C6C70] mt-0.5">
-              {approvedCount} Approved of {totalApplicantsCount} Total Submissions
+            <p className="text-[11px] text-[#6C6C70] mt-0.5 font-medium">
+              {uniqueApprovedScholarsCount} Approved Scholars of {uniqueApplicantsCount} Unique Students
             </p>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#6C6C70]">
-            <span className="px-2 py-0.5 rounded-lg bg-amber-100/70 text-amber-800 font-mono">
-              {underReviewCount} Under Review
-            </span>
-            <span className="px-2 py-0.5 rounded-lg bg-purple-100/70 text-purple-800 font-mono">
-              {forExamCount} For Exam
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#6C6C70] flex-wrap">
+            <span className="px-2 py-0.5 rounded-lg bg-emerald-100/80 text-emerald-800 font-mono">
+              {approvedSubmissionsCount}/{totalApplicationsCount} Submissions Approved
             </span>
           </div>
         </div>
@@ -398,11 +471,11 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
               {avgGwa}
             </div>
             <p className="text-[11px] text-[#6C6C70] mt-0.5">
-              Grade Point Average across {activeScholarsCount} enrolled scholars
+              Grade Point Average across {activeScholarsCount} unique scholars
             </p>
           </div>
           <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
-            <span>✨</span> High Academic Standing Cohort
+            <span>✨</span> Verified Academic Standing
           </div>
         </div>
 
@@ -417,11 +490,11 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
               {aiAuditSummary.authenticityRate}%
             </div>
             <p className="text-[11px] text-[#6C6C70] mt-0.5">
-              {aiAuditSummary.verifiedCount} Verified • {aiAuditSummary.flaggedCount} Flagged for Review
+              {aiAuditSummary.verifiedCount} Verified • {aiAuditSummary.flaggedCount} Flagged ({aiAuditSummary.totalDocs} Docs)
             </p>
           </div>
           <div className="text-[11px] font-bold text-[#6C6C70] flex items-center gap-1">
-            <span className="text-emerald-600 font-bold">✓ Multi-Model</span> OCR & Seal Verification
+            <span className="text-emerald-600 font-bold">✓ Multi-AI</span> Forensic Verification
           </div>
         </div>
       </div>
@@ -438,11 +511,16 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                 <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif">
                   Application Processing Funnel
                 </h3>
-                <p className="text-xs text-[#6C6C70]">Applicant volume across each evaluation stage</p>
+                <p className="text-xs text-[#6C6C70]">Unique student volume across each evaluation stage</p>
               </div>
-              <span className="text-xs font-mono font-bold text-[#1A3C2E] bg-[#F9F5EF] px-3 py-1 rounded-xl border border-[#D9D2C5]">
-                {totalApplicantsCount} Total
-              </span>
+              <div className="flex flex-col items-end">
+                <span className="text-xs font-mono font-bold text-[#1A3C2E] bg-[#F9F5EF] px-3 py-1 rounded-xl border border-[#D9D2C5]">
+                  {uniqueApplicantsCount} Unique Students
+                </span>
+                <span className="text-[10px] text-[#8E8E93] mt-0.5 font-mono">
+                  ({totalApplicationsCount} total submissions)
+                </span>
+              </div>
             </div>
 
             <div className="space-y-3.5">
@@ -454,13 +532,13 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                     Pending & Under Review
                   </span>
                   <span className="text-[#1A3C2E] font-mono">
-                    {underReviewCount} ({totalApplicantsCount > 0 ? ((underReviewCount / totalApplicantsCount) * 100).toFixed(0) : 0}%)
+                    {uniqueUnderReviewCount} students ({uniqueApplicantsCount > 0 ? ((uniqueUnderReviewCount / uniqueApplicantsCount) * 100).toFixed(0) : 0}%)
                   </span>
                 </div>
                 <div className="w-full bg-[#F2EDE4] h-2.5 rounded-full overflow-hidden">
                   <div 
                     className="bg-amber-500 h-full rounded-full transition-all duration-500" 
-                    style={{ width: `${totalApplicantsCount > 0 ? (underReviewCount / totalApplicantsCount) * 100 : 0}%` }}
+                    style={{ width: `${uniqueApplicantsCount > 0 ? (uniqueUnderReviewCount / uniqueApplicantsCount) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -473,13 +551,13 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                     Shortlisted for Examination
                   </span>
                   <span className="text-[#1A3C2E] font-mono">
-                    {forExamCount} ({totalApplicantsCount > 0 ? ((forExamCount / totalApplicantsCount) * 100).toFixed(0) : 0}%)
+                    {uniqueForExamCount} students ({uniqueApplicantsCount > 0 ? ((uniqueForExamCount / uniqueApplicantsCount) * 100).toFixed(0) : 0}%)
                   </span>
                 </div>
                 <div className="w-full bg-[#F2EDE4] h-2.5 rounded-full overflow-hidden">
                   <div 
                     className="bg-purple-600 h-full rounded-full transition-all duration-500" 
-                    style={{ width: `${totalApplicantsCount > 0 ? (forExamCount / totalApplicantsCount) * 100 : 0}%` }}
+                    style={{ width: `${uniqueApplicantsCount > 0 ? (uniqueForExamCount / uniqueApplicantsCount) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -492,13 +570,13 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                     Approved & Awarded Scholars
                   </span>
                   <span className="text-emerald-700 font-mono font-extrabold">
-                    {approvedCount} ({totalApplicantsCount > 0 ? ((approvedCount / totalApplicantsCount) * 100).toFixed(0) : 0}%)
+                    {uniqueApprovedScholarsCount} scholars ({uniqueApplicantsCount > 0 ? ((uniqueApprovedScholarsCount / uniqueApplicantsCount) * 100).toFixed(0) : 0}%)
                   </span>
                 </div>
                 <div className="w-full bg-[#F2EDE4] h-2.5 rounded-full overflow-hidden">
                   <div 
                     className="bg-emerald-600 h-full rounded-full transition-all duration-500" 
-                    style={{ width: `${totalApplicantsCount > 0 ? (approvedCount / totalApplicantsCount) * 100 : 0}%` }}
+                    style={{ width: `${uniqueApplicantsCount > 0 ? (uniqueApprovedScholarsCount / uniqueApplicantsCount) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -511,31 +589,31 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                     Ineligible / Did Not Meet Criteria
                   </span>
                   <span className="text-rose-700 font-mono">
-                    {rejectedCount} ({totalApplicantsCount > 0 ? ((rejectedCount / totalApplicantsCount) * 100).toFixed(0) : 0}%)
+                    {uniqueRejectedCount} students ({uniqueApplicantsCount > 0 ? ((uniqueRejectedCount / uniqueApplicantsCount) * 100).toFixed(0) : 0}%)
                   </span>
                 </div>
                 <div className="w-full bg-[#F2EDE4] h-2.5 rounded-full overflow-hidden">
                   <div 
                     className="bg-rose-500 h-full rounded-full transition-all duration-500" 
-                    style={{ width: `${totalApplicantsCount > 0 ? (rejectedCount / totalApplicantsCount) * 100 : 0}%` }}
+                    style={{ width: `${uniqueApplicantsCount > 0 ? (uniqueRejectedCount / uniqueApplicantsCount) * 100 : 0}%` }}
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Demographic & Year Level Distribution */}
+          {/* Demographic & Year Level Distribution (Deduplicated) */}
           <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif">
                 Year Level Distribution
               </h3>
-              <span className="text-xs text-[#6C6C70] font-medium">Cohort representation</span>
+              <span className="text-xs text-[#6C6C70] font-medium">Deduplicated per unique student</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
               {Object.entries(yearLevelDistribution).map(([year, count]) => {
-                const pct = totalApplicantsCount > 0 ? ((count / totalApplicantsCount) * 100).toFixed(0) : '0';
+                const pct = uniqueApplicantsCount > 0 ? ((count / uniqueApplicantsCount) * 100).toFixed(0) : '0';
                 return (
                   <div key={year} className="bg-[#F9F5EF] p-4 rounded-2xl border border-[#D9D2C5]/60 flex flex-col justify-between">
                     <span className="text-xs font-bold text-[#6C6C70]">{year}</span>
@@ -552,13 +630,13 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
 
         {/* Right Column: Feeder Universities & GWA Spectrum (5 cols) */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Top Feeder Universities */}
+          {/* Top Feeder Universities (Deduplicated) */}
           <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif">
                 Top Feeder Universities
               </h3>
-              <span className="text-xs text-[#6C6C70] font-medium">Applications by school</span>
+              <span className="text-xs text-[#6C6C70] font-medium">Unique students by school</span>
             </div>
 
             <div className="space-y-3">
@@ -570,11 +648,11 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                     <div className="truncate">
                       <h4 className="text-xs font-extrabold text-[#1A3C2E] truncate">{item.school}</h4>
                       <p className="text-[10px] text-[#6C6C70] mt-0.5">
-                        {item.approved} approved scholars
+                        {item.approvedScholars} approved scholars
                       </p>
                     </div>
                     <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-xl bg-white text-[#1A3C2E] border border-[#D9D2C5]/50 shrink-0">
-                      {item.total} Apps
+                      {item.totalScholars} Students
                     </span>
                   </div>
                 ))
@@ -582,18 +660,18 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
             </div>
           </div>
 
-          {/* GWA Spectrum Histogram */}
+          {/* GWA Spectrum Histogram (Deduplicated) */}
           <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif">
                 GWA Performance Spectrum
               </h3>
-              <span className="text-xs text-[#6C6C70] font-medium">Academic breakdown</span>
+              <span className="text-xs text-[#6C6C70] font-medium">Deduplicated per student</span>
             </div>
 
             <div className="space-y-2.5">
               {Object.entries(gwaDistribution).map(([range, count]) => {
-                const pct = totalApplicantsCount > 0 ? ((count / totalApplicantsCount) * 100).toFixed(0) : '0';
+                const pct = uniqueApplicantsCount > 0 ? ((count / uniqueApplicantsCount) * 100).toFixed(0) : '0';
                 return (
                   <div key={range}>
                     <div className="flex justify-between text-[11px] font-bold text-[#6C6C70] mb-1">
@@ -603,7 +681,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                     <div className="w-full bg-[#F2EDE4] h-2 rounded-full overflow-hidden">
                       <div
                         className="bg-[#1A3C2E] h-full rounded-full transition-all duration-500"
-                        style={{ width: `${totalApplicantsCount > 0 ? (count / totalApplicantsCount) * 100 : 0}%` }}
+                        style={{ width: `${uniqueApplicantsCount > 0 ? (count / uniqueApplicantsCount) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
@@ -622,7 +700,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
               Real-Time Audit Records & Data Explorer
             </h3>
             <p className="text-xs text-[#6C6C70] mt-0.5">
-              Drill down into individual records, fund releases, and AI document forensic logs
+              Drill down into individual student records, fund releases, and AI document forensic logs
             </p>
           </div>
 
@@ -648,7 +726,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                   activeDataTab === 'applicants' ? 'bg-[#1A3C2E] text-white shadow-xs' : 'bg-transparent text-[#6C6C70] hover:text-[#1A3C2E]'
                 }`}
               >
-                Applicants ({filteredApplicants.length})
+                Applications ({filteredApplicants.length})
               </button>
               <button
                 type="button"
@@ -762,7 +840,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
 
         {filteredApplicants.length > 10 && activeDataTab === 'applicants' && (
           <div className="text-center pt-2">
-            <span className="text-xs text-[#6C6C70]">Showing top 10 of {filteredApplicants.length} applicants. Export full list using the button above.</span>
+            <span className="text-xs text-[#6C6C70]">Showing top 10 of {filteredApplicants.length} applications. Export full list using the button above.</span>
           </div>
         )}
       </div>
