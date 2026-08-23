@@ -3,6 +3,9 @@ import type { DisbursementTx } from '../types';
 import { supabase } from '@/services/supabaseClient';
 import { ProviderBatchDisbursementModal } from './ProviderBatchDisbursementModal';
 import { ScholarBankUploadModal } from '@/components/scholar/ScholarBankUploadModal';
+import { DisbursementRefundModal, type DisbursementActionType, type DisbursementItem } from './DisbursementRefundModal';
+import { BlockchainVerifiedBadge } from '@/components/common/BlockchainVerifiedBadge';
+import { BlockchainAuditModal, type AuditModalRecord } from '@/components/common/BlockchainAuditModal';
 
 interface ProviderDisbursementsTabProps {
   totalCredited: number;
@@ -65,6 +68,14 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [liveLedger, setLiveLedger] = useState<DisbursementTx[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'failed' | 'refunded'>('all');
+
+  // State for Disbursement Refund / Failed Action Modal
+  const [refundModalItem, setRefundModalItem] = useState<DisbursementItem | null>(null);
+  const [refundActionType, setRefundActionType] = useState<DisbursementActionType>('flag_failed');
+
+  // State for Blockchain Audit Modal
+  const [auditModalRecord, setAuditModalRecord] = useState<AuditModalRecord | null>(null);
 
   // State for AI Upload Modal on Behalf
   const [uploadModalScholar, setUploadModalScholar] = useState<{ id: string; name: string } | null>(null);
@@ -135,15 +146,32 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             ? `${item.recipient_account_snapshot.bankName}`
             : 'Bank / Direct';
 
+          let mappedStatus = 'Completed';
+          const rawStatus = (item.status || '').toLowerCase();
+          const pmStatus = (item.paymongo_status || '').toLowerCase();
+
+          if (rawStatus === 'failed' || pmStatus === 'failed') {
+            mappedStatus = 'Failed';
+          } else if (rawStatus === 'refunded' || pmStatus === 'refunded') {
+            mappedStatus = 'Refunded';
+          } else if (rawStatus === 'processing' || pmStatus === 'processing') {
+            mappedStatus = 'Processing';
+          } else if (item.blockchain_verified || rawStatus === 'released' || rawStatus === 'completed') {
+            mappedStatus = 'Completed';
+          }
+
           return {
             id: item.blockchain_tx_hash
               ? `${item.blockchain_tx_hash.substring(0, 10)}...`
               : item.paymongo_payment_id || item.id.substring(0, 8),
+            rawId: item.id,
+            scholarId: item.scholar_id,
             scholar,
             program: prog,
             method: item.is_bulk_release ? `Batch · ${bankInfo}` : bankInfo,
             amount: amt,
-            status: item.blockchain_verified ? 'Completed' : 'Processing',
+            numericAmount: item.amount || 0,
+            status: mappedStatus,
             date: dateStr,
             txHash: item.blockchain_tx_hash,
             paymongoId: item.paymongo_payment_id,
@@ -151,6 +179,9 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             isBulk: item.is_bulk_release,
             batchId: item.bulk_batch_id,
             docProof: item.payment_account?.document_proof_url,
+            failureReason: item.failure_reason,
+            refundRef: item.refund_reference,
+            refundRemarks: item.refund_remarks,
           };
         });
         setLiveLedger(formatted);
@@ -514,17 +545,57 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
       {/* Main Disbursements Ledger Table */}
       <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
-        <div className="p-5 border-b border-[#D9D2C5]/40 bg-[#F9F5EF]/20 flex justify-between items-center">
+        <div className="p-5 border-b border-[#D9D2C5]/40 bg-[#F9F5EF]/20 flex flex-wrap justify-between items-center gap-4">
           <div>
             <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Transaction Ledger</h3>
             <p className="text-xs text-[#6C6C70]">
-              Real-time audit log of all single & batch releases verified on-chain
+              Real-time audit log of all single, batch releases, failed bounces & refunds
             </p>
           </div>
-          <span className="text-xs font-semibold text-[#2D5941] bg-[#EBF5EE] px-3 py-1 rounded-full border border-[#2D5941]/20">
-            Polygon Blockchain Logged
-          </span>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filter Tabs */}
+            <div className="bg-[#EDE8DE] p-1 rounded-xl flex items-center gap-1 text-xs font-bold text-[#6C6C70]">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                  statusFilter === 'all' ? 'bg-white text-[#1C1C1E] shadow-xs' : 'hover:text-[#1C1C1E]'
+                }`}
+              >
+                All ({displayList.length})
+              </button>
+              <button
+                onClick={() => setStatusFilter('completed')}
+                className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                  statusFilter === 'completed' ? 'bg-white text-[#2D5941] shadow-xs' : 'hover:text-[#1C1C1E]'
+                }`}
+              >
+                Completed ({displayList.filter((t: any) => t.status === 'Completed').length})
+              </button>
+              <button
+                onClick={() => setStatusFilter('failed')}
+                className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                  statusFilter === 'failed' ? 'bg-white text-[#B34040] shadow-xs' : 'hover:text-[#1C1C1E]'
+                }`}
+              >
+                Failed / Bounced ({displayList.filter((t: any) => t.status === 'Failed').length})
+              </button>
+              <button
+                onClick={() => setStatusFilter('refunded')}
+                className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                  statusFilter === 'refunded' ? 'bg-white text-[#C97B2E] shadow-xs' : 'hover:text-[#1C1C1E]'
+                }`}
+              >
+                Refunded ({displayList.filter((t: any) => t.status === 'Refunded').length})
+              </button>
+            </div>
+
+            <span className="text-xs font-semibold text-[#2D5941] bg-[#EBF5EE] px-3 py-1 rounded-full border border-[#2D5941]/20">
+              Polygon Blockchain Logged
+            </span>
+          </div>
         </div>
+
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left text-sm">
             <thead>
@@ -535,58 +606,164 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                 <th className="px-6 py-4">Bank / Channel</th>
                 <th className="px-6 py-4">Amount</th>
                 <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Date</th>
+                <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-              {displayList.map((tx: any, idx) => (
-                <tr key={tx.id || idx} className="hover:bg-[#F9F5EF]/30 transition-colors">
-                  <td className="px-6 py-4 text-xs font-bold text-[#2D5941] font-mono">
-                    {tx.txHash ? (
-                      <a
-                        href={`https://amoy.polygonscan.com/tx/${tx.txHash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="hover:underline flex items-center gap-1 text-[#2D5941]"
-                      >
-                        <span>{`${tx.txHash.substring(0, 12)}...`}</span>
-                        <span className="text-[10px]">↗</span>
-                      </a>
-                    ) : (
-                      <span>{tx.id}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 font-bold text-[#1C1C1E]">{tx.scholar}</td>
-                  <td className="px-6 py-4 text-[#6C6C70]">{tx.program}</td>
-                  <td className="px-6 py-4 text-[#1C1C1E]">
-                    <div className="flex items-center gap-1.5">
-                      <span>{tx.method}</span>
-                      {tx.docProof && (
-                        <a
-                          href={tx.docProof}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[10px] text-[#2D5941] font-bold hover:underline"
-                          title="View Verified Bank Card Scan"
-                        >
-                          📄 Scan
-                        </a>
+              {displayList
+                .filter((tx: any) => {
+                  if (statusFilter === 'completed') return tx.status === 'Completed';
+                  if (statusFilter === 'failed') return tx.status === 'Failed';
+                  if (statusFilter === 'refunded') return tx.status === 'Refunded';
+                  return true;
+                })
+                .map((tx: any, idx: number) => (
+                  <tr key={tx.id || idx} className="hover:bg-[#F9F5EF]/30 transition-colors">
+                    <td className="px-6 py-4 text-xs font-bold text-[#2D5941] font-mono">
+                      <div className="flex flex-col items-start gap-1">
+                        {tx.txHash ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate max-w-[100px]">{`${tx.txHash.substring(0, 10)}...`}</span>
+                            <BlockchainVerifiedBadge
+                              txHash={tx.txHash}
+                              compact={true}
+                              onClick={() =>
+                                setAuditModalRecord({
+                                  txHash: tx.txHash,
+                                  paymongoId: tx.paymongoId,
+                                  scholarName: tx.scholar,
+                                  programTitle: tx.program,
+                                  amount: tx.amount,
+                                  date: tx.date,
+                                  bankChannel: tx.method,
+                                  verified: tx.verified ?? true,
+                                })
+                              }
+                            />
+                          </div>
+                        ) : (
+                          <span>{tx.id}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 font-bold text-[#1C1C1E]">{tx.scholar}</td>
+                    <td className="px-6 py-4 text-[#6C6C70]">{tx.program}</td>
+                    <td className="px-6 py-4 text-[#1C1C1E]">
+                      <div className="flex items-center gap-1.5">
+                        <span>{tx.method}</span>
+                        {tx.docProof && (
+                          <a
+                            href={tx.docProof}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-[#2D5941] font-bold hover:underline"
+                            title="View Verified Bank Card Scan"
+                          >
+                            📄 Scan
+                          </a>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-[#2D5941] font-bold">{tx.amount}</td>
+                    <td className="px-6 py-4">
+                      {tx.status === 'Completed' && (
+                        <span className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20">
+                          <span>✓</span> Completed
+                        </span>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-[#2D5941] font-bold">{tx.amount}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#EBF5EE] text-[#2D5941]">
-                      <span>✓</span> Completed
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right text-xs text-[#8E8E93]">{tx.date}</td>
-                </tr>
-              ))}
+                      {tx.status === 'Failed' && (
+                        <span
+                          className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/30"
+                          title={tx.failureReason || 'Bank Transfer Bounced / Failed'}
+                        >
+                          <span>⚠️</span> Failed / Bounced
+                        </span>
+                      )}
+                      {tx.status === 'Refunded' && (
+                        <span
+                          className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#FFF8EE] text-[#C97B2E] border border-[#C97B2E]/30"
+                          title={`Refund Ref: ${tx.refundRef || 'N/A'}`}
+                        >
+                          <span>🔄</span> Refunded
+                        </span>
+                      )}
+                      {tx.status === 'Processing' && (
+                        <span className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#F0F4F8] text-[#2B547E] border border-[#2B547E]/20">
+                          <span>⏳</span> Processing
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-xs text-[#8E8E93]">{tx.date}</td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {tx.status === 'Completed' && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setRefundModalItem(tx);
+                                setRefundActionType('flag_failed');
+                              }}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FDF2F2] hover:bg-[#B34040] text-[#B34040] hover:text-white border border-[#B34040]/20 transition-all cursor-pointer"
+                              title="Flag Bounced / Failed Transfer"
+                            >
+                              ⚠️ Flag Failed
+                            </button>
+                            <button
+                              onClick={() => {
+                                setRefundModalItem(tx);
+                                setRefundActionType('process_refund');
+                              }}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FFF8EE] hover:bg-[#C97B2E] text-[#C97B2E] hover:text-white border border-[#C97B2E]/20 transition-all cursor-pointer"
+                              title="Process Refund / Chargeback"
+                            >
+                              🔄 Refund
+                            </button>
+                          </>
+                        )}
+
+                        {(tx.status === 'Failed' || tx.status === 'Refunded') && (
+                          <button
+                            onClick={() => {
+                              setRefundModalItem(tx);
+                              setRefundActionType('reissue');
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white border border-[#2D5941]/20 transition-all cursor-pointer flex items-center gap-1"
+                            title="Re-issue payout to scholar"
+                          >
+                            <span>⚡ Re-issue</span>
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* ── BLOCKCHAIN AUDIT PROOF MODAL ── */}
+      {auditModalRecord && (
+        <BlockchainAuditModal
+          isOpen={!!auditModalRecord}
+          record={auditModalRecord}
+          onClose={() => setAuditModalRecord(null)}
+        />
+      )}
+
+      {/* ── DISBURSEMENT REFUND & FAILURE ACTION MODAL ── */}
+      {refundModalItem && (
+        <DisbursementRefundModal
+          isOpen={!!refundModalItem}
+          actionType={refundActionType}
+          disbursement={refundModalItem}
+          onClose={() => setRefundModalItem(null)}
+          onSuccess={(_msg) => {
+            fetchLiveReleases();
+          }}
+        />
+      )}
 
       {/* ── SINGLE RELEASE FUND MODAL ── */}
       {isReleaseModalOpen && (

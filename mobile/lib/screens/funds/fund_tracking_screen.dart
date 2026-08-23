@@ -796,9 +796,17 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            const StatusChip(
-                              label: 'Released',
-                              type: StatusType.released,
+                            StatusChip(
+                              label: rel['status'] == 'failed'
+                                  ? 'Failed / Bounced'
+                                  : rel['status'] == 'refunded'
+                                  ? 'Refunded'
+                                  : 'Released',
+                              type: rel['status'] == 'failed'
+                                  ? StatusType.rejected
+                                  : rel['status'] == 'refunded'
+                                  ? StatusType.pending
+                                  : StatusType.released,
                             ),
                           ],
                         ),
@@ -814,7 +822,34 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Divider(height: 16, thickness: 0.8),
-                        const SizedBox(height: 8),
+                        if (rel['status'] == 'failed') ...[
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.errorBg,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.error.withAlpha(76)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(LucideIcons.alertTriangle, size: 16, color: AppColors.error),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Bank Transfer Bounced: ${rel['failure_reason'] ?? 'Invalid bank account details.'}',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.error,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 4),
                         Text(
                           'FUNDS BREAKDOWN',
                           style: GoogleFonts.inter(
