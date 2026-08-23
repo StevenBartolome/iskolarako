@@ -18,7 +18,7 @@ import { ProviderViewApplicationTab } from './components/ProviderViewApplication
 import { ProviderProgramFormTab } from './components/ProviderProgramFormTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
 import { ProviderNotificationDrawer } from './components/ProviderNotificationDrawer';
-import { sendProviderAnnouncement, fetchProviderBroadcasts, deleteNotification } from '@/services/notificationService';
+import { sendProviderAnnouncement, fetchProviderBroadcasts, deleteNotification, sendDecisionNotification } from '@/services/notificationService';
 import type {
   ProviderPortalProps,
   TabType,
@@ -1432,6 +1432,19 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       }
 
       await fetchApplicantsAndScholars();
+
+      // Trigger decision notification (EmailJS + Database In-App + FCM Push Notification)
+      if (applicant) {
+        sendDecisionNotification({
+          toEmail: applicant.email,
+          toName: applicant.name,
+          programTitle: applicant.program,
+          providerName: providerDetails?.name || 'Scholarship Provider',
+          status: nextStatus,
+          remarks: remarks || '',
+          scholarId: applicant.scholarId,
+        }).catch((notifErr) => console.warn('[Decision Notification Error]:', notifErr));
+      }
 
     } catch (e) {
       console.error('Error updating application status in Supabase:', e);

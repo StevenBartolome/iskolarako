@@ -8,6 +8,7 @@ import '../screens/applications/application_tracker_screen.dart';
 import '../screens/funds/fund_tracking_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../constants/app_colors.dart';
+import '../services/push_notification_service.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -47,6 +48,13 @@ class _MainLayoutState extends State<MainLayout>
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        PushNotificationService.initializeAndRegister(context);
+      }
+    });
+
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 380),

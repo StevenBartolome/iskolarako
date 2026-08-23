@@ -134,6 +134,30 @@ export const sendDecisionNotification = async (params: DecisionNotificationParam
         console.warn('[System Notification Insert Note]:', notifErr.message);
       } else {
         console.log(`[System Notification Success]: Notification logged for user ${targetUserId}`);
+
+        // Trigger Real-Time FCM Push Notification via Edge Function
+        try {
+          supabase.functions.invoke('send-push-notification', {
+            body: {
+              userId: targetUserId,
+              title: emailHeadline,
+              body: emailBody.split('\n\n')[1] || emailBody,
+              type: notifType,
+              data: {
+                programTitle,
+                providerName,
+                status,
+              },
+            },
+          }).then((res) => {
+            console.log(`[FCM Push Result for ${targetUserId}]:`, res.data || res.error || res);
+            if (res.data?.errors) {
+              console.error('[FCM Error Details]:', JSON.stringify(res.data.errors, null, 2));
+            }
+          });
+        } catch (pushErr) {
+          console.warn('[FCM Push Trigger Note]:', pushErr);
+        }
       }
     }
   } catch (sysNotifErr) {
