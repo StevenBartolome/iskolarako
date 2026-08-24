@@ -224,9 +224,28 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
             .order('created_at', ascending: false);
       }
 
+      List<dynamic> releasesData = [];
+      try {
+        if (scholarIds.isNotEmpty) {
+          final rData = await Supabase.instance.client
+              .from('fund_releases')
+              .select('id, application_id, status, blockchain_verified')
+              .filter('scholar_id', 'in', scholarIds);
+          releasesData = rData as List<dynamic>? ?? [];
+        }
+      } catch (rErr) {
+        debugPrint('Fund releases fetch error: $rErr');
+      }
+
       final List<AppliedScholarship> loadedApps = [];
 
       for (final row in (appsData as List<dynamic>? ?? [])) {
+        final appId = row['id']?.toString();
+        final hasRelease = releasesData.any((r) =>
+            r['application_id']?.toString() == appId &&
+            (r['status']?.toString().toLowerCase() == 'released' ||
+             r['status']?.toString().toLowerCase() == 'completed' ||
+             r['blockchain_verified'] == true));
         final cycle = row['cycle'] as Map<String, dynamic>?;
         final program = cycle?['program'] as Map<String, dynamic>?;
         final provider = program?['provider'] as Map<String, dynamic>?;
@@ -445,13 +464,23 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
             state: StepState.done,
             note: remarks,
           ));
-          steps.add(const TrackerStep(
-            icon: LucideIcons.wallet,
-            title: 'Disbursement Setup',
-            date: 'Processing',
-            description: 'Your stipend disbursement is queuing for release.',
-            state: StepState.active,
-          ));
+          if (hasRelease) {
+            steps.add(const TrackerStep(
+              icon: LucideIcons.wallet,
+              title: 'Disbursement Setup',
+              date: 'Released',
+              description: 'Your stipend disbursement has been successfully released.',
+              state: StepState.done,
+            ));
+          } else {
+            steps.add(const TrackerStep(
+              icon: LucideIcons.wallet,
+              title: 'Disbursement Setup',
+              date: 'Processing',
+              description: 'Your stipend disbursement is queuing for release.',
+              state: StepState.active,
+            ));
+          }
         } else if (dbStatus == 'rejected') {
           steps.add(TrackerStep(
             icon: LucideIcons.xCircle,
@@ -1478,12 +1507,17 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                 final docUrl = doc['document_url']?.toString();
                 if (docUrl != null && docUrl.isNotEmpty && docUrl != '#') {
                   final uri = Uri.parse(docUrl);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  } else {
-                    if (context.mounted) {
+                  try {
+                    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    if (!launched && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Could not open document link.')),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Could not open document link: $e')),
                       );
                     }
                   }
