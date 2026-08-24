@@ -162,13 +162,19 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       const currentBudget = Number(topUpProgram.budget_total || topUpProgram.budgetTotal || 0);
       const newBudget = currentBudget + addAmt;
 
+      const updateData: any = {
+        budget_total: newBudget,
+        updated_at: new Date().toISOString(),
+      };
+
+      const currentRawStatus = topUpProgram.rawStatus || 'active';
+      if (currentRawStatus === 'paused') {
+        updateData.status = 'active';
+      }
+
       const { error } = await supabase
         .from('scholarship_programs')
-        .update({
-          budget_total: newBudget,
-          status: topUpProgram.status === 'paused' ? 'active' : topUpProgram.status,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', topUpProgram.id);
 
       if (error) {
@@ -598,6 +604,20 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated.');
 
+      // Budget safeguard validation
+      const selectedProgram = (programsList || []).find((p) => String(p.id) === String(selected.programId));
+      if (selectedProgram) {
+        const rawBudget = Number(selectedProgram.budget_total || selectedProgram.budgetTotal || 0);
+        const totalDisbursed = Number(selectedProgram.disbursed_total || selectedProgram.disbursedTotal || 0);
+        const remainingBudget = Math.max(0, rawBudget - totalDisbursed);
+
+        if (rawBudget > 0 && numAmount > remainingBudget) {
+          throw new Error(
+            `Insufficient Program Budget!\n\nRelease amount: ₱${numAmount.toLocaleString()}\nRemaining program budget: ₱${remainingBudget.toLocaleString()}\n\nPlease top up your program budget under the Programs tab.`
+          );
+        }
+      }
+
       setPendingReleaseAuth({
         numAmount,
         selected,
@@ -650,6 +670,20 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
       if (authError) {
         throw new Error('Incorrect provider password. Authorization denied.');
+      }
+
+      // Verify budget is still sufficient
+      const selectedProgram = (programsList || []).find((p) => String(p.id) === String(selected.programId));
+      if (selectedProgram) {
+        const rawBudget = Number(selectedProgram.budget_total || selectedProgram.budgetTotal || 0);
+        const totalDisbursed = Number(selectedProgram.disbursed_total || selectedProgram.disbursedTotal || 0);
+        const remainingBudget = Math.max(0, rawBudget - totalDisbursed);
+
+        if (rawBudget > 0 && numAmount > remainingBudget) {
+          throw new Error(
+            `Insufficient Program Budget!\n\nRelease amount: ₱${numAmount.toLocaleString()}\nRemaining program budget: ₱${remainingBudget.toLocaleString()}\n\nPlease top up your program budget under the Programs tab.`
+          );
+        }
       }
 
       // 2. Create REAL PayMongo Payment Gateway Checkout Link

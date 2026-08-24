@@ -78,6 +78,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
   const [isBatchGatewayAuthOpen, setIsBatchGatewayAuthOpen] = useState(false);
   const [batchAuthPin, setBatchAuthPin] = useState('');
   const [batchAuthError, setBatchAuthError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // AI Upload on behalf modal
   const [uploadModalScholar, setUploadModalScholar] = useState<{ id: string; name: string } | null>(null);
@@ -104,6 +105,11 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       setBatchScholars([]);
     }
   }, [programsList]);
+
+  // Clear error message when selection or inputs change
+  useEffect(() => {
+    setErrorMessage(null);
+  }, [selectedProgramId, selectedCycleId, batchScholars]);
 
   // Fetch cycles when program changes
   useEffect(() => {
@@ -359,6 +365,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
   };
 
   const handleInitiateBatchRelease = () => {
+    setErrorMessage(null);
     const selectedScholars = batchScholars.filter((r) => r.isSelected && r.amount > 0);
     if (selectedScholars.length === 0) return;
 
@@ -371,7 +378,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       const totalBatchAmt = selectedScholars.reduce((sum, r) => sum + r.amount, 0);
 
       if (rawBudget > 0 && totalBatchAmt > remainingBudget) {
-        alert(
+        setErrorMessage(
           `Insufficient Program Budget!\n\nTotal batch payout: ₱${totalBatchAmt.toLocaleString()}\nRemaining budget: ₱${remainingBudget.toLocaleString()}\n\nPlease top up your program budget under the Programs tab or select fewer scholars.`
         );
         return;
@@ -426,6 +433,12 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
     let failedCount = 0;
     let totalDisbursed = 0;
 
+    // Track dynamic program remaining budget during execution
+    const selectedProgram = (programsList || []).find((p: any) => p.id === selectedProgramId);
+    const rawBudget = selectedProgram ? Number(selectedProgram.budget_total || selectedProgram.budgetTotal || 0) : 0;
+    const totalDisbursedInit = selectedProgram ? Number(selectedProgram.disbursed_total || selectedProgram.disbursedTotal || 0) : 0;
+    let remainingBudget = Math.max(0, rawBudget - totalDisbursedInit);
+
     const { data: { user } } = await supabase.auth.getUser();
 
     for (let i = 0; i < selectedScholars.length; i++) {
@@ -441,62 +454,52 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       );
 
       try {
-        // 1. Authorize PayMongo Payment & Mint Polygon Blockchain Log
-        let txHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
-        let blockNumber = 48920150 + Math.floor(Math.random() * 1000);
-        let paymongoId = `pay_batch_${Date.now()}_${i}`;
-
-        try {
-          const { data: funcData } = await supabase.functions.invoke('release-fund', {
-            body: {
-              fundReleaseId: `batch_pending_${bulkBatchId}_${i}`,
-              scholarshipId: row.programTitle,
-              scholarId: row.scholarName,
-              amountPHP: row.amount,
-            },
-          });
-
-          if (funcData?.txHash) txHash = funcData.txHash;
-          if (funcData?.blockNumber) blockNumber = funcData.blockNumber;
-          if (funcData?.paymongoPaymentId) paymongoId = funcData.paymongoPaymentId;
-        } catch (edgeErr) {
-          console.warn('Batch Edge Function Fallback:', edgeErr);
+        // Budget validation safeguard
+        if (rawBudget > 0 && row.amount > remainingBudget) {
+          throw new Error('Insufficient program budget remaining for this scholar payout.');
         }
 
-        // 2. Log Database (ONLY AFTER AUTHORIZATION & BLOCKCHAIN LOGGING SUCCEED)
-        const { error: insertErr } = await supabase
-          .from('fund_releases')
-          .insert({
-            application_id: row.applicationId,
-            scholar_id: row.scholarId,
-            program_id: row.programId,
-            cycle_id: row.cycleId,
-            released_by: user?.id,
-            amount: row.amount,
-            fund_type: 'stipend',
-            status: 'released',
-            paymongo_payment_id: paymongoId,
-            paymongo_status: 'paid',
-            blockchain_tx_hash: txHash,
-            blockchain_block_number: blockNumber,
-            blockchain_verified: true,
-            payment_account_id: row.paymentAccount?.id,
-            is_bulk_release: true,
-            bulk_batch_id: bulkBatchId,
-            recipient_account_snapshot: row.paymentAccount || { mode: row.disbursementMode },
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
+        // 1. Authorize PayMongo Payment Checkout Link creation (Single Payout alignment)
+        const origin = window.location.origin;
+        const successUrl = `${origin}/provider?disbursement=success&amt=${row.amount}&scholar_name=${encodeURIComponent(row.scholarName)}`;
+        const cancelUrl = `${origin}/provider?disbursement=cancelled`;
 
-        if (insertErr) throw new Error(`Insert error: ${insertErr.message}`);
+        const { data: funcData, error: funcError } = await supabase.functions.invoke('release-fund', {
+          body: {
+            fundReleaseId: `pending_${Date.now()}_${i}`,
+            scholarshipId: row.programTitle,
+            scholarId: row.scholarName,
+            amountPHP: row.amount,
+            successUrl,
+            cancelUrl,
+            metadata: {
+              applicationId: row.applicationId,
+              scholarId: row.scholarId,
+              programId: row.programId,
+              cycleId: row.cycleId,
+              releasedBy: user?.id,
+              fundType: 'stipend',
+              paymentAccountId: row.paymentAccount?.id || null,
+            }
+          },
+        });
 
+        if (funcError) throw funcError;
+
+        const checkoutUrl = funcData?.checkoutUrl;
+        if (checkoutUrl) {
+          window.open(checkoutUrl, '_blank');
+        }
+
+        // 2. Budget safeguard & UI Update (Webhook handles db insert on authorization)
+        remainingBudget -= row.amount;
         successCount++;
         totalDisbursed += row.amount;
-        results.push({ scholarName: row.scholarName, txHash });
+        results.push({ scholarName: row.scholarName, txHash: 'Pending Authorization' });
 
         setBatchScholars((prev) =>
           prev.map((r) =>
-            r.scholarId === row.scholarId ? { ...r, status: 'success', txHash } : r
+            r.scholarId === row.scholarId ? { ...r, status: 'success', txHash: 'Pending Authorization' } : r
           )
         );
       } catch (err: any) {
@@ -564,32 +567,32 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
         {/* Batch Success Summary Modal */}
         {batchResult ? (
-          <div className="space-y-6 bg-[#EBF5EE] p-6 rounded-3xl border border-[#2D5941]/30 animate-fade-in">
+          <div className="space-y-6 bg-[#FFF8EE] p-6 rounded-3xl border border-[#C97B2E]/30 animate-fade-in">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#2D5941] text-white flex items-center justify-center font-bold text-2xl shadow-md">
-                ✓
+              <div className="w-12 h-12 rounded-2xl bg-[#C97B2E] text-white flex items-center justify-center font-bold text-xl shadow-md">
+                ⏳
               </div>
               <div>
-                <h4 className="text-xl font-bold text-[#2D5941] font-serif">
-                  Batch Disbursement Completed!
+                <h4 className="text-xl font-bold text-[#C97B2E] font-serif">
+                  Batch Payouts Initiated!
                 </h4>
-                <p className="text-xs text-[#2D5941]/80">
-                  Batch ID: <span className="font-mono">{batchResult.batchId.substring(0, 12)}...</span> · Disbursed: ₱{batchResult.totalDisbursed.toLocaleString()}
+                <p className="text-xs text-[#C97B2E]/80">
+                  Batch ID: <span className="font-mono">{batchResult.batchId.substring(0, 12)}...</span> · Pending Payout: ₱{batchResult.totalDisbursed.toLocaleString()}
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4 text-center">
               <div className="bg-white p-3.5 rounded-2xl border border-[#D9D2C5]">
-                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Successfully Released</span>
-                <p className="text-2xl font-bold text-[#2D5941]">{batchResult.successCount}</p>
+                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Checkout Links Opened</span>
+                <p className="text-2xl font-bold text-[#C97B2E]">{batchResult.successCount}</p>
               </div>
               <div className="bg-white p-3.5 rounded-2xl border border-[#D9D2C5]">
                 <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Failed / Skipped</span>
                 <p className="text-2xl font-bold text-[#B34040]">{batchResult.failedCount}</p>
               </div>
               <div className="bg-white p-3.5 rounded-2xl border border-[#D9D2C5]">
-                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Total Transferred</span>
+                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Total Pending Authorization</span>
                 <p className="text-2xl font-bold text-[#C97B2E]">₱{batchResult.totalDisbursed.toLocaleString()}</p>
               </div>
             </div>
@@ -599,7 +602,11 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
               {batchResult.items.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center py-1.5 border-b border-[#D9D2C5]/30">
                   <span className="font-semibold text-[#1C1C1E]">{item.scholarName}</span>
-                  {item.txHash ? (
+                  {item.txHash === 'Pending Authorization' ? (
+                    <span className="text-[#C97B2E] font-semibold flex items-center gap-1">
+                      <span>⏳ Awaiting Payment</span>
+                    </span>
+                  ) : item.txHash ? (
                     <a
                       href={`https://amoy.polygonscan.com/tx/${item.txHash}`}
                       target="_blank"
@@ -616,14 +623,18 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
               ))}
             </div>
 
+            <div className="text-xs text-[#C97B2E] bg-amber-50/50 p-3.5 rounded-xl border border-[#C97B2E]/10 leading-relaxed font-medium">
+              ℹ️ Payout checkout links have been opened in separate tabs. The database and Polygon blockchain records will update automatically in real-time once you authorize and pay each transaction in PayMongo.
+            </div>
+
             <button
               onClick={() => {
                 setBatchResult(null);
                 onClose();
               }}
-              className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] text-white py-3 rounded-2xl font-bold text-sm shadow-md transition-all cursor-pointer"
+              className="w-full bg-[#C97B2E] hover:bg-[#b07d30] text-white py-3 rounded-2xl font-bold text-sm shadow-md transition-all cursor-pointer border-0"
             >
-              Close & View Updated Ledger
+              Close Window
             </button>
           </div>
         ) : (
@@ -917,6 +928,12 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                 </div>
               )}
             </div>
+
+            {errorMessage && (
+              <div className="bg-red-50 border border-red-200 text-[#B34040] rounded-2xl p-4 text-xs font-semibold animate-shake">
+                ⚠️ {errorMessage}
+              </div>
+            )}
 
             {/* Action Footer */}
             <div className="flex justify-between items-center pt-2 border-t border-[#D9D2C5]">

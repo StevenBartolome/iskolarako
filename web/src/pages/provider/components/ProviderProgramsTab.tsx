@@ -50,13 +50,19 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
       const currentBudget = Number(topUpProgram.budget_total || topUpProgram.budgetTotal || 0);
       const newBudget = currentBudget + addAmt;
 
+      const updateData: any = {
+        budget_total: newBudget,
+        updated_at: new Date().toISOString(),
+      };
+
+      const currentRawStatus = topUpProgram.rawStatus || 'active';
+      if (currentRawStatus === 'paused') {
+        updateData.status = 'active';
+      }
+
       const { error } = await supabase
         .from('scholarship_programs')
-        .update({
-          budget_total: newBudget,
-          status: topUpProgram.status === 'paused' ? 'active' : topUpProgram.status,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', topUpProgram.id);
 
       if (error) {

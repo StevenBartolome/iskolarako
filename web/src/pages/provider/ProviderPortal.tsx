@@ -292,6 +292,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       id: dbProg.id,
       provider: providerDetails?.name || 'My Provider',
       status: dbProg.status === 'approved' || dbProg.status === 'Approved' || dbProg.status === 'active' || dbProg.status === 'Active' ? 'Approved' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'Pending Review' : dbProg.status === 'paused' ? 'Rejected' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'Draft' : 'Closed',
+      rawStatus: dbProg.status,
       statusType: dbProg.status === 'approved' || dbProg.status === 'Approved' || dbProg.status === 'active' || dbProg.status === 'Active' ? 'success' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'draft' : dbProg.status === 'paused' ? 'closing' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'draft' : 'closing',
       title: dbProg.title,
       description: dbProg.description,
@@ -354,8 +355,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           renewalRequirements: cyc.renewal_requirements,
         };
       }),
-      budgetUsed: '₱0',
+      budgetUsed: dbProg.disbursed_total ? `₱${Number(dbProg.disbursed_total).toLocaleString()}` : '₱0',
       budgetTotal: dbProg.budget_total ? `₱${Number(dbProg.budget_total).toLocaleString()}` : '₱0',
+      disbursed_total: dbProg.disbursed_total || 0,
+      disbursedTotal: dbProg.disbursedTotal || 0,
       rejectionRemarks: dbProg.rejection_remarks || undefined,
       targetEducationLevel: dbProg.target_education_level || 'college',
       gradingSystem: dbProg.grading_system || 'scale_5',
@@ -402,7 +405,35 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             .then(() => console.log(`[Auto-Close Cycles]: Synced ${expiredCycleIds.length} expired cycles to closed in DB.`));
         }
 
-        const mapped = data.map(mapDbToProgram);
+        // Fetch fund releases to calculate disbursed total
+        let disbursementsMap: Record<string, number> = {};
+        if (data.length > 0) {
+          const programIds = data.map((p: any) => p.id);
+          const { data: releasesData } = await supabase
+            .from('fund_releases')
+            .select('program_id, amount, status, paymongo_status')
+            .in('program_id', programIds);
+
+          if (releasesData) {
+            releasesData.forEach((r: any) => {
+              const rawStatus = (r.status || '').toLowerCase();
+              const pmStatus = (r.paymongo_status || '').toLowerCase();
+              if (rawStatus !== 'failed' && pmStatus !== 'failed' && rawStatus !== 'refunded' && pmStatus !== 'refunded') {
+                const amt = Number(r.amount || 0);
+                disbursementsMap[r.program_id] = (disbursementsMap[r.program_id] || 0) + amt;
+              }
+            });
+          }
+        }
+
+        const mapped = data.map((dbProg: any) => {
+          const disbursedAmt = disbursementsMap[dbProg.id] || 0;
+          return mapDbToProgram({
+            ...dbProg,
+            disbursed_total: disbursedAmt,
+            disbursedTotal: disbursedAmt,
+          });
+        });
         setProgramsList(mapped);
       }
     } catch (err) {
@@ -1559,6 +1590,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         },
         () => {
           fetchDisbursements();
+          fetchPrograms();
           showToast('Disbursements updated in real-time!');
         }
       )
