@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/app_components.dart';
-import 'package:iskoako/services/blockchain_service.dart';
+import 'package:iskoako/widgets/blockchain_verified_badge.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class FundTrackingScreen extends StatefulWidget {
   const FundTrackingScreen({super.key});
@@ -19,15 +17,41 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
   int? _expandedIndex = 0;
   bool _isLoading = true;
   List<Map<String, dynamic>> _releasesData = [];
+  RealtimeChannel? _realtimeChannel;
 
   @override
   void initState() {
     super.initState();
     _fetchFundReleases();
+    _subscribeRealtime();
   }
 
-  Future<void> _fetchFundReleases() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
+    super.dispose();
+  }
+
+  void _subscribeRealtime() {
+    _realtimeChannel = Supabase.instance.client
+        .channel('fund-tracking-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'fund_releases',
+          callback: (payload) {
+            if (mounted) _fetchFundReleases(true);
+          },
+        );
+    _realtimeChannel?.subscribe();
+  }
+
+  Future<void> _fetchFundReleases([bool silent = false]) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       if (mounted) setState(() => _isLoading = false);
@@ -464,197 +488,22 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
       orElse: () => _releasesData.first,
     );
     final txHash = latest['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
-    final blockNo = latest['blockchain_block_number']?.toString() ?? 'Pending';
-    final isVerified = latest['blockchain_verified'] == true;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.primaryDark,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.shieldCheck,
-                        size: 18, color: AppColors.gold),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'POLYGON BLOCKCHAIN RECORD',
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.gold,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withAlpha(30),
-                  borderRadius: BorderRadius.circular(8),
-                  border:
-                      Border.all(color: AppColors.gold.withAlpha(80)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                          shape: BoxShape.circle, color: AppColors.gold),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isVerified ? 'VERIFIED' : 'PENDING',
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.gold,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'TRANSACTION HASH (POLYGON AMOY)',
-            style: GoogleFonts.inter(
-              color: Colors.white.withAlpha(90),
-              fontSize: 9,
-              letterSpacing: 1,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          GestureDetector(
-            onTap: () async {
-              if (txHash.startsWith('0x')) {
-                final url = Uri.parse(BlockchainService.getExplorerUrl(txHash));
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                }
-              }
-            },
-            onLongPress: () {
-              Clipboard.setData(ClipboardData(text: txHash));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Transaction hash copied to clipboard'),
-                    behavior: SnackBarBehavior.floating),
-              );
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(12),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white.withAlpha(25)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      txHash,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.dmMono(
-                        color: Colors.white.withAlpha(220),
-                        fontSize: 10,
-                        letterSpacing: 0.3,
-                        height: 1.3,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(LucideIcons.externalLink, color: AppColors.gold, size: 14),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'BLOCK NO.',
-                      style: GoogleFonts.inter(
-                        color: Colors.white.withAlpha(90),
-                        fontSize: 9,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '#$blockNo',
-                      style: GoogleFonts.dmMono(
-                          color: Colors.white.withAlpha(200), fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'NETWORK',
-                      style: GoogleFonts.inter(
-                        color: Colors.white.withAlpha(90),
-                        fontSize: 9,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Polygon Amoy Testnet',
-                      style: GoogleFonts.dmMono(
-                          color: Colors.white.withAlpha(200), fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            height: 1,
-            color: Colors.white.withAlpha(20),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'This record is permanently logged on Polygon blockchain and cannot be altered. '
-            'Tap hash to view live block explorer proof.',
-            style: GoogleFonts.inter(
-              color: Colors.white.withAlpha(80),
-              fontSize: 11,
-              height: 1.5,
-            ),
-          ),
-        ],
+    final double dbAmount = double.tryParse(latest['amount']?.toString() ?? '0') ?? 0.0;
+    final String dbScholarId = latest['scholar_id']?.toString() ?? '';
+    final String dbScholarName = _getScholarName(latest);
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: BlockchainVerifiedBadge(
+          txHash: txHash,
+          compact: false,
+          dbAmount: dbAmount,
+          dbScholarId: dbScholarId,
+          dbScholarName: dbScholarName,
+        ),
       ),
     );
   }
@@ -913,62 +762,12 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                         const SizedBox(height: 12),
                         Divider(height: 1, color: AppColors.rule),
                         const SizedBox(height: 10),
-                        Text(
-                          'TAMPER-PROOF TRANSACTION HASH',
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        GestureDetector(
-                          onTap: () async {
-                            if (txHash.startsWith('0x')) {
-                              final url = Uri.parse(BlockchainService.getExplorerUrl(txHash));
-                              if (await canLaunchUrl(url)) {
-                                await launchUrl(url, mode: LaunchMode.externalApplication);
-                              }
-                            }
-                          },
-                          onLongPress: () {
-                            Clipboard.setData(ClipboardData(text: txHash));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Transaction hash copied to clipboard'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceAlt,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppColors.rule),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(LucideIcons.shieldCheck,
-                                    size: 14, color: AppColors.primary),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    txHash,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.dmMono(
-                                      fontSize: 10,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(LucideIcons.externalLink,
-                                    size: 12, color: AppColors.primary),
-                              ],
-                            ),
-                          ),
+                        BlockchainVerifiedBadge(
+                          txHash: txHash,
+                          compact: true,
+                          dbAmount: double.tryParse(rel['amount']?.toString() ?? '0') ?? 0.0,
+                          dbScholarId: rel['scholar_id']?.toString() ?? '',
+                          dbScholarName: _getScholarName(rel),
                         ),
                       ],
                     ),

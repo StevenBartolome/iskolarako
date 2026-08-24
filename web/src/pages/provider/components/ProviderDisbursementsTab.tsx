@@ -948,6 +948,9 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                             <BlockchainVerifiedBadge
                               txHash={tx.txHash}
                               compact={true}
+                              dbAmount={tx.numericAmount}
+                              dbScholarId={tx.scholarId}
+                              dbScholarName={tx.scholar}
                               onClick={() =>
                                 setAuditModalRecord({
                                   txHash: tx.txHash,
@@ -958,6 +961,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                                   date: tx.date,
                                   bankChannel: tx.method,
                                   verified: tx.verified ?? true,
+                                  scholarId: tx.scholarId,
+                                  numericAmount: tx.numericAmount,
                                 })
                               }
                             />
