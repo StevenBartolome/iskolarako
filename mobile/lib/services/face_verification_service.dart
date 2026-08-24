@@ -41,6 +41,7 @@ class FaceVerificationService {
   static String get _geminiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
   static String get _mistralKey => dotenv.env['MISTRAL_API_KEY'] ?? '';
   static String get _openRouterKey => dotenv.env['OPENROUTER_API_KEY'] ?? '';
+  static String get _groqKey => dotenv.env['GROQ_API_KEY'] ?? '';
 
   static const String _geminiBaseUrl =
       'https://generativelanguage.googleapis.com/v1beta/models';
@@ -48,6 +49,15 @@ class FaceVerificationService {
       'https://api.mistral.ai/v1/chat/completions';
   static const String _openRouterUrl =
       'https://openrouter.ai/api/v1/chat/completions';
+  static const String _groqUrl =
+      'https://api.groq.com/openai/v1/chat/completions';
+
+  static const List<Map<String, String>> _safetySettings = [
+    {'category': 'HARM_CATEGORY_HARASSMENT', 'threshold': 'BLOCK_NONE'},
+    {'category': 'HARM_CATEGORY_HATE_SPEECH', 'threshold': 'BLOCK_NONE'},
+    {'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'threshold': 'BLOCK_NONE'},
+    {'category': 'HARM_CATEGORY_DANGEROUS_CONTENT', 'threshold': 'BLOCK_NONE'},
+  ];
 
   // ─────────────────────────────────────────────────────────────────────────
   // 1. FACE MATCH
@@ -145,7 +155,25 @@ Rules:
       }
     }
 
-    // 3. Try Mistral
+    // 3. Try Groq Multimodal Vision
+    if (_groqKey.isNotEmpty && fallbackMimeType != 'application/pdf') {
+      try {
+        final result = await _groqMatchFaces(
+          prompt: prompt,
+          idBase64: fallbackIdBase64,
+          selfieBase64: selfieBase64,
+          idMimeType: fallbackMimeType,
+        );
+        if (result != null) {
+          debugPrint('[FaceVerification] Groq match result: isMatch=${result.isMatch}, reason=${result.reason}');
+          return result;
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Groq face-match error: $e');
+      }
+    }
+
+    // 4. Try Mistral
     if (_mistralKey.isNotEmpty && fallbackMimeType != 'application/pdf') {
       try {
         final result = await _mistralMatchFaces(
@@ -209,7 +237,22 @@ Rules:
       }
     }
 
-    // 2. Try OpenRouter
+    // 2. Try Groq
+    if (_groqKey.isNotEmpty) {
+      try {
+        final result = await _groqLiveness(
+          prompt: prompt,
+          frameBase64: frameBase64,
+          baselineFrameBase64: baselineFrameBase64,
+          additionalActionFramesBase64: additionalFramesBase64,
+        );
+        if (result != null) return result;
+      } catch (e) {
+        debugPrint('[FaceVerification] Groq liveness error: $e');
+      }
+    }
+
+    // 3. Try OpenRouter
     if (_openRouterKey.isNotEmpty) {
       try {
         final result = await _openRouterLiveness(
@@ -224,7 +267,7 @@ Rules:
       }
     }
 
-    // 3. Try Mistral
+    // 4. Try Mistral
     if (_mistralKey.isNotEmpty) {
       try {
         final result = await _mistralLiveness(
@@ -257,7 +300,7 @@ Rules:
     required String selfieBase64,
     required String idMimeType,
   }) async {
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    const models = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash'];
     for (final model in models) {
       for (int attempt = 0; attempt < 2; attempt++) {
         try {
@@ -274,6 +317,7 @@ Rules:
               }
             ],
             'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 120},
+            'safetySettings': _safetySettings,
           });
           final response = await http
               .post(url, headers: {'Content-Type': 'application/json'}, body: body)
@@ -305,7 +349,7 @@ Rules:
     String? baselineFrameBase64,
     List<String>? additionalActionFramesBase64,
   }) async {
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    const models = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash'];
     for (final model in models) {
       for (int attempt = 0; attempt < 2; attempt++) {
         try {
@@ -335,6 +379,7 @@ Rules:
               {'parts': parts}
             ],
             'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 60},
+            'safetySettings': _safetySettings,
           });
           final response = await http
               .post(url, headers: {'Content-Type': 'application/json'}, body: body)
@@ -433,7 +478,7 @@ Rules:
     List<String>? additionalActionFramesBase64,
   }) async {
     const models = [
-      'google/gemini-2.0-flash-001',
+      'google/gemini-2.5-flash',
       'openai/gpt-4o-mini',
       'qwen/qwen-2.5-vl-72b-instruct',
     ];
@@ -510,7 +555,7 @@ Rules:
     required String selfieBase64,
     required String idMimeType,
   }) async {
-    const models = ['pixtral-12b-2409', 'pixtral-large-latest'];
+    const models = ['pixtral-12b-2409'];
     for (final model in models) {
       try {
         final body = jsonEncode({
@@ -565,7 +610,7 @@ Rules:
     String? baselineFrameBase64,
     List<String>? additionalActionFramesBase64,
   }) async {
-    const models = ['pixtral-12b-2409', 'pixtral-large-latest'];
+    const models = ['pixtral-12b-2409'];
     for (final model in models) {
       try {
         final contents = <Map<String, dynamic>>[
@@ -627,6 +672,74 @@ Rules:
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // GROQ – LIVENESS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  static Future<LivenessCheckResult?> _groqLiveness({
+    required String prompt,
+    required String frameBase64,
+    String? baselineFrameBase64,
+    List<String>? additionalActionFramesBase64,
+  }) async {
+    const models = ['llama-3.2-11b-vision-instruct', 'llama-3.2-90b-vision-instruct'];
+    for (final model in models) {
+      try {
+        final contents = <Map<String, dynamic>>[
+          {'type': 'text', 'text': prompt},
+        ];
+        if (baselineFrameBase64 != null) {
+          contents.add({
+            'type': 'image_url',
+            'image_url': {'url': 'data:image/jpeg;base64,$baselineFrameBase64'},
+          });
+        }
+        contents.add({
+          'type': 'image_url',
+          'image_url': {'url': 'data:image/jpeg;base64,$frameBase64'},
+        });
+        if (additionalActionFramesBase64 != null) {
+          for (final f in additionalActionFramesBase64) {
+            contents.add({
+              'type': 'image_url',
+              'image_url': {'url': 'data:image/jpeg;base64,$f'},
+            });
+          }
+        }
+
+        final body = jsonEncode({
+          'model': model,
+          'messages': [
+            {'role': 'user', 'content': contents}
+          ],
+          'max_tokens': 200,
+          'temperature': 0.1,
+        });
+        final response = await http
+            .post(Uri.parse(_groqUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_groqKey',
+                },
+                body: body)
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final content =
+              decoded['choices']?[0]?['message']?['content']?.toString() ?? '';
+          final res = _parseLivenessResultFromText(content, 'Groq ($model)');
+          if (res != null) return res;
+        } else {
+          debugPrint('[FaceVerification] Groq $model liveness HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Groq $model liveness error: $e');
+      }
+    }
+    return null;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // PARSERS
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -646,16 +759,13 @@ Rules:
 
   static FaceMatchResult? _parseMatchResultFromText(String text, String model) {
     try {
-      final cleaned = text
-          .replaceAll(RegExp(r'```json\s*'), '')
-          .replaceAll(RegExp(r'```\s*'), '')
-          .trim();
-      final start = cleaned.indexOf('{');
-      final end = cleaned.lastIndexOf('}');
-      if (start == -1 || end == -1) return null;
-      final json = jsonDecode(cleaned.substring(start, end + 1));
+      final start = text.indexOf('{');
+      final end = text.lastIndexOf('}');
+      if (start == -1 || end == -1 || end <= start) return null;
+      final jsonStr = text.substring(start, end + 1);
+      final json = jsonDecode(jsonStr);
       return FaceMatchResult(
-        isMatch: json['is_match'] == true,
+        isMatch: json['is_match'] == true || json['is_match'] == 'true',
         confidence: ((json['confidence'] as num?) ?? (json['is_match'] == true ? 0.95 : 0.2))
             .toDouble(),
         reason: json['reason']?.toString() ?? 'Comparison complete.',
@@ -684,17 +794,19 @@ Rules:
   static LivenessCheckResult? _parseLivenessResultFromText(
       String text, String model) {
     try {
-      final cleaned = text
-          .replaceAll(RegExp(r'```json\s*'), '')
-          .replaceAll(RegExp(r'```\s*'), '')
+      // Strip markdown code fences if present (e.g. ```json\n...\n```)
+      final stripped = text
+          .replaceAll(RegExp(r'```json', caseSensitive: false), '')
+          .replaceAll('```', '')
           .trim();
-      final start = cleaned.indexOf('{');
-      final end = cleaned.lastIndexOf('}');
-      if (start == -1 || end == -1) return null;
-      final json = jsonDecode(cleaned.substring(start, end + 1));
+      final start = stripped.indexOf('{');
+      final end = stripped.lastIndexOf('}');
+      if (start == -1 || end == -1 || end <= start) return null;
+      final jsonStr = stripped.substring(start, end + 1);
+      final json = jsonDecode(jsonStr);
       return LivenessCheckResult(
-        faceDetected: json['face_detected'] == true,
-        actionDetected: json['action_detected'] == true,
+        faceDetected: json['face_detected'] == true || json['face_detected'] == 'true',
+        actionDetected: json['action_detected'] == true || json['action_detected'] == 'true',
         reason: json['reason']?.toString() ?? '',
         modelUsed: model,
       );
@@ -806,4 +918,917 @@ Rules:
       }
     }
   }
+
+  static Future<IdExtractResult> verifyIdDetails({
+    required Uint8List frontImageBytes,
+    required Uint8List backImageBytes,
+    required String idType,
+    required String regFirstName,
+    required String regLastName,
+    required String regBirthDate,
+  }) async {
+    final prompt = '''
+You are an expert identity verification AI.
+You are given two images of a student or government ID of type "$idType":
+- Image 1 is the FRONT of the ID (already verified during the camera scan step).
+- Image 2 is the BACK of the ID (already verified during the camera scan step).
+
+IMPORTANT: The front and back sides have already been confirmed valid during the camera capture step. Do NOT reject based on image side classification. Focus solely on extracting and comparing the owner's identity details.
+
+Your tasks are:
+1. Extract the owner's details from the FRONT of the ID (Image 1):
+   - First Name
+   - Last Name
+   - Birth Date (format as YYYY-MM-DD, e.g., 2002-12-31)
+   - ID Number / Document Number / Student Number
+2. Compare the extracted details against the applicant's registered details in our system:
+   - Registered First Name: "$regFirstName"
+   - Registered Last Name: "$regLastName"
+   - Registered Birth Date: "$regBirthDate" (in YYYY-MM-DD format)
+3. Set is_match to true ONLY IF the extracted First Name, Last Name, and Birth Date match the registered values.
+   Rules for matching:
+   - Ignore casing and minor whitespace differences.
+   - Ignore middle names or suffix variations if not present on the ID (e.g. "Jr" or "Junior").
+   - Accept common abbreviations (e.g. "Ma." vs "Maria").
+   - Birth Date match is crucial.
+4. If there is a mismatch on first name, last name, or birth date, list the mismatched fields in "mismatched_fields" (e.g., ["first_name", "birth_date"]).
+5. Set confidence from 0.0 to 1.0.
+
+Return ONLY raw JSON (no markdown, no backticks):
+{
+  "is_match": true or false,
+  "confidence": 0.0 to 1.0,
+  "extracted_first_name": "...",
+  "extracted_last_name": "...",
+  "extracted_birth_date": "YYYY-MM-DD",
+  "extracted_id_number": "...",
+  "mismatched_fields": [],
+  "reason": "Clear explanation of why they match or mismatch."
+}
+''';
+
+    final frontBase64 = base64Encode(frontImageBytes);
+    final backBase64 = base64Encode(backImageBytes);
+
+    IdExtractResult? rawResult;
+
+    if (_geminiKey.isNotEmpty) {
+      try {
+        rawResult = await _geminiVerifyId(
+          prompt: prompt,
+          frontBase64: frontBase64,
+          backBase64: backBase64,
+        );
+      } catch (e) {
+        debugPrint('[FaceVerification] Gemini ID verify error: $e');
+      }
+    }
+
+    if (rawResult == null && _openRouterKey.isNotEmpty) {
+      try {
+        rawResult = await _openRouterVerifyId(
+          prompt: prompt,
+          frontBase64: frontBase64,
+          backBase64: backBase64,
+        );
+      } catch (e) {
+        debugPrint('[FaceVerification] OpenRouter ID verify error: $e');
+      }
+    }
+
+    if (rawResult == null && _groqKey.isNotEmpty) {
+      try {
+        rawResult = await _groqVerifyId(
+          prompt: prompt,
+          frontBase64: frontBase64,
+          backBase64: backBase64,
+        );
+      } catch (e) {
+        debugPrint('[FaceVerification] Groq ID verify error: $e');
+      }
+    }
+
+    if (rawResult == null && _mistralKey.isNotEmpty) {
+      try {
+        rawResult = await _mistralVerifyId(
+          prompt: prompt,
+          frontBase64: frontBase64,
+          backBase64: backBase64,
+        );
+      } catch (e) {
+        debugPrint('[FaceVerification] Mistral ID verify error: $e');
+      }
+    }
+
+    if (rawResult != null) {
+      return _validateExtractedDetailsStrictly(
+        rawResult: rawResult,
+        regFirstName: regFirstName,
+        regLastName: regLastName,
+        regBirthDate: regBirthDate,
+      );
+    }
+
+    // Fallback if unavailable
+    return const IdExtractResult(
+      isMatch: false,
+      confidence: 0.0,
+      extractedFirstName: '',
+      extractedLastName: '',
+      extractedBirthDate: '',
+      extractedIdNumber: '',
+      mismatchedFields: [],
+      reason: 'AI verification service temporarily unavailable.',
+      modelUsed: 'Unavailable',
+    );
+  }
+
+  static Future<IdExtractResult?> _geminiVerifyId({
+    required String prompt,
+    required String frontBase64,
+    required String backBase64,
+  }) async {
+    const models = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash'];
+    for (final model in models) {
+      for (int attempt = 0; attempt < 2; attempt++) {
+        try {
+          final url = Uri.parse(
+              '$_geminiBaseUrl/$model:generateContent?key=$_geminiKey');
+          final body = jsonEncode({
+            'contents': [
+              {
+                'parts': [
+                  {'text': prompt},
+                  {'inline_data': {'mime_type': 'image/jpeg', 'data': frontBase64}},
+                  {'inline_data': {'mime_type': 'image/jpeg', 'data': backBase64}},
+                ]
+              }
+            ],
+            'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 300},
+            'safetySettings': _safetySettings,
+          });
+          final response = await http
+              .post(url, headers: {'Content-Type': 'application/json'}, body: body)
+              .timeout(const Duration(seconds: 15));
+
+          if (response.statusCode == 200) {
+            final res = _parseIdVerifyResult(response.body, 'Gemini $model');
+            if (res != null) return res;
+          } else if (response.statusCode == 503 && attempt == 0) {
+            await Future.delayed(const Duration(milliseconds: 500));
+            continue;
+          } else {
+            debugPrint('[FaceVerification] Gemini $model ID verify HTTP ${response.statusCode}: ${response.body}');
+            break;
+          }
+        } catch (e) {
+          debugPrint('[FaceVerification] Gemini $model ID verify error: $e');
+          break;
+        }
+      }
+    }
+    return null;
+  }
+
+  static Future<IdExtractResult?> _openRouterVerifyId({
+    required String prompt,
+    required String frontBase64,
+    required String backBase64,
+  }) async {
+    const models = [
+      'google/gemini-2.5-flash',
+      'openai/gpt-4o-mini',
+    ];
+
+    for (final model in models) {
+      try {
+        final body = jsonEncode({
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$frontBase64'}
+                },
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$backBase64'}
+                },
+              ],
+            }
+          ],
+          'max_tokens': 400,
+          'temperature': 0.1,
+        });
+        final response = await http
+            .post(Uri.parse(_openRouterUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_openRouterKey',
+                  'HTTP-Referer': 'https://iskoako.app',
+                  'X-Title': 'IskoAko',
+                },
+                body: body)
+            .timeout(const Duration(seconds: 25));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final content =
+              decoded['choices']?[0]?['message']?['content']?.toString() ?? '';
+          final res = _parseIdVerifyResultFromText(content, 'OpenRouter ($model)');
+          if (res != null) return res;
+        } else {
+          debugPrint('[FaceVerification] OpenRouter $model ID verify HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] OpenRouter $model ID verify error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<String> classifyIdSide({
+    required Uint8List imageBytes,
+    required String selectedIdType,
+    required bool isFront,
+  }) async {
+    final base64Image = base64Encode(imageBytes);
+
+    // For the BACK side: ID type can't reliably be determined from the back
+    // (only barcodes/QR codes/signature strips visible). Just confirm it's a valid ID back.
+    final prompt = isFront
+        ? '''
+You are an expert identity verification AI.
+Inspect this image carefully to determine if it shows the FRONT side of a valid physical ID card matching the expected type.
+
+Selected Expected ID Type: "$selectedIdType"
+
+Rules:
+1. First, is this image a non-ID object?
+   - If the image shows a desk, wall, computer screen, face without an ID card, blank paper, shoe, room, scenery, furniture, food, or a phone screen, return is_valid_id: false.
+2. Is this the FRONT of a physical ID card?
+   - A valid ID front typically has: a portrait photo of a person, a printed name, and an ID number or card number.
+   - If the image shows the BACK of an ID (barcodes, QR codes, signature strips, no portrait photo), return detected_side: "back" and is_valid_id: true.
+3. ID Type Matching (ONLY reject if clearly a different card category):
+   - If the selected type is "$selectedIdType" and the image CLEARLY shows a completely different category of card (e.g., selected "Driver's License" but image shows a Passport booklet, OR selected "School ID" but image shows a national government ID), return is_valid_id: false with reason "ID type mismatch".
+   - Do NOT reject Philippine government or student ID cards just because you cannot read the specific design — if it has a portrait photo, printed name, and an ID number, treat it as a valid match.
+4. If it is a valid ID front (portrait photo + name + number visible), set detected_side to "front" and is_valid_id to true.
+
+Return ONLY raw JSON (no markdown, no backticks):
+{
+  "is_valid_id": true or false,
+  "detected_side": "front" or "back" or "none",
+  "reason": "Short explanation"
+}
+'''
+        : '''
+You are an expert identity verification AI.
+Inspect this image carefully to determine if it shows the BACK side of a physical student or government ID card.
+
+Rules:
+1. Is this image the BACK of a physical ID card?
+   - The BACK of an ID typically has: barcodes, QR codes, signature strips, address text, terms and conditions, or magnetic stripes. It does NOT have a portrait photo of the owner.
+   - Return is_valid_id: true if the image shows what appears to be the back of any physical student, school, or government ID card.
+   - Return is_valid_id: false if the image shows a desk, wall, computer screen, food, scenery, room, or non-ID object.
+   - Return is_valid_id: false if the image shows the FRONT of an ID (has a portrait/photo of a person on it).
+2. If it IS a valid ID back, set detected_side to "back".
+
+Return ONLY raw JSON (no markdown, no backticks):
+{
+  "is_valid_id": true or false,
+  "detected_side": "back" or "front" or "none",
+  "reason": "Short explanation"
+}
+''';
+
+    if (_geminiKey.isNotEmpty) {
+      final result = await _geminiClassifyIdSide(base64Image: base64Image, prompt: prompt);
+      if (result != null) return result;
+    }
+
+    if (_openRouterKey.isNotEmpty) {
+      final result = await _openRouterClassifyIdSide(base64Image: base64Image, prompt: prompt);
+      if (result != null) return result;
+    }
+
+    if (_groqKey.isNotEmpty) {
+      final result = await _groqClassifyIdSide(base64Image: base64Image, prompt: prompt);
+      if (result != null) return result;
+    }
+
+    if (_mistralKey.isNotEmpty) {
+      final result = await _mistralClassifyIdSide(base64Image: base64Image, prompt: prompt);
+      if (result != null) return result;
+    }
+
+    return 'invalid';
+  }
+
+  static Future<String?> _geminiClassifyIdSide({
+    required String base64Image,
+    required String prompt,
+  }) async {
+    const models = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash'];
+    for (final model in models) {
+      try {
+        final url = Uri.parse('$_geminiBaseUrl/$model:generateContent?key=$_geminiKey');
+        final body = jsonEncode({
+          'contents': [
+            {
+              'parts': [
+                {'text': prompt},
+                {'inline_data': {'mime_type': 'image/jpeg', 'data': base64Image}},
+              ]
+            }
+          ],
+          'generationConfig': {'temperature': 0.0, 'maxOutputTokens': 120},
+          'safetySettings': _safetySettings,
+        });
+        final response = await http
+            .post(url, headers: {'Content-Type': 'application/json'}, body: body)
+            .timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final text = data['candidates']?[0]?['content']?['parts']?[0]?['text']
+                  ?.toString() ??
+              '';
+          return _parseClassifyResult(text);
+        } else {
+          debugPrint('[FaceVerification] Gemini $model classify HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Gemini $model classify error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<String?> _openRouterClassifyIdSide({
+    required String base64Image,
+    required String prompt,
+  }) async {
+    const models = [
+      'google/gemini-2.5-flash',
+      'openai/gpt-4o-mini',
+    ];
+
+    for (final model in models) {
+      try {
+        final body = jsonEncode({
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$base64Image'}
+                },
+              ],
+            }
+          ],
+          'max_tokens': 120,
+          'temperature': 0.0,
+        });
+        final response = await http
+            .post(Uri.parse(_openRouterUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_openRouterKey',
+                  'HTTP-Referer': 'https://iskoako.app',
+                  'X-Title': 'IskoAko',
+                },
+                body: body)
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final content = decoded['choices']?[0]?['message']?['content']
+                  ?.toString() ??
+              '';
+          return _parseClassifyResult(content);
+        } else {
+          debugPrint('[FaceVerification] OpenRouter $model classify HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] OpenRouter $model classify error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<FaceMatchResult?> _groqMatchFaces({
+    required String prompt,
+    required String idBase64,
+    required String selfieBase64,
+    required String idMimeType,
+  }) async {
+    const models = [
+      'llama-3.2-11b-vision-instruct',
+      'llama-3.2-90b-vision-instruct',
+    ];
+
+    for (final model in models) {
+      try {
+        final body = jsonEncode({
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:$idMimeType;base64,$idBase64'}
+                },
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$selfieBase64'}
+                },
+              ],
+            }
+          ],
+          'max_tokens': 300,
+          'temperature': 0.1,
+        });
+        final response = await http
+            .post(Uri.parse(_groqUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_groqKey',
+                },
+                body: body)
+            .timeout(const Duration(seconds: 20));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final content =
+              decoded['choices']?[0]?['message']?['content']?.toString() ?? '';
+          final res = _parseMatchResultFromText(content, 'Groq ($model)');
+          if (res != null) return res;
+        } else {
+          debugPrint('[FaceVerification] Groq $model match HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Groq $model match error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<IdExtractResult?> _groqVerifyId({
+    required String prompt,
+    required String frontBase64,
+    required String backBase64,
+  }) async {
+    const models = [
+      'llama-3.2-11b-vision-instruct',
+      'llama-3.2-90b-vision-instruct',
+    ];
+
+    for (final model in models) {
+      try {
+        final body = jsonEncode({
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$frontBase64'}
+                },
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$backBase64'}
+                },
+              ],
+            }
+          ],
+          'max_tokens': 400,
+          'temperature': 0.1,
+        });
+        final response = await http
+            .post(Uri.parse(_groqUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_groqKey',
+                },
+                body: body)
+            .timeout(const Duration(seconds: 20));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final content =
+              decoded['choices']?[0]?['message']?['content']?.toString() ?? '';
+          final res = _parseIdVerifyResultFromText(content, 'Groq ($model)');
+          if (res != null) return res;
+        } else {
+          debugPrint('[FaceVerification] Groq $model ID verify HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Groq $model ID verify error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<String?> _groqClassifyIdSide({
+    required String base64Image,
+    required String prompt,
+  }) async {
+    const models = ['llama-3.2-11b-vision-instruct'];
+    for (final model in models) {
+      try {
+        final body = jsonEncode({
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$base64Image'}
+                },
+              ],
+            }
+          ],
+          'max_tokens': 120,
+          'temperature': 0.0,
+        });
+        final response = await http
+            .post(Uri.parse(_groqUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_groqKey',
+                },
+                body: body)
+            .timeout(const Duration(seconds: 12));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final content = decoded['choices']?[0]?['message']?['content']
+                  ?.toString() ??
+              '';
+          return _parseClassifyResult(content);
+        } else {
+          debugPrint('[FaceVerification] Groq $model classify HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Groq $model classify error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<String?> _mistralClassifyIdSide({
+    required String base64Image,
+    required String prompt,
+  }) async {
+    const models = ['pixtral-12b-2409'];
+    for (final model in models) {
+      try {
+        final body = jsonEncode({
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$base64Image'}
+                },
+              ],
+            }
+          ],
+          'max_tokens': 120,
+          'temperature': 0.0,
+        });
+        final response = await http
+            .post(Uri.parse(_mistralUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_mistralKey',
+                },
+                body: body)
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final content = decoded['choices']?[0]?['message']?['content']
+                  ?.toString() ??
+              '';
+          return _parseClassifyResult(content);
+        } else {
+          debugPrint('[FaceVerification] Mistral $model classify HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Mistral $model classify error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<IdExtractResult?> _mistralVerifyId({
+    required String prompt,
+    required String frontBase64,
+    required String backBase64,
+  }) async {
+    const models = ['pixtral-12b-2409'];
+    for (final model in models) {
+      try {
+        final body = jsonEncode({
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$frontBase64'}
+                },
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/jpeg;base64,$backBase64'}
+                },
+              ],
+            }
+          ],
+          'max_tokens': 400,
+          'temperature': 0.1,
+        });
+        final response = await http
+            .post(Uri.parse(_mistralUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_mistralKey',
+                },
+                body: body)
+            .timeout(const Duration(seconds: 25));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final content = decoded['choices']?[0]?['message']?['content']
+                  ?.toString() ??
+              '';
+          final res = _parseIdVerifyResultFromText(content, 'Mistral ($model)');
+          if (res != null) return res;
+        } else {
+          debugPrint('[FaceVerification] Mistral $model ID verify HTTP ${response.statusCode}: ${response.body}');
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Mistral $model ID verify error: $e');
+      }
+    }
+    return null;
+  }
+
+  static String _parseClassifyResult(String text) {
+    try {
+      final start = text.indexOf('{');
+      final end = text.lastIndexOf('}');
+      if (start != -1 && end != -1 && end > start) {
+        final jsonStr = text.substring(start, end + 1);
+        final Map<String, dynamic> parsed = Map<String, dynamic>.from(jsonDecode(jsonStr));
+        if (parsed['is_valid_id'] == false || parsed['is_valid_id'] == 'false') {
+          return 'invalid';
+        }
+        final side = parsed['detected_side']?.toString().toLowerCase().trim() ?? 'none';
+        if (side == 'front' || side == 'back') return side;
+      }
+    } catch (e) {
+      debugPrint('[FaceVerification] Parse classify result JSON error: $e');
+    }
+
+    final lower = text.toLowerCase();
+    if (lower.contains('is_valid_id": false') || lower.contains('is_valid_id":false')) {
+      return 'invalid';
+    }
+    if (lower.contains('"detected_side": "front"') || lower.contains('"detected_side":"front"')) {
+      return 'front';
+    }
+    if (lower.contains('"detected_side": "back"') || lower.contains('"detected_side":"back"')) {
+      return 'back';
+    }
+    return 'invalid';
+  }
+
+  static IdExtractResult? _parseIdVerifyResult(String body, String model) {
+    try {
+      final data = jsonDecode(body);
+      final text = data['candidates'][0]['content']['parts'][0]['text']?.toString() ?? '';
+      return _parseIdVerifyResultFromText(text, model);
+    } catch (e) {
+      debugPrint('[FaceVerification] ID verify parse error ($model): $e');
+    }
+    return null;
+  }
+
+  static IdExtractResult? _parseIdVerifyResultFromText(String text, String model) {
+    try {
+      String cleanText = text.trim();
+      if (cleanText.startsWith('```')) {
+        final startIdx = cleanText.indexOf('{');
+        final endIdx = cleanText.lastIndexOf('}');
+        if (startIdx != -1 && endIdx != -1) {
+          cleanText = cleanText.substring(startIdx, endIdx + 1);
+        }
+      }
+      final parsed = jsonDecode(cleanText);
+      final isMatch = parsed['is_match'] == true;
+      final confidence = double.tryParse(parsed['confidence']?.toString() ?? '0') ?? 0.0;
+      final extFirst = parsed['extracted_first_name']?.toString() ?? '';
+      final extLast = parsed['extracted_last_name']?.toString() ?? '';
+      final extBirth = parsed['extracted_birth_date']?.toString() ?? '';
+      final extIdNo = parsed['extracted_id_number']?.toString() ?? '';
+      final List<String> mismatched = (parsed['mismatched_fields'] as List?)
+          ?.map((e) => e.toString())
+          .toList() ?? [];
+      final reason = parsed['reason']?.toString() ?? '';
+
+      return IdExtractResult(
+        isMatch: isMatch,
+        confidence: confidence,
+        extractedFirstName: extFirst,
+        extractedLastName: extLast,
+        extractedBirthDate: extBirth,
+        extractedIdNumber: extIdNo,
+        mismatchedFields: mismatched,
+        reason: reason,
+        modelUsed: model,
+      );
+    } catch (e) {
+      debugPrint('[FaceVerification] ID verify text parse error ($model): $e');
+    }
+    return null;
+  }
+
+  /// Programmatically verifies AI-extracted ID text against profile registration details in Dart.
+  static IdExtractResult _validateExtractedDetailsStrictly({
+    required IdExtractResult rawResult,
+    required String regFirstName,
+    required String regLastName,
+    required String regBirthDate,
+  }) {
+    final List<String> mismatches = [];
+    final List<String> matchReasons = [];
+    final List<String> mismatchReasons = [];
+
+    final String extFirst = rawResult.extractedFirstName.trim();
+    final String extLast = rawResult.extractedLastName.trim();
+    final String extBirth = rawResult.extractedBirthDate.trim();
+
+    // 1. Validate First Name
+    final bool firstNameMatches = _compareNamesStrictly(regFirstName, extFirst);
+    if (!firstNameMatches) {
+      mismatches.add('first_name');
+      mismatchReasons.add('First Name mismatch: Registered "$regFirstName" vs ID "$extFirst".');
+    } else {
+      matchReasons.add('First Name matched.');
+    }
+
+    // 2. Validate Last Name
+    final bool lastNameMatches = _compareNamesStrictly(regLastName, extLast);
+    if (!lastNameMatches) {
+      mismatches.add('last_name');
+      mismatchReasons.add('Last Name mismatch: Registered "$regLastName" vs ID "$extLast".');
+    } else {
+      matchReasons.add('Last Name matched.');
+    }
+
+    // 3. Validate Birth Date
+    if (regBirthDate.trim().isNotEmpty && extBirth.isNotEmpty) {
+      final bool birthDateMatches = _compareDatesStrictly(regBirthDate, extBirth);
+      if (!birthDateMatches) {
+        mismatches.add('birth_date');
+        mismatchReasons.add('Birth Date mismatch: Registered "$regBirthDate" vs ID "$extBirth".');
+      } else {
+        matchReasons.add('Birth Date matched.');
+      }
+    }
+
+    final bool isFinalMatch = mismatches.isEmpty && rawResult.isMatch;
+
+    final String combinedReason = mismatches.isNotEmpty
+        ? mismatchReasons.join(' ')
+        : (rawResult.reason.isNotEmpty ? rawResult.reason : matchReasons.join(' '));
+
+    return IdExtractResult(
+      isMatch: isFinalMatch,
+      confidence: mismatches.isEmpty ? rawResult.confidence : 0.0,
+      extractedFirstName: extFirst,
+      extractedLastName: extLast,
+      extractedBirthDate: extBirth,
+      extractedIdNumber: rawResult.extractedIdNumber,
+      mismatchedFields: mismatches.isNotEmpty ? mismatches : rawResult.mismatchedFields,
+      reason: combinedReason,
+      modelUsed: rawResult.modelUsed,
+    );
+  }
+
+  static bool _compareNamesStrictly(String regName, String extName) {
+    if (regName.trim().isEmpty) return true;
+    if (extName.trim().isEmpty) return false;
+
+    final normReg = _normalizeString(regName);
+    final normExt = _normalizeString(extName);
+
+    if (normReg == normExt) return true;
+    if (normExt.contains(normReg) || normReg.contains(normExt)) return true;
+
+    final regTokens = normReg.split(' ').where((t) => t.length > 1).toList();
+    final extTokens = normExt.split(' ').where((t) => t.length > 1).toList();
+
+    if (regTokens.isEmpty) return true;
+
+    for (final regToken in regTokens) {
+      bool found = false;
+      for (final extToken in extTokens) {
+        if (extToken == regToken || extToken.contains(regToken) || regToken.contains(extToken)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) return false;
+    }
+
+    return true;
+  }
+
+  static String _normalizeString(String input) {
+    return input
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static bool _compareDatesStrictly(String regDate, String extDate) {
+    final normReg = regDate.replaceAll(RegExp(r'[^\d]'), '');
+    final normExt = extDate.replaceAll(RegExp(r'[^\d]'), '');
+
+    if (normReg.isNotEmpty && normExt.isNotEmpty && normReg == normExt) return true;
+
+    final regDigits = RegExp(r'\d+').allMatches(regDate).map((m) => m.group(0)!).toList();
+    final extDigits = RegExp(r'\d+').allMatches(extDate).map((m) => m.group(0)!).toList();
+
+    String regYear = regDigits.firstWhere((d) => d.length == 4, orElse: () => '');
+    String extYear = extDigits.firstWhere((d) => d.length == 4, orElse: () => '');
+
+    if (regYear.isNotEmpty && extYear.isNotEmpty && regYear != extYear) {
+      return false;
+    }
+
+    for (final d in regDigits) {
+      if (d.length <= 2 && d != '0' && d != '00') {
+        final dNum = int.tryParse(d);
+        if (dNum != null && dNum > 0) {
+          final hasInExt = extDigits.any((ed) => int.tryParse(ed) == dNum);
+          if (!hasInExt) {
+            final monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+            if (dNum >= 1 && dNum <= 12) {
+              final mName = monthNames[dNum - 1];
+              if (extDate.toLowerCase().contains(mName)) continue;
+            }
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+}
+
+class IdExtractResult {
+  final bool isMatch;
+  final double confidence;
+  final String extractedFirstName;
+  final String extractedLastName;
+  final String extractedBirthDate;
+  final String extractedIdNumber;
+  final List<String> mismatchedFields;
+  final String reason;
+  final String modelUsed;
+
+  const IdExtractResult({
+    required this.isMatch,
+    required this.confidence,
+    required this.extractedFirstName,
+    required this.extractedLastName,
+    required this.extractedBirthDate,
+    required this.extractedIdNumber,
+    required this.mismatchedFields,
+    required this.reason,
+    required this.modelUsed,
+  });
 }

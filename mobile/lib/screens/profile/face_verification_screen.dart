@@ -3,11 +3,9 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/services/face_verification_service.dart';
 
@@ -15,7 +13,10 @@ import 'package:iskoako/services/face_verification_service.dart';
 
 enum _VerificationStep {
   intro,
-  idUpload,
+  idSelect,
+  idCaptureFront,
+  idCaptureBack,
+  idVerifying,
   blink,
   turnLeft,
   turnRight,
@@ -46,14 +47,37 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     with TickerProviderStateMixin {
   _VerificationStep _step = _VerificationStep.intro;
 
-  // ID Upload
-  Uint8List? _idImageBytes;
+  // ID Verification Info
+  String? _selectedIdType;
+  String? _customIdName;
+  Uint8List? _idFrontBytes;
+  Uint8List? _idBackBytes;
+  String _regFirstName = '';
+  String _regLastName = '';
+  String _regBirthDate = '';
+  IdExtractResult? _idExtractResult;
+
+  static const List<String> _validIdTypes = [
+    'Student ID / School ID',
+    'PhilSys National ID',
+    'Driver\'s License',
+    'Philippine Passport',
+    'UMID / SSS ID',
+    'Postal ID',
+    'PRC ID',
+    'Voter\'s ID',
+    'Other / Custom ID',
+  ];
+
+  final _customIdController = TextEditingController();
 
   // Camera
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _cameraReady = false;
   bool _cameraError = false;
+  bool _isClassifyingPhoto = false;
+  String? _cameraScanError;
 
   // Selfie
   Uint8List? _selfieBytes;
@@ -88,6 +112,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   @override
   void initState() {
     super.initState();
+    _loadScholarDetails();
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -128,32 +153,122 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     _actionPassedController.dispose();
     _livenessTimer?.cancel();
     _cameraController?.dispose();
+    _customIdController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadScholarDetails() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      try {
+        final res = await Supabase.instance.client
+            .from('scholar')
+            .select('first_name, last_name, birth_date')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (res != null) {
+          setState(() {
+            _regFirstName = res['first_name']?.toString() ?? '';
+            _regLastName = res['last_name']?.toString() ?? '';
+            _regBirthDate = res['birth_date']?.toString() ?? '';
+          });
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Error loading scholar details: $e');
+      }
+    }
+  }
+
+
+  Future<void> _runIdVerification() async {
+    _goToStep(_VerificationStep.idVerifying);
+    final idTypeName = _selectedIdType == 'Other / Custom ID'
+        ? (_customIdName ?? _customIdController.text.trim())
+        : (_selectedIdType ?? 'ID');
+
+    try {
+      final result = await FaceVerificationService.verifyIdDetails(
+        frontImageBytes: _idFrontBytes!,
+        backImageBytes: _idBackBytes!,
+        idType: idTypeName,
+        regFirstName: _regFirstName,
+        regLastName: _regLastName,
+        regBirthDate: _regBirthDate,
+      );
+
+      _idExtractResult = result;
+
+      if (result.isMatch) {
+        // If it matches, immediately proceed to the first liveness step (blink)!
+        _goToStep(_VerificationStep.blink);
+      } else {
+        // If not matched, reject/flag it in the database and go to result step
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user != null) {
+          try {
+            await Supabase.instance.client.from('scholar').update({
+              'face_verification_status': 'failed',
+              'face_verification_reason': 'ID Data Mismatch: ${result.reason}',
+              'face_verified_at': null,
+            }).eq('user_id', user.id);
+          } catch (e) {
+            debugPrint('[FaceVerification] Error logging ID mismatch: $e');
+          }
+        }
+        
+        setState(() {
+          _verificationSuccess = false;
+          _resultReason = 'ID Verification Failed: ${result.reason}';
+          _step = _VerificationStep.result;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _verificationSuccess = false;
+        _resultReason = 'Failed to verify ID details: $e';
+        _step = _VerificationStep.result;
+      });
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // CAMERA
   // ─────────────────────────────────────────────────────────────────────────
 
-  Future<void> _initCamera() async {
+  Future<void> _initCamera({bool front = true}) async {
     final status = await Permission.camera.request();
     if (!status.isGranted) {
       setState(() => _cameraError = true);
       return;
     }
+    
+    // If camera is already ready, but direction is different, dispose first
+    if (_cameraController != null) {
+      final currentDirection = _cameraController!.description.lensDirection;
+      final targetDirection = front ? CameraLensDirection.front : CameraLensDirection.back;
+      if (currentDirection != targetDirection) {
+        _disposeCamera();
+      } else {
+        // Already initialized to the correct camera
+        return;
+      }
+    }
+    
     try {
       _cameras = await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
         setState(() => _cameraError = true);
         return;
       }
-      // Prefer front camera
-      final front = _cameras!.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
+      // Select camera based on direction
+      final direction = front ? CameraLensDirection.front : CameraLensDirection.back;
+      final selectedCam = _cameras!.firstWhere(
+        (c) => c.lensDirection == direction,
         orElse: () => _cameras!.first,
       );
+      
       _cameraController = CameraController(
-        front,
+        selectedCam,
         ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
@@ -172,47 +287,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     _cameraReady = false;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ID UPLOAD
-  // ─────────────────────────────────────────────────────────────────────────
 
-  bool get _isIdPdf {
-    if (_idImageBytes == null || _idImageBytes!.length < 4) return false;
-    return _idImageBytes![0] == 0x25 &&
-        _idImageBytes![1] == 0x50 &&
-        _idImageBytes![2] == 0x44 &&
-        _idImageBytes![3] == 0x46;
-  }
-
-  Future<void> _pickId(ImageSource source) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: source,
-      imageQuality: 85,
-      maxWidth: 1200,
-    );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
-    if (mounted) setState(() => _idImageBytes = bytes);
-  }
-
-  Future<void> _pickIdPdf() async {
-    try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.first;
-      final bytes = file.bytes;
-      if (bytes != null && mounted) {
-        setState(() => _idImageBytes = bytes);
-      }
-    } catch (e) {
-      debugPrint('[FaceVerification] PDF pick error: $e');
-    }
-  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // LIVENESS
@@ -258,13 +333,13 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       List<Uint8List> additionalFrames = [];
 
       if (action == LivenessAction.blink) {
-        // Capture 2 rapid frames across the single natural blink (at ~200ms and ~450ms)
-        await Future.delayed(const Duration(milliseconds: 200));
+        // Capture 2 rapid frames across the single natural blink (at ~380ms and ~760ms)
+        await Future.delayed(const Duration(milliseconds: 380));
         if (!mounted) return;
         final f1 = await _cameraController!.takePicture();
         actionBytes = await f1.readAsBytes();
 
-        await Future.delayed(const Duration(milliseconds: 200));
+        await Future.delayed(const Duration(milliseconds: 380));
         if (!mounted) return;
         final f2 = await _cameraController!.takePicture();
         final f2Bytes = await f2.readAsBytes();
@@ -381,7 +456,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
 
     try {
       final result = await FaceVerificationService.matchFaces(
-        idImageBytes: _idImageBytes!,
+        idImageBytes: _idFrontBytes!,
         selfieBytes: _selfieBytes!,
       );
 
@@ -392,15 +467,14 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         String? idUrl;
         String? selfieUrl;
 
-        // 1. Upload ID document to Supabase Storage
+        // 1. Upload ID Front document to Supabase Storage
         try {
-          final idExt = _isIdPdf ? 'pdf' : 'jpg';
-          final idPath = 'face_verification/id_${user.id}_${DateTime.now().millisecondsSinceEpoch}.$idExt';
+          final idPath = 'face_verification/id_${user.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
           await Supabase.instance.client.storage.from('scholar-documents').uploadBinary(
                 idPath,
-                _idImageBytes!,
-                fileOptions: FileOptions(
-                  contentType: _isIdPdf ? 'application/pdf' : 'image/jpeg',
+                _idFrontBytes!,
+                fileOptions: const FileOptions(
+                  contentType: 'image/jpeg',
                   upsert: true,
                 ),
               );
@@ -408,6 +482,23 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           debugPrint('[FaceVerification] ID document uploaded to storage: $idUrl');
         } catch (e) {
           debugPrint('[FaceVerification] ID storage upload error: $e');
+        }
+
+        // Upload ID Back document to Supabase Storage
+        try {
+          final idBackPath = 'face_verification/id_back_${user.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          await Supabase.instance.client.storage.from('scholar-documents').uploadBinary(
+                idBackPath,
+                _idBackBytes!,
+                fileOptions: const FileOptions(
+                  contentType: 'image/jpeg',
+                  upsert: true,
+                ),
+              );
+          final backUrl = Supabase.instance.client.storage.from('scholar-documents').getPublicUrl(idBackPath);
+          debugPrint('[FaceVerification] ID Back document uploaded: $backUrl');
+        } catch (e) {
+          debugPrint('[FaceVerification] ID Back storage upload error: $e');
         }
 
         // 2. Upload Selfie to Supabase Storage
@@ -439,7 +530,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         try {
           await Supabase.instance.client.from('scholar').update(updatePayload).eq('user_id', user.id);
         } catch (e) {
-          // If custom URL columns don't exist yet, update core verification columns
+          // Fallback update
           await Supabase.instance.client.from('scholar').update({
             'face_verification_status': status,
             'face_verified_at': result.isMatch ? DateTime.now().toIso8601String() : null,
@@ -499,14 +590,20 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
 
     // Init camera when entering a camera step
     final needsCamera = [
+      _VerificationStep.idCaptureFront,
+      _VerificationStep.idCaptureBack,
       _VerificationStep.blink,
       _VerificationStep.turnLeft,
       _VerificationStep.turnRight,
       _VerificationStep.selfie,
     ].contains(step);
 
-    if (needsCamera && !_cameraReady) {
-      await _initCamera();
+    if (needsCamera) {
+      final useFront = ![
+        _VerificationStep.idCaptureFront,
+        _VerificationStep.idCaptureBack,
+      ].contains(step);
+      await _initCamera(front: useFront);
     }
   }
 
@@ -518,7 +615,12 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     _actionPassedController.reset();
     setState(() {
       _step = _VerificationStep.intro;
-      _idImageBytes = null;
+      _idFrontBytes = null;
+      _idBackBytes = null;
+      _selectedIdType = null;
+      _customIdName = null;
+      _customIdController.clear();
+      _idExtractResult = null;
       _selfieBytes = null;
       _livenessStatus = _LivenessStatus.idle;
       _blinkDone = false;
@@ -555,7 +657,10 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   PreferredSizeWidget _buildAppBar() {
     final titles = {
       _VerificationStep.intro: 'Identity Verification',
-      _VerificationStep.idUpload: 'Upload Your ID',
+      _VerificationStep.idSelect: 'Select ID Type',
+      _VerificationStep.idCaptureFront: 'Capture ID Front',
+      _VerificationStep.idCaptureBack: 'Capture ID Back',
+      _VerificationStep.idVerifying: 'AI Verification Check',
       _VerificationStep.blink: 'Liveness — Blink',
       _VerificationStep.turnLeft: 'Liveness — Turn Left',
       _VerificationStep.turnRight: 'Liveness — Turn Right',
@@ -595,12 +700,18 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     switch (_step) {
       case _VerificationStep.intro:
         return _buildIntro();
-      case _VerificationStep.idUpload:
-        return _buildIdUpload();
+      case _VerificationStep.idSelect:
+        return _buildIdSelect();
+      case _VerificationStep.idCaptureFront:
+        return _buildIdCaptureFront();
+      case _VerificationStep.idCaptureBack:
+        return _buildIdCaptureBack();
+      case _VerificationStep.idVerifying:
+        return _buildIdVerifying();
       case _VerificationStep.blink:
         return _buildLivenessStep(
           key: const ValueKey('blink'),
-          stepNumber: 1,
+          stepNumber: 4,
           title: 'Blink Your Eyes',
           subtitle: 'Look directly at the camera and blink both eyes',
           icon: LucideIcons.eye,
@@ -610,7 +721,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       case _VerificationStep.turnLeft:
         return _buildLivenessStep(
           key: const ValueKey('turnLeft'),
-          stepNumber: 2,
+          stepNumber: 5,
           title: 'Turn Head Left',
           subtitle: 'Slowly turn your head to your left',
           icon: LucideIcons.arrowLeft,
@@ -620,7 +731,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       case _VerificationStep.turnRight:
         return _buildLivenessStep(
           key: const ValueKey('turnRight'),
-          stepNumber: 3,
+          stepNumber: 5,
           title: 'Turn Head Right',
           subtitle: 'Slowly turn your head to your right',
           icon: LucideIcons.arrowRight,
@@ -692,28 +803,28 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           _buildStepPreviewCard(
             number: '01',
             icon: LucideIcons.creditCard,
-            title: 'Upload Valid ID',
-            desc: 'School ID, government-issued ID',
+            title: 'ID Selection & Capture',
+            desc: 'Choose valid ID type and take front/back photos',
           ),
           const SizedBox(height: 12),
           _buildStepPreviewCard(
             number: '02',
-            icon: LucideIcons.scanFace,
-            title: 'Liveness Detection',
-            desc: 'Blink, turn left, turn right',
+            icon: LucideIcons.shieldCheck,
+            title: 'AI Verification Check',
+            desc: 'Auto-extracts and matches name/birthdate to profile',
           ),
           const SizedBox(height: 12),
           _buildStepPreviewCard(
             number: '03',
-            icon: LucideIcons.camera,
-            title: 'Selfie Capture',
-            desc: 'AI matches your face to your ID',
+            icon: LucideIcons.scanFace,
+            title: 'Liveness & Face Match',
+            desc: 'Blink, turn head, and match live selfie face to ID',
           ),
           const SizedBox(height: 32),
           _buildPrimaryButton(
             label: 'Start Verification',
             icon: LucideIcons.arrowRight,
-            onTap: () => _goToStep(_VerificationStep.idUpload),
+            onTap: () => _goToStep(_VerificationStep.idSelect),
           ),
           const SizedBox(height: 12),
           Center(
@@ -791,17 +902,18 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     );
   }
 
-  Widget _buildIdUpload() {
+  Widget _buildIdSelect() {
+    final showCustomInput = _selectedIdType == 'Other / Custom ID';
     return SingleChildScrollView(
-      key: const ValueKey('idUpload'),
+      key: const ValueKey('idSelect'),
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildProgressBar(1, 4),
+          _buildProgressBar(1, 6),
           const SizedBox(height: 24),
           Text(
-            'Upload Your ID',
+            'Select ID Type',
             style: GoogleFonts.playfairDisplay(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -810,7 +922,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'Take a clear photo of your school ID or any valid government-issued ID. Make sure the face photo is clearly visible.',
+            'Choose a valid document type that you will take a photo of. Make sure the details and photo are readable.',
             style: GoogleFonts.inter(
               fontSize: 13,
               color: AppColors.textSecondary,
@@ -818,119 +930,150 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             ),
           ),
           const SizedBox(height: 24),
-
-          // ID Preview or placeholder
-          GestureDetector(
-            onTap: () => _showImagePickerOptions(),
-            child: Container(
-              width: double.infinity,
-              height: 220,
-              decoration: BoxDecoration(
-                color: _idImageBytes != null
-                    ? Colors.transparent
-                    : AppColors.surfaceAlt,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: _idImageBytes != null
-                      ? AppColors.primary
-                      : AppColors.rule,
-                  width: _idImageBytes != null ? 2 : 1,
+          ..._validIdTypes.map((type) {
+            final isSelected = _selectedIdType == type;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: InkWell(
+                onTap: () => setState(() {
+                  _selectedIdType = type;
+                  if (type != 'Other / Custom ID') {
+                    _customIdName = null;
+                  }
+                }),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.primary.withAlpha(12) : AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? AppColors.primary : AppColors.rule,
+                      width: isSelected ? 2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        type.contains('Passport') ? LucideIcons.globe : LucideIcons.creditCard,
+                        color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          type,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                            color: isSelected ? AppColors.primaryDark : AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      if (isSelected)
+                        const Icon(
+                          LucideIcons.checkCircle2,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                    ],
+                  ),
                 ),
               ),
-              child: _idImageBytes != null
-                  ? (_isIdPdf
-                      ? Container(
-                          color: AppColors.primaryDark.withAlpha(15),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  color: AppColors.error.withAlpha(20),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  LucideIcons.fileText,
-                                  color: AppColors.error,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'PDF ID Document Uploaded',
-                                style: GoogleFonts.inter(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primaryDark,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Ready for AI face verification check',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(19),
-                          child: Image.memory(
-                            _idImageBytes!,
-                            fit: BoxFit.cover,
-                          ),
-                        ))
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withAlpha(20),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            LucideIcons.upload,
-                            color: AppColors.primary,
-                            size: 28,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Tap to upload ID photo',
-                          style: GoogleFonts.inter(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Camera or Gallery',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
+            );
+          }),
+          if (showCustomInput) ...[
+            const SizedBox(height: 16),
+            Text(
+              'Specify ID Type *',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _customIdController,
+              decoration: InputDecoration(
+                hintText: 'e.g. Barangay ID, Library Card, Barangay Certificate',
+                hintStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                filled: true,
+                fillColor: AppColors.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.rule),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.rule),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.primary),
+                ),
+              ),
+              onChanged: (val) {
+                setState(() => _customIdName = val.trim());
+              },
+            ),
+          ],
+          const SizedBox(height: 32),
+          _buildPrimaryButton(
+            label: 'Continue to Capture',
+            icon: LucideIcons.arrowRight,
+            onTap: _selectedIdType != null && (!showCustomInput || (_customIdName != null && _customIdName!.isNotEmpty))
+                ? () => _goToStep(_VerificationStep.idCaptureFront)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIdCaptureFront() {
+    final displayIdType = _selectedIdType == 'Other / Custom ID' ? (_customIdName ?? 'Custom ID') : (_selectedIdType ?? 'ID');
+    return SingleChildScrollView(
+      key: const ValueKey('idCaptureFront'),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildProgressBar(2, 6),
+          const SizedBox(height: 24),
+          Text(
+            'Capture Front of ID',
+            style: GoogleFonts.playfairDisplay(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryDark,
             ),
           ),
-
-          if (_idImageBytes != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Align the front side of your $displayIdType within the frame and capture it. Ensure good lighting and zero glare.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          _buildIdCameraScanner(
+            bytes: _idFrontBytes,
+            isFront: true,
+            idType: displayIdType,
+            onCapture: () => _captureLivePhoto(true),
+          ),
+          if (_idFrontBytes != null) ...[
             const SizedBox(height: 12),
             Row(
               children: [
-                const Icon(LucideIcons.checkCircle,
-                    color: AppColors.primary, size: 16),
+                const Icon(LucideIcons.checkCircle, color: AppColors.primary, size: 16),
                 const SizedBox(width: 6),
                 Text(
-                  _isIdPdf ? 'PDF ID document uploaded' : 'ID photo uploaded',
+                  'ID Front image captured',
                   style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -939,9 +1082,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                 ),
                 const Spacer(),
                 GestureDetector(
-                  onTap: _showImagePickerOptions,
+                  onTap: () => setState(() => _idFrontBytes = null),
                   child: Text(
-                    'Change',
+                    'Retake',
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       color: AppColors.textSecondary,
@@ -952,13 +1095,12 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
               ],
             ),
           ],
-
           const SizedBox(height: 32),
           _buildPrimaryButton(
-            label: 'Continue to Liveness Check',
+            label: 'Continue to Back of ID',
             icon: LucideIcons.arrowRight,
-            onTap: _idImageBytes != null
-                ? () => _goToStep(_VerificationStep.blink)
+            onTap: _idFrontBytes != null
+                ? () => _goToStep(_VerificationStep.idCaptureBack)
                 : null,
           ),
         ],
@@ -966,89 +1108,117 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     );
   }
 
-  void _showImagePickerOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Upload ID Photo',
-                style: GoogleFonts.playfairDisplay(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primaryDark,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withAlpha(20),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(LucideIcons.camera,
-                      color: AppColors.primary, size: 18),
-                ),
-                title: Text('Take Photo',
-                    style: GoogleFonts.inter(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickId(ImageSource.camera);
-                },
-              ),
-              const Divider(height: 8, color: AppColors.rule),
-              ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.amber.withAlpha(20),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(LucideIcons.image,
-                      color: AppColors.amberDeep, size: 18),
-                ),
-                title: Text('Choose from Gallery',
-                    style: GoogleFonts.inter(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickId(ImageSource.gallery);
-                },
-              ),
-              const Divider(height: 8, color: AppColors.rule),
-              ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.error.withAlpha(20),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(LucideIcons.fileText,
-                      color: AppColors.error, size: 18),
-                ),
-                title: Text('Upload PDF Document',
-                    style: GoogleFonts.inter(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickIdPdf();
-                },
-              ),
-            ],
+  Widget _buildIdCaptureBack() {
+    final displayIdType = _selectedIdType == 'Other / Custom ID' ? (_customIdName ?? 'Custom ID') : (_selectedIdType ?? 'ID');
+    return SingleChildScrollView(
+      key: const ValueKey('idCaptureBack'),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildProgressBar(3, 6),
+          const SizedBox(height: 24),
+          Text(
+            'Capture Back of ID',
+            style: GoogleFonts.playfairDisplay(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primaryDark,
+            ),
           ),
+          const SizedBox(height: 6),
+          Text(
+            'Align the back side of your $displayIdType within the frame and capture it.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          _buildIdCameraScanner(
+            bytes: _idBackBytes,
+            isFront: false,
+            idType: displayIdType,
+            onCapture: () => _captureLivePhoto(false),
+          ),
+          if (_idBackBytes != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(LucideIcons.checkCircle, color: AppColors.primary, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  'ID Back image captured',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() => _idBackBytes = null),
+                  child: Text(
+                    'Retake',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 32),
+          _buildPrimaryButton(
+            label: 'Submit for AI Verification Check',
+            icon: LucideIcons.shieldCheck,
+            onTap: _idBackBytes != null ? _runIdVerification : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIdVerifying() {
+    return Center(
+      key: const ValueKey('idVerifying'),
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 56,
+              height: 56,
+              child: CircularProgressIndicator(
+                strokeWidth: 4,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Running AI Verification Check',
+              style: GoogleFonts.playfairDisplay(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primaryDark,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Matching your ID details (First Name, Last Name, Birth Date) against your registered scholar profile...',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );
@@ -1077,7 +1247,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           child: SafeArea(
             child: Column(
               children: [
-                _buildProgressBar(stepNumber + 1, 4),
+                _buildProgressBar(stepNumber, 6),
                 const SizedBox(height: 12),
 
                 // Top instruction badge
@@ -1466,7 +1636,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       child: SafeArea(
         child: Column(
           children: [
-            _buildProgressBar(4, 4),
+            _buildProgressBar(6, 6),
             const SizedBox(height: 12),
 
             // Top instruction badge
@@ -1794,6 +1964,52 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             ),
           ),
 
+          if (!_verificationSuccess && _idExtractResult != null) ...[
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.rule),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Extracted ID details:',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildResultComparisonRow(
+                    label: 'First Name',
+                    registered: _regFirstName,
+                    extracted: _idExtractResult!.extractedFirstName,
+                    mismatched: _idExtractResult!.mismatchedFields.contains('first_name'),
+                  ),
+                  const Divider(height: 12),
+                  _buildResultComparisonRow(
+                    label: 'Last Name',
+                    registered: _regLastName,
+                    extracted: _idExtractResult!.extractedLastName,
+                    mismatched: _idExtractResult!.mismatchedFields.contains('last_name'),
+                  ),
+                  const Divider(height: 12),
+                  _buildResultComparisonRow(
+                    label: 'Birth Date',
+                    registered: _regBirthDate,
+                    extracted: _idExtractResult!.extractedBirthDate,
+                    mismatched: _idExtractResult!.mismatchedFields.contains('birth_date'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           const SizedBox(height: 32),
 
           if (_verificationSuccess) ...[
@@ -1907,6 +2123,434 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           elevation: onTap != null ? 2 : 0,
         ),
       ),
+    );
+  }
+
+  Future<void> _captureLivePhoto(bool isFront) async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    if (_isClassifyingPhoto) return;
+    try {
+      final image = await _cameraController!.takePicture();
+      final bytes = await image.readAsBytes();
+
+      // Show classifying spinner
+      setState(() => _isClassifyingPhoto = true);
+
+      final displayIdType = _selectedIdType == 'Other / Custom ID' ? (_customIdName ?? 'ID') : (_selectedIdType ?? 'ID');
+
+      // Classify the ID side & verify document type matching before accepting
+      final side = await FaceVerificationService.classifyIdSide(
+        imageBytes: bytes,
+        selectedIdType: displayIdType,
+        isFront: isFront,
+      );
+
+      if (!mounted) return;
+      setState(() => _isClassifyingPhoto = false);
+
+      final expectedSide = isFront ? 'front' : 'back';
+
+      if (side == 'invalid' || side == 'unknown') {
+        setState(() {
+          _cameraScanError = '❌ Invalid or mismatched ID card! Please capture your physical $displayIdType.';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'ID Type Mismatch! You selected "$displayIdType". Please capture your physical $displayIdType.',
+              style: GoogleFonts.inter(fontSize: 13),
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+
+      if (side != expectedSide) {
+        // Wrong side — reject and show feedback
+        final wrongLabel = isFront ? 'back' : 'front';
+        final expectedLabel = isFront ? 'front' : 'back';
+        setState(() {
+          _cameraScanError = '❌ Wrong side detected! Found $wrongLabel side. Please align $expectedLabel side.';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Wrong side detected! This appears to be the $wrongLabel of the ID. Please capture the $expectedLabel side.',
+              style: GoogleFonts.inter(fontSize: 13),
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _cameraScanError = null;
+        if (isFront) {
+          _idFrontBytes = bytes;
+        } else {
+          _idBackBytes = bytes;
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _isClassifyingPhoto = false);
+      debugPrint('[FaceVerification] Shutter capture error: $e');
+    }
+  }
+
+  Widget _buildIdCameraScanner({
+    required Uint8List? bytes,
+    required bool isFront,
+    required String idType,
+    required Future<void> Function() onCapture,
+  }) {
+    if (bytes != null) {
+      return Column(
+        children: [
+          Container(
+            width: double.infinity,
+            height: 380,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.primary, width: 2),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(LucideIcons.checkCircle2, color: AppColors.primary, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Photo captured successfully',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    if (!_cameraReady || _cameraController == null) {
+      return Container(
+        width: double.infinity,
+        height: 380,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.rule),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: double.infinity,
+        height: 380,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: Colors.black,
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _cameraController!.value.previewSize?.height ?? 300.0,
+                height: _cameraController!.value.previewSize?.width ?? 400.0,
+                child: CameraPreview(_cameraController!),
+              ),
+            ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final height = constraints.maxHeight;
+                const cardWidth = 320.0;
+                const cardHeight = 200.0;
+                final left = (width - cardWidth) / 2;
+                final top = (height - cardHeight) / 2;
+
+                final bracketColor = _cameraScanError != null ? AppColors.error : AppColors.primary;
+                return Stack(
+                  children: [
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: top,
+                      child: Container(color: Colors.black.withAlpha(160)),
+                    ),
+                    Positioned(
+                      top: top + cardHeight,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(color: Colors.black.withAlpha(160)),
+                    ),
+                    Positioned(
+                      top: top,
+                      left: 0,
+                      width: left,
+                      height: cardHeight,
+                      child: Container(color: Colors.black.withAlpha(160)),
+                    ),
+                    Positioned(
+                      top: top,
+                      right: 0,
+                      width: left,
+                      height: cardHeight,
+                      child: Container(color: Colors.black.withAlpha(160)),
+                    ),
+                    Positioned(
+                      top: top - 2,
+                      left: left - 2,
+                      width: cardWidth + 4,
+                      height: cardHeight + 4,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: bracketColor, width: 2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: top - 4,
+                      left: left - 4,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            top: BorderSide(color: bracketColor, width: 4),
+                            left: BorderSide(color: bracketColor, width: 4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: top - 4,
+                      right: left - 4,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            top: BorderSide(color: bracketColor, width: 4),
+                            right: BorderSide(color: bracketColor, width: 4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: top - 4,
+                      left: left - 4,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(color: bracketColor, width: 4),
+                            left: BorderSide(color: bracketColor, width: 4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: top - 4,
+                      right: left - 4,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(color: bracketColor, width: 4),
+                            right: BorderSide(color: bracketColor, width: 4),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    Positioned(
+                      top: top + cardHeight + 12,
+                      left: 16,
+                      right: 16,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _cameraScanError != null
+                                ? AppColors.error.withAlpha(230)
+                                : Colors.black.withAlpha(200),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _cameraScanError != null ? AppColors.error : AppColors.primary.withAlpha(120),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _cameraScanError != null ? LucideIcons.alertCircle : LucideIcons.scanLine,
+                                color: Colors.white,
+                                size: 14,
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  _cameraScanError ?? (isFront ? 'Align FRONT of ID inside box & tap camera' : 'Align BACK of ID inside box & tap camera'),
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            Positioned(
+              bottom: 14,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: _isClassifyingPhoto ? null : onCapture,
+                      child: Container(
+                        width: 62,
+                        height: 62,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _isClassifyingPhoto
+                              ? Colors.grey.shade200
+                              : Colors.white,
+                          border: Border.all(
+                            color: _isClassifyingPhoto
+                                ? Colors.grey
+                                : (_cameraScanError != null ? AppColors.error : AppColors.primary),
+                            width: 4,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(80),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: _isClassifyingPhoto
+                            ? const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                                ),
+                              )
+                            : Icon(
+                                _cameraScanError != null ? LucideIcons.scanLine : LucideIcons.camera,
+                                color: _cameraScanError != null ? AppColors.error : AppColors.primary,
+                                size: 26,
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withAlpha(180),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        _isClassifyingPhoto
+                            ? 'Detecting & Focusing ID...'
+                            : (_cameraScanError != null ? 'Align ID to unlock camera' : 'Tap to Scan & Focus ID'),
+                        style: GoogleFonts.inter(
+                          color: _cameraScanError != null ? Colors.amberAccent : Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultComparisonRow({
+    required String label,
+    required String registered,
+    required String extracted,
+    required bool mismatched,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Profile: $registered',
+                style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'ID: ${extracted.isNotEmpty ? extracted : "Not found"}',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: mismatched ? AppColors.error : AppColors.success,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
