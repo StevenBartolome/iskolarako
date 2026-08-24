@@ -10,7 +10,6 @@ class EligibilityHelper {
       'school',
       'course',
       'year_level',
-      'gpa',
       'citizenship',
       'region',
       'province',
@@ -45,7 +44,6 @@ class EligibilityHelper {
         'School',
         'Course',
         'Year Level',
-        'GPA / GWA',
         'Identity Verification',
       ];
     }
@@ -64,7 +62,6 @@ class EligibilityHelper {
       'school': 'School / University',
       'course': 'Course / Program',
       'year_level': 'Year Level',
-      'gpa': 'GPA / GWA',
     };
     fieldLabels.forEach((field, label) {
       if (scholar[field] == null || scholar[field].toString().trim().isEmpty) {

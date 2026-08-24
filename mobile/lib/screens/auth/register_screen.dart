@@ -39,9 +39,7 @@ class _RegisterScreenState extends State<RegisterScreen>
   final TextEditingController _schoolController = TextEditingController();
   final TextEditingController _courseController = TextEditingController();
   int? _selectedYearLevel;
-  final TextEditingController _gpaController = TextEditingController();
   String? _selectedEduLevel = 'college';
-  String? _selectedGpaScale = 'scale_5';
   // For incoming_college students
   final TextEditingController _plannedUniversityController = TextEditingController();
   final List<TextEditingController> _plannedCoursesControllers = [
@@ -108,7 +106,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     _phoneController.dispose();
     _schoolController.dispose();
     _courseController.dispose();
-    _gpaController.dispose();
     _plannedUniversityController.dispose();
     for (final c in _plannedCoursesControllers) { c.dispose(); }
     _heroController.dispose();
@@ -245,7 +242,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     final phone = _phoneController.text.trim();
     final school = _schoolController.text.trim();
     final course = _courseController.text.trim();
-    final gpaText = _gpaController.text.trim();
 
     final bool isIncoming = _selectedEduLevel == 'incoming_college';
     final bool needsSchoolCourse = !isIncoming;
@@ -265,19 +261,8 @@ class _RegisterScreenState extends State<RegisterScreen>
       return;
     }
 
-    if (gpaText.isEmpty) {
-      _showSnackBar('Please fill in your GWA / grade average.', isError: true);
-      return;
-    }
-
     if (!isIncoming && _selectedYearLevel == null) {
       _showSnackBar('Please select your year/grade level.', isError: true);
-      return;
-    }
-
-    final double? gpa = double.tryParse(gpaText);
-    if (gpa == null) {
-      _showSnackBar('Please enter a valid GPA number.', isError: true);
       return;
     }
 
@@ -330,9 +315,7 @@ class _RegisterScreenState extends State<RegisterScreen>
             school: school,
             course: course,
             yearLevel: isIncoming ? null : _selectedYearLevel,
-            gpa: double.tryParse(gpaText) ?? 0.0,
             eduLevel: _selectedEduLevel ?? 'college',
-            gpaScale: _selectedGpaScale ?? 'scale_5',
             plannedUniversity: isIncoming ? _plannedUniversityController.text.trim() : null,
             plannedCourses: isIncoming
                 ? _plannedCoursesControllers.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList()
@@ -364,9 +347,7 @@ class _RegisterScreenState extends State<RegisterScreen>
     required String school,
     required String course,
     int? yearLevel,
-    required double gpa,
     required String eduLevel,
-    required String gpaScale,
     String? plannedUniversity,
     List<String>? plannedCourses,
   }) async {
@@ -409,9 +390,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         'school': school,
         'course': course,
         if (yearLevel != null) 'year_level': yearLevel,
-        'gpa': gpa,
         'education_level': eduLevel,
-        'gpa_scale': gpaScale,
         if (plannedUniversity != null) 'planned_university': plannedUniversity,
         if (plannedCourses != null && plannedCourses.isNotEmpty) 'planned_courses': plannedCourses,
       });
@@ -867,14 +846,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     };
     final currentYearOptions = yearOptions[_selectedEduLevel ?? 'college'] ?? yearOptions['college']!;
 
-    // GWA / grade hints per scale
-    final Map<String, String> gwaHints = {
-      'scale_5':    'e.g. 1.75  (1.00 = Highest)',
-      'scale_4':    'e.g. 3.00  (4.00 = Highest)',
-      'percentage': 'e.g. 88  (out of 100)',
-    };
-    final gwaHint = gwaHints[_selectedGpaScale ?? 'scale_5'] ?? 'e.g. 1.25';
-
     final Map<String, String> schoolLabel = {
       'college': 'University / College Name *',
       'graduate': 'University / Graduate School Name *',
@@ -946,14 +917,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                   onChanged: (val) => setState(() {
                     _selectedEduLevel = val;
                     _selectedYearLevel = null;
-                    // Auto-set grading scale
-                    if (['high_school', 'elementary', 'senior_high', 'incoming_college'].contains(val)) {
-                      _selectedGpaScale = 'percentage';
-                    } else if (val == 'graduate') {
-                      _selectedGpaScale = 'scale_5';
-                    } else {
-                      _selectedGpaScale = 'scale_5';
-                    }
                   }),
                 ),
               ),
@@ -1006,106 +969,43 @@ class _RegisterScreenState extends State<RegisterScreen>
           const SizedBox(height: 4),
         ],
 
-        // ── Year / Grade Level + GWA row ──
+        // ── Year / Grade Level ──
         if (!isIncoming) ...[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      currentYearOptions.isEmpty ? 'Year / Grade Level' : 'Year / Grade Level *',
-                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.5),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceAlt,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.rule, width: 1),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: _selectedYearLevel,
-                          hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
-                          isExpanded: true,
-                          icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
-                          items: currentYearOptions.map((opt) {
-                            return DropdownMenuItem<int>(
-                              value: opt['val'] as int,
-                              child: Text(opt['label'] as String, style: GoogleFonts.inter(fontSize: 13)),
-                            );
-                          }).toList(),
-                          onChanged: (val) => setState(() => _selectedYearLevel = val),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              Text(
+                currentYearOptions.isEmpty ? 'Year / Grade Level' : 'Year / Grade Level *',
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.5),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: _buildField(
-                  label: 'GWA / Average *',
-                  controller: _gpaController,
-                  icon: LucideIcons.percent,
-                  hint: gwaHint,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.rule, width: 1),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _selectedYearLevel,
+                    hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+                    isExpanded: true,
+                    icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
+                    items: currentYearOptions.map((opt) {
+                      return DropdownMenuItem<int>(
+                        value: opt['val'] as int,
+                        child: Text(opt['label'] as String, style: GoogleFonts.inter(fontSize: 13)),
+                      );
+                    }).toList(),
+                    onChanged: (val) => setState(() => _selectedYearLevel = val),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-        ] else ...[
-          // Incoming college GWA
-          _buildField(
-            label: 'Final SHS Average / GWA *',
-            controller: _gpaController,
-            icon: LucideIcons.percent,
-            hint: 'e.g. 90  (out of 100)',
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 24),
         ],
-
-        // ── Grading Scale ──
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'GRADING SCALE *',
-              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.5),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceAlt,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.rule, width: 1),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedGpaScale,
-                  isExpanded: true,
-                  icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
-                  items: const [
-                    DropdownMenuItem(value: 'scale_5',    child: Text('Scale 1–5  (1.00 = Highest, UP-style)')),
-                    DropdownMenuItem(value: 'scale_4',    child: Text('Scale 4.0  (4.00 = Highest, DLSU-style)')),
-                    DropdownMenuItem(value: 'percentage', child: Text('Percentage  (60–100 scale)')),
-                  ],
-                  onChanged: (val) => setState(() => _selectedGpaScale = val),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
 
         // Terms checkbox
         GestureDetector(

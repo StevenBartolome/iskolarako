@@ -61,10 +61,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   // Academic Info
   final _schoolController = TextEditingController();
   final _courseController = TextEditingController();
-  final _gpaController = TextEditingController();
   int? _selectedYearLevel;
   String _educationLevel = 'college'; // college, graduate, senior_high, vocational, incoming_college
-  String _gpaScale = 'scale_5';       // scale_5, scale_4, percentage
 
   static const Map<String, String> _eduLabels = {
     'college': 'Undergraduate / College',
@@ -74,17 +72,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     'incoming_college': 'Incoming College (Graduating SHS)',
   };
 
-  static const Map<String, String> _scaleLabels = {
-    'scale_5': '1.0–5.0 Scale (1.0 = Highest)',
-    'scale_4': '4.0 Scale (4.0 = Highest)',
-    'percentage': 'Percentage Scale (60–100%)',
-  };
-
-  static const Map<String, String> _scaleExplanations = {
-    'scale_5': '1.0 is Highest / Excellent • Lower score = Better performance',
-    'scale_4': '4.0 is Highest / Outstanding • Higher score = Better performance',
-    'percentage': '100% is Highest • Percentage average grade system',
-  };
 
   String? _getSafeGenderValue() {
     if (_selectedGender == null) return null;
@@ -106,14 +93,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return 'college';
   }
 
-  String _getSafeGpaScale() {
-    if (_scaleLabels.containsKey(_gpaScale)) return _gpaScale;
-    final val = _gpaScale.toLowerCase().trim();
-    if (val.contains('5')) return 'scale_5';
-    if (val.contains('4')) return 'scale_4';
-    if (val.contains('percent') || val.contains('100')) return 'percentage';
-    return 'scale_5';
-  }
+
 
   int? _getSafeYearLevel() {
     if (_selectedYearLevel != null && _selectedYearLevel! >= 1 && _selectedYearLevel! <= 5) {
@@ -138,7 +118,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _citizenshipController.dispose();
     _schoolController.dispose();
     _courseController.dispose();
-    _gpaController.dispose();
     super.dispose();
   }
 
@@ -239,7 +218,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         _schoolController.text = dataList['school'] ?? '';
         _courseController.text = dataList['course'] ?? '';
         _selectedYearLevel = dataList['year_level'];
-        _gpaController.text = dataList['gpa'] != null ? dataList['gpa'].toString() : '';
         _selectedGender = dataList['gender'];
         _educationLevel = dataList['education_level'] ?? 'college';
         final scholarAvatar = dataList['avatar_url']?.toString().trim();
@@ -319,9 +297,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   Future<void> _saveAcademicSection() async {
     if (_schoolController.text.trim().isEmpty ||
-        _courseController.text.trim().isEmpty ||
-        _gpaController.text.trim().isEmpty ||
-        double.tryParse(_gpaController.text.trim()) == null) {
+        _courseController.text.trim().isEmpty) {
       _showSnackBar('Please fill out all required academic fields.', isError: true);
       return;
     }
@@ -338,8 +314,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           'course': _courseController.text.trim(),
           'year_level': _selectedYearLevel,
           'education_level': _educationLevel,
-          'gpa': double.tryParse(_gpaController.text.trim()),
-          'gpa_scale': _gpaScale,
           'updated_at': DateTime.now().toIso8601String(),
         }, onConflict: 'user_id');
 
@@ -911,7 +885,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         _schoolController.text.trim().isNotEmpty &&
         _courseController.text.trim().isNotEmpty &&
         _selectedYearLevel != null &&
-        _gpaController.text.trim().isNotEmpty &&
         _citizenshipController.text.trim().isNotEmpty &&
         _selectedRegionName != null &&
         _selectedProvinceName != null &&
@@ -1147,7 +1120,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     final school = _schoolController.text.trim().isNotEmpty ? _schoolController.text.trim() : 'Not specified';
     final course = _courseController.text.trim().isNotEmpty ? _courseController.text.trim() : 'Not specified';
     final year = _selectedYearLevel != null ? 'Year $_selectedYearLevel' : 'Not specified';
-    final gpa = _gpaController.text.trim().isNotEmpty ? _gpaController.text.trim() : 'Not set';
 
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -1175,33 +1147,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             icon: LucideIcons.calendar,
             label: 'Year Level',
             value: year,
-          ),
-          const Divider(height: 20, color: AppColors.rule),
-          _buildViewDetailRow(
-            icon: LucideIcons.award,
-            label: 'GPA / GWA',
-            value: gpa,
-            subtitle: _scaleLabels[_gpaScale],
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withAlpha(12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.info, size: 14, color: AppColors.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _scaleExplanations[_gpaScale] ?? 'Grading system scale configured.',
-                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.primaryDark),
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -1737,65 +1682,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           ),
           const SizedBox(height: 12),
 
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Year Level *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<int>(
-                      isExpanded: true,
-                      initialValue: _getSafeYearLevel(),
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        filled: true,
-                        fillColor: AppColors.surface,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
-                      ),
-                      hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
-                      items: const [
-                        DropdownMenuItem(value: 1, child: Text('1st Year')),
-                        DropdownMenuItem(value: 2, child: Text('2nd Year')),
-                        DropdownMenuItem(value: 3, child: Text('3rd Year')),
-                        DropdownMenuItem(value: 4, child: Text('4th Year')),
-                        DropdownMenuItem(value: 5, child: Text('5th Year')),
-                      ],
-                      onChanged: (val) => setState(() => _selectedYearLevel = val),
-                      validator: (val) => val == null ? 'Required' : null,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildTextField(
-                  controller: _gpaController,
-                  label: 'GPA / GWA *',
-                  hint: 'e.g. 1.25 or 90.5',
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  validator: (val) {
-                    if (val == null || val.trim().isEmpty) return 'Required';
-                    if (double.tryParse(val.trim()) == null) return 'Invalid';
-                    return null;
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // GPA Scale Dropdown
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Grading System / GPA Scale *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Text('Year Level *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
               const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
+              DropdownButtonFormField<int>(
                 isExpanded: true,
-                initialValue: _getSafeGpaScale(),
+                initialValue: _getSafeYearLevel(),
                 decoration: InputDecoration(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   filled: true,
@@ -1803,17 +1697,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
                 ),
-                items: _scaleLabels.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value, style: GoogleFonts.inter(fontSize: 12), overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _gpaScale = val);
-                  }
-                },
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _scaleExplanations[_gpaScale] ?? 'Grading system scale configured.',
-                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.amberDeep),
+                hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+                items: const [
+                  DropdownMenuItem(value: 1, child: Text('1st Year')),
+                  DropdownMenuItem(value: 2, child: Text('2nd Year')),
+                  DropdownMenuItem(value: 3, child: Text('3rd Year')),
+                  DropdownMenuItem(value: 4, child: Text('4th Year')),
+                  DropdownMenuItem(value: 5, child: Text('5th Year')),
+                ],
+                onChanged: (val) => setState(() => _selectedYearLevel = val),
+                validator: (val) => val == null ? 'Required' : null,
               ),
             ],
           ),

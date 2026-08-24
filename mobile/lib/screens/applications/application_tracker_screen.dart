@@ -2593,21 +2593,7 @@ class _SemestralRenewalSheetState extends State<_SemestralRenewalSheet> {
         }
       }
 
-      // 3. Update scholar profile GWA/GPA in database
-      if (gwaNumber != null) {
-        try {
-          await Supabase.instance.client
-              .from('scholar')
-              .update({
-                'gpa': gwaNumber,
-                'gwa': gwaNumber,
-                'updated_at': DateTime.now().toIso8601String(),
-              })
-              .eq('id', widget.scholarId);
-        } catch (gErr) {
-          debugPrint('Scholar GWA update note: $gErr');
-        }
-      }
+
 
       if (mounted) {
         Navigator.pop(context);

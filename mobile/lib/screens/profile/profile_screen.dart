@@ -23,7 +23,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _fullName = 'Loading...';
   String _initials = '';
   String _academicDetails = '...';
-  String _gpaText = '...';
   String? _avatarUrl;
   bool _isLoading = true;
   bool _isUploadingPhoto = false;
@@ -40,11 +39,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'incoming_college': 'Incoming College (Graduating SHS)',
   };
 
-  static const Map<String, String> _scaleLabels = {
-    'scale_5': '1.0–5.0 Scale (1.0 = Highest)',
-    'scale_4': '4.0 Scale (4.0 = Highest)',
-    'percentage': 'Percentage Scale (60–100%)',
-  };
 
   @override
   void initState() {
@@ -83,14 +77,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               final eduLevel = _eduLabels[data['education_level']?.toString()] ?? 'Undergraduate / College';
               final course = data['course'] ?? '';
               final school = data['school'] ?? '';
-              final gpa = data['gpa'] != null ? data['gpa'].toString() : 'N/A';
-              final scale = _scaleLabels[data['gpa_scale']?.toString()] ?? '1.0–5.0 Scale';
 
               final nameParts = [first, middle, last, suffix].where((s) => s.toString().trim().isNotEmpty).join(' ');
               _fullName = nameParts.trim().isNotEmpty ? nameParts : 'Scholar Student';
               _initials = '${first.isNotEmpty ? first[0] : ''}${last.isNotEmpty ? last[0] : ''}'.toUpperCase();
               _academicDetails = '$eduLevel • $course\n$school';
-              _gpaText = 'GWA: $gpa ($scale)';
               // Face verification
               _faceVerificationStatus =
                   data['face_verification_status']?.toString() ?? 'unverified';
@@ -103,7 +94,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _fullName = user.email ?? 'Scholar Student';
               _initials = 'IS';
               _academicDetails = 'Complete profile details';
-              _gpaText = 'GWA: Not set';
             }
             _isLoading = false;
           });
@@ -680,7 +670,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Manage education info, GPA, location details & security credentials',
+                      'Manage education info, location details & security credentials',
                       style: GoogleFonts.inter(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -827,23 +817,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    const Icon(LucideIcons.award, size: 16, color: AppColors.amberDeep),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _gpaText,
-                                        style: GoogleFonts.dmMono(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.primary,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
                               ],
                             ),
                           ),
@@ -900,7 +873,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _buildProfileItem(
                             icon: LucideIcons.userCheck,
                             title: 'Personal & Academic Information',
-                            subtitle: 'Education level, GPA scale, location & details',
+                            subtitle: 'Education level, location & details',
                             onTap: () async {
                               final updated = await Navigator.pushNamed(
                                   context, AppRouter.profileEdit);
