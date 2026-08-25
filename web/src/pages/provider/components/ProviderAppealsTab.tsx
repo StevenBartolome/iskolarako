@@ -48,7 +48,7 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
       // 1. Query application_appeals table
       let fetchedAppeals: AppealRecord[] = [];
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('application_appeals')
           .select(`
             *,
@@ -64,8 +64,13 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
                 )
               )
             )
-          `)
-          .order('created_at', { ascending: false });
+          `);
+
+        if (providerId) {
+          query = query.eq('provider_id', providerId);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
 
         if (!error && data) {
           fetchedAppeals = data.map((item: any) => {
@@ -117,7 +122,13 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
             .ilike('remarks', '%Formal Appeal Filed%');
 
           if (appsData && appsData.length > 0) {
-            fetchedAppeals = appsData.map((app: any) => {
+            const filteredApps = appsData.filter((app: any) => {
+              if (!providerId) return true;
+              const prog = app.cycle?.program || {};
+              return prog.provider_id === providerId;
+            });
+
+            fetchedAppeals = filteredApps.map((app: any) => {
               const prog = app.cycle?.program || {};
               const remarkStr = app.remarks || '';
               const statementMatch = remarkStr.replace('Formal Appeal Filed:', '').trim();
@@ -142,21 +153,30 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
         }
       }
 
-      // Fetch scholar names
+      // Fetch scholar names and emails
       if (fetchedAppeals.length > 0) {
         const scholarIds = Array.from(new Set(fetchedAppeals.map(a => a.scholar_id)));
         try {
           const { data: scholars } = await supabase
             .from('scholar')
-            .select('id, user_id, first_name, last_name, email')
+            .select(`
+              id,
+              user_id,
+              first_name,
+              last_name,
+              users:user_id (
+                email
+              )
+            `)
             .in('id', scholarIds);
 
           if (scholars) {
             const scholarMap = new Map();
             scholars.forEach((s: any) => {
               const name = [s.first_name, s.last_name].filter(Boolean).join(' ') || 'Scholar';
-              scholarMap.set(s.id, { name, email: s.email });
-              if (s.user_id) scholarMap.set(s.user_id, { name, email: s.email });
+              const email = (s.users as any)?.email || '';
+              scholarMap.set(s.id, { name, email });
+              if (s.user_id) scholarMap.set(s.user_id, { name, email });
             });
 
             fetchedAppeals = fetchedAppeals.map(appeal => {
