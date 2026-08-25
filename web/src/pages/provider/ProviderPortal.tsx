@@ -20,6 +20,7 @@ import { ProviderAppealsTab } from './components/ProviderAppealsTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
 import { ProviderNotificationDrawer } from './components/ProviderNotificationDrawer';
 import { sendProviderAnnouncement, fetchProviderBroadcasts, deleteNotification, sendDecisionNotification } from '@/services/notificationService';
+import { createAuditLog } from '@/services/auditLogService';
 import type {
   ProviderPortalProps,
   TabType,
@@ -671,6 +672,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         setNewAnnTitle('');
         setNewAnnBody('');
         await fetchBroadcasts();
+        const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+        createAuditLog(
+          'BROADCAST ANNOUNCEMENT',
+          `Target: ${newAnnAudience} - Program: ${matchedProg ? matchedProg.title : 'All'} - Title: ${newAnnTitle.trim()}`,
+          actor
+        );
       } else {
         showToast(`Broadcast failed: ${res.error || 'Unknown error'}`);
       }
@@ -1515,6 +1522,15 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       );
       showToast(`Application updated to ${nextStatus}.`);
     }
+
+    if (applicant) {
+      const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+      createAuditLog(
+        `UPDATED APPLICANT STATUS: ${nextStatus.toUpperCase()}`,
+        `Applicant: ${applicant.name} - Program: ${applicant.program}`,
+        actor
+      );
+    }
   };
 
   // Interactive Disbursements State (loaded from Supabase)
@@ -1666,6 +1682,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         showToast('Error closing program.');
       } else {
         showToast(`"${programToClose.title}" has been closed.`);
+        const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+        createAuditLog('CLOSED PROGRAM', `Program: ${programToClose.title}`, actor);
         await fetchPrograms();
       }
     } catch (err) {
@@ -1809,6 +1827,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         }
 
         showToast(`Cycle "${renewCycleName}" updated successfully!`);
+        const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+        createAuditLog('UPDATED CYCLE', `Program: ${selectedProgramForRenewal.title} - Cycle: ${renewCycleName}`, actor);
       } else {
         // ─── Insert New Cycle ───
         const insertPayload: any = {
@@ -1957,6 +1977,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         }
 
         showToast(`Successfully opened "${renewCycleName}" with ${renewRequirements.length} required documents!`);
+        const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+        createAuditLog('OPENED CYCLE', `Program: ${selectedProgramForRenewal.title} - Cycle: ${renewCycleName}`, actor);
       }
 
       // If editing renewal cycle, also sync requirements to program
@@ -2155,6 +2177,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       } : null);
 
       showToast('Verification request submitted successfully!');
+      const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+      createAuditLog('SUBMITTED PROVIDER VERIFICATION REQUEST', providerDetails.name, actor);
     } catch (err: any) {
       console.error('Error submitting verification:', err);
       showToast(`Submission failed: ${err.message}`);
@@ -2188,6 +2212,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       } : null);
 
       showToast('Successfully unsubmitted verification request. You can now modify your documents.');
+      const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+      createAuditLog('UNSUBMITTED PROVIDER VERIFICATION REQUEST', providerDetails.name, actor);
     } catch (err: any) {
       console.error('Error unsubmitting verification:', err);
       showToast(`Failed to unsubmit: ${err.message}`);
@@ -2768,6 +2794,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   }
 
                   showToast('Program and intake schedule updated successfully!');
+                  const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+                  createAuditLog('UPDATED PROGRAM', `Program: ${formData.title}`, actor);
                   await fetchPrograms();
                   setSelectedProgram(null);
                   setActiveTab('programs');
@@ -2829,6 +2857,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                       status: cycleStatus,
                     });
                   showToast('Program and application cycle published successfully!');
+                  const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+                  createAuditLog('PUBLISHED PROGRAM', `Program: ${formData.title}`, actor);
                   await fetchPrograms();
                   setSelectedProgram(null);
                   setActiveTab('programs');

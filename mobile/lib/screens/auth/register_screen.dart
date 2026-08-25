@@ -11,6 +11,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'package:iskoako/services/audit_log_service.dart';
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
   @override
@@ -397,6 +399,7 @@ class _RegisterScreenState extends State<RegisterScreen>
 
       if (!mounted) return;
       _showSnackBar('Registration successful! Welcome to IskolarAko, $first.', isError: false);
+      AuditLogService.createAuditLog(action: 'REGISTER / SIGNUP', target: 'Scholar: $first $last');
       Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false);
     } on AuthException catch (e) {
       _showSnackBar(e.message, isError: true);

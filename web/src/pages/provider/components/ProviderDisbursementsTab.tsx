@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { DisbursementTx } from '../types';
 import { supabase } from '@/services/supabaseClient';
+import { createAuditLog } from '@/services/auditLogService';
 import { ProviderBatchDisbursementModal } from './ProviderBatchDisbursementModal';
 import { ScholarBankUploadModal } from '@/components/scholar/ScholarBankUploadModal';
 import { DisbursementRefundModal, type DisbursementActionType, type DisbursementItem } from './DisbursementRefundModal';
@@ -182,6 +183,13 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         showToast?.('Failed to top up program budget.');
       } else {
         showToast?.(`Successfully added ₱${addAmt.toLocaleString()} to "${topUpProgram.title}" budget!`);
+        const { data: userData } = await supabase.auth.getUser();
+        const actor = userData?.user?.email || 'Provider';
+        createAuditLog(
+          'TOPPED UP PROGRAM BUDGET',
+          `Program: ${topUpProgram.title} - Added: ₱${addAmt.toLocaleString()}`,
+          actor
+        );
         setTopUpProgram(null);
         setTopUpAmount('');
         if (fetchPrograms) await fetchPrograms();
@@ -243,6 +251,13 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       if (showToast) {
         showToast(`PayMongo Payment Gateway Authorized! Releasing ₱${numAmount.toLocaleString()} to ${scholarName} (processing on Polygon blockchain...)`);
       }
+      const { data: userData } = await supabase.auth.getUser();
+      const actor = userData?.user?.email || 'Provider';
+      createAuditLog(
+        'RELEASED FUNDS',
+        `Scholar: ${scholarName} - Amount: ₱${numAmount.toLocaleString()}`,
+        actor
+      );
     } catch (err) {
       console.error('PayMongo Gateway return exception:', err);
     } finally {
@@ -729,6 +744,11 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
       // Open REAL PayMongo Payment Gateway Checkout Window in a new tab!
       window.open(checkoutUrl, '_blank');
+      createAuditLog(
+        'INITIATED DISBURSEMENT',
+        `Scholar: ${selected.scholarName} - Amount: ₱${numAmount.toLocaleString()}`,
+        currentUser.email || 'Provider'
+      );
     } catch (err: any) {
       console.error('Payment Authorization Error:', err);
       setGatewayAuthError(err.message || 'Authorization failed.');

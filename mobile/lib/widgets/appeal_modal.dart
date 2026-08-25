@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/constants/app_colors.dart';
+import 'package:iskoako/services/audit_log_service.dart';
 
 class AppealModal extends StatefulWidget {
   final String applicationId;
@@ -160,6 +161,10 @@ class _AppealModalState extends State<AppealModal> {
 
       if (mounted) {
         Navigator.pop(context);
+        AuditLogService.createAuditLog(
+          action: 'FILED APPEAL',
+          target: 'App ID: ${widget.applicationId} | Scholarship: ${widget.scholarshipName}',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Formal Appeal filed successfully! Provider has been notified.'),

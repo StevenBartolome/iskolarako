@@ -92,7 +92,7 @@ export interface TransactionRecord {
 }
 
 export interface AuditLogEntry {
-  id: number;
+  id: string | number;
   admin: string;
   action: string;
   target: string;

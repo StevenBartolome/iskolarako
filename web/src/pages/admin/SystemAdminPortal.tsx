@@ -18,6 +18,7 @@ import { AdminLogsTab } from './components/AdminLogsTab';
 import { AdminSettingsTab } from './components/AdminSettingsTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
 import { sendAdminAnnouncement, fetchAdminBroadcasts, deleteNotification } from '@/services/notificationService';
+import { fetchAuditLogs, createAuditLog } from '@/services/auditLogService';
 import type {
   SystemAdminPortalProps,
   AdminTab,
@@ -349,11 +350,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   ]);
 
 
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([
-    { id: 901, admin: 'admin01', action: 'LOGIN', target: 'System', date: 'Aug 09, 2026', time: '06:30 PM', ip: '192.168.1.45' },
-    { id: 902, admin: 'admin01', action: 'SUSPENDED PROVIDER', target: 'Starlight Grants Inc.', date: 'Aug 09, 2026', time: '04:12 PM', ip: '192.168.1.45' },
-    { id: 903, admin: 'admin02', action: 'APPROVED PROVIDER', target: 'Department of Science and Technology', date: 'Aug 08, 2026', time: '02:45 PM', ip: '192.168.1.99' }
-  ]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
 
   // Dashboard Metrics State
   const [dashboardMetrics, setDashboardMetrics] = useState<{
@@ -426,6 +423,38 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       fetchCategories();
     }
   }, [activeTab]);
+
+  const fetchLogs = async () => {
+    try {
+      const logs = await fetchAuditLogs();
+      setAuditLogs(logs);
+    } catch (err) {
+      console.error('Error fetching audit logs:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'logs' || activeTab === 'dashboard' || activeTab === 'reports') {
+      fetchLogs();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('audit-logs-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'audit_logs' },
+        () => {
+          fetchLogs();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const fetchRealProviders = async () => {
     try {
@@ -1131,17 +1160,14 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const addAuditLog = (action: string, target: string) => {
-    const newLog: AuditLogEntry = {
-      id: Date.now(),
-      admin: 'admin01',
-      action,
-      target,
-      date: 'Aug 09, 2026',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      ip: '192.168.1.45'
-    };
-    setAuditLogs(prev => [newLog, ...prev]);
+  const addAuditLog = async (action: string, target: string) => {
+    try {
+      const adminUser = profile ? `${profile.firstName} ${profile.lastName}`.trim() : 'admin01';
+      const newLog = await createAuditLog(action, target, adminUser || 'admin01');
+      setAuditLogs(prev => [newLog, ...prev]);
+    } catch (err) {
+      console.error('Error adding audit log:', err);
+    }
   };
 
   // HANDLERS

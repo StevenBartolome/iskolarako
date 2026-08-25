@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/custom_button.dart';
 import 'package:iskoako/widgets/app_components.dart';
+import 'package:iskoako/services/audit_log_service.dart';
 
 class DocumentUploadScreen extends StatefulWidget {
   const DocumentUploadScreen({super.key});
@@ -546,6 +547,10 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 
       await Supabase.instance.client.from('scholarship_applications').insert(payload);
       submitSuccess = true;
+      AuditLogService.createAuditLog(
+        action: 'SUBMITTED SCHOLARSHIP APPLICATION',
+        target: 'Program: ${_program?['title'] ?? 'Unknown'} | Ref: $refNum',
+      );
     } on PostgrestException catch (pe) {
       debugPrint('PostgrestException submitting application: ${pe.code} - ${pe.message}');
       if (pe.code == '42501') {

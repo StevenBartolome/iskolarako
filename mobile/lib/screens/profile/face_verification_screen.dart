@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/services/face_verification_service.dart';
+import 'package:iskoako/services/audit_log_service.dart';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
@@ -537,6 +538,18 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             'face_verification_reason': result.reason,
           }).eq('user_id', user.id);
         }
+      }
+      
+      if (result.isMatch) {
+        AuditLogService.createAuditLog(
+          action: 'FACE VERIFICATION SUCCESS',
+          target: 'Confidence: ${(result.confidence * 100).toStringAsFixed(1)}%',
+        );
+      } else {
+        AuditLogService.createAuditLog(
+          action: 'FACE VERIFICATION FAILED',
+          target: result.reason,
+        );
       }
 
       if (mounted) {

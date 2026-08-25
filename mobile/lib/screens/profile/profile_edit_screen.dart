@@ -11,6 +11,8 @@ import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/widgets/custom_button.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:iskoako/services/audit_log_service.dart';
+
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
 
@@ -319,6 +321,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
         if (mounted) {
           _showSnackBar('Academic details updated successfully!', isError: false);
+          AuditLogService.createAuditLog(action: 'UPDATED ACADEMIC DETAILS', target: 'Scholar Profile');
           setState(() => _editingAcademic = false);
         }
       } catch (e) {
@@ -357,6 +360,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
         if (mounted) {
           _showSnackBar('Personal details updated successfully!', isError: false);
+          AuditLogService.createAuditLog(action: 'UPDATED PERSONAL DETAILS', target: 'Scholar Profile');
           setState(() => _editingPersonal = false);
         }
       } catch (e) {
@@ -393,6 +397,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
         if (mounted) {
           _showSnackBar('Location & address updated successfully!', isError: false);
+          AuditLogService.createAuditLog(action: 'UPDATED ADDRESS DETAILS', target: 'Scholar Profile');
           setState(() => _editingAddress = false);
         }
       } catch (e) {

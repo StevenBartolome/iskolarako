@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/services/ai_extraction_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:iskoako/services/audit_log_service.dart';
 
 const List<String> kPhilippineBanks = [
   'Landbank of the Philippines',
@@ -301,6 +302,10 @@ class _BankAccountModalState extends State<BankAccountModal> {
 
       if (mounted) {
         Navigator.pop(context);
+        AuditLogService.createAuditLog(
+          action: 'REGISTERED BANK DETAILS',
+          target: 'Bank: $_selectedBank | Account: ${_accountNumberController.text}',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

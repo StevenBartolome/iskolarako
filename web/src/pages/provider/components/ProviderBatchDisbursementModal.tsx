@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/services/supabaseClient';
 import { ScholarBankUploadModal } from '@/components/scholar/ScholarBankUploadModal';
+import { createAuditLog } from '@/services/auditLogService';
 
 interface ProviderBatchDisbursementModalProps {
   isOpen: boolean;
@@ -489,6 +490,11 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
         const checkoutUrl = funcData?.checkoutUrl;
         if (checkoutUrl) {
           window.open(checkoutUrl, '_blank');
+          createAuditLog(
+            'INITIATED BATCH DISBURSEMENT',
+            `Scholar: ${row.scholarName} - Amount: ₱${row.amount.toLocaleString()}`,
+            currentUser.email || 'Provider'
+          );
         }
 
         // 2. Budget safeguard & UI Update (Webhook handles db insert on authorization)

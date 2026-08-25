@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/services/supabaseClient';
+import { createAuditLog } from '@/services/auditLogService';
 import { sendDecisionNotification } from '@/services/notificationService';
 
 export interface AppealRecord {
@@ -255,6 +256,14 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
         newStatus === 'approved'
           ? `Appeal Accepted! Application re-opened for ${appeal.scholar_name}.`
           : `Appeal decision recorded. Rejection upheld for ${appeal.scholar_name}.`
+      );
+
+      const { data: userData } = await supabase.auth.getUser();
+      const actor = userData?.user?.email || 'Provider';
+      createAuditLog(
+        `RESOLVED APPEAL: ${newStatus.toUpperCase()}`,
+        `Scholar: ${appeal.scholar_name || 'Scholar'} - Program: ${appeal.program_title || 'Scholarship'}`,
+        actor
       );
 
       setSelectedAppeal(null);

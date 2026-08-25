@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Program, ProviderDetails } from '../types';
 import { supabase } from '@/services/supabaseClient';
+import { createAuditLog } from '@/services/auditLogService';
 
 interface ProviderProgramsTabProps {
   providerDetails: ProviderDetails | null;
@@ -70,6 +71,13 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
         showToast('Failed to top up program budget.');
       } else {
         showToast(`Successfully added ₱${addAmt.toLocaleString()} to "${topUpProgram.title}" budget!`);
+        const { data: userData } = await supabase.auth.getUser();
+        const actor = userData?.user?.email || 'Provider';
+        createAuditLog(
+          'TOPPED UP PROGRAM BUDGET',
+          `Program: ${topUpProgram.title} - Added: ₱${addAmt.toLocaleString()}`,
+          actor
+        );
         setTopUpProgram(null);
         setTopUpAmount('');
         fetchPrograms();

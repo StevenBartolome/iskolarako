@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/services/supabaseClient';
+import { createAuditLog } from '@/services/auditLogService';
 
 interface ProfileSettingsTabProps {
   showToast: (msg: string) => void;
@@ -102,6 +103,8 @@ export const ProfileSettingsTab: React.FC<ProfileSettingsTabProps> = ({
         return;
       }
 
+      createAuditLog('UPDATED PROFILE SETTINGS', `User: ${firstName.trim()} ${lastName.trim()}`, user.email || 'User');
+
       if (password) {
         const { error: pwErr } = await supabase.auth.updateUser({ password });
         if (pwErr) {
@@ -110,6 +113,7 @@ export const ProfileSettingsTab: React.FC<ProfileSettingsTabProps> = ({
         } else {
           setPassword('');
           setConfirmPassword('');
+          createAuditLog('CHANGED PASSWORD', `User: ${firstName.trim()} ${lastName.trim()}`, user.email || 'User');
         }
       }
 
@@ -124,6 +128,7 @@ export const ProfileSettingsTab: React.FC<ProfileSettingsTabProps> = ({
           showToast(`Profile saved, but organization name update failed: ${provErr.message}`);
         } else {
           onProviderUpdated?.(providerName.trim());
+          createAuditLog('UPDATED PROVIDER ORGANIZATION NAME', `Provider: ${providerName.trim()}`, user.email || 'User');
         }
       }
 

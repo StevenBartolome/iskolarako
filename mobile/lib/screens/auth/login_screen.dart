@@ -7,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:iskoako/services/audit_log_service.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -200,6 +202,7 @@ class _LoginScreenState extends State<LoginScreen>
       if (!mounted) return;
       debugPrint('[Login] Login successful! Navigating to Home...');
       _showSnackBar('Welcome back, $firstName!', isError: false);
+      AuditLogService.createAuditLog(action: 'LOGIN', target: 'Mobile App');
       Navigator.pushReplacementNamed(context, AppRouter.home);
     } on AuthException catch (e) {
       debugPrint('[Login] AuthException: ${e.message} (Status code: ${e.statusCode})');

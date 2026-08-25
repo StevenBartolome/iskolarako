@@ -6,6 +6,7 @@ import {
   type ApplicantVerificationContext,
 } from '@/services/aiExtractionService';
 import { supabase } from '@/services/supabaseClient';
+import { createAuditLog } from '@/services/auditLogService';
 
 interface ProviderViewApplicationTabProps {
   application: ApplicationDetail | null;
@@ -311,6 +312,14 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
         if (application) {
           application.submittedDocuments = updatedDocsJson;
         }
+
+        const { data: userData } = await supabase.auth.getUser();
+        const actor = userData?.user?.email || 'Provider';
+        createAuditLog(
+          `MARKED DOCUMENT ${newDocStatus.toUpperCase()}`,
+          `Doc: ${doc.name} - Applicant: ${application.name}`,
+          actor
+        );
       }
     } catch (err) {
       console.warn('[Save Doc Status Note in Tab]:', err);
