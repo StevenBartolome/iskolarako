@@ -109,7 +109,7 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
         final programsData = await Supabase.instance.client
             .from('scholarship_programs')
             .select('*, provider:provider_id(*), cycles:application_cycles(*)')
-            .filter('status', 'in', ['active', 'Active', 'approved', 'Approved']);
+            .neq('status', 'closed');
 
         if (mounted) {
           setState(() {

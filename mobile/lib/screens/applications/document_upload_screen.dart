@@ -5,9 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:iskoako/constants/app_colors.dart';
-import 'package:iskoako/widgets/custom_button.dart';
-import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/services/audit_log_service.dart';
 
 class DocumentUploadScreen extends StatefulWidget {
@@ -18,9 +15,6 @@ class DocumentUploadScreen extends StatefulWidget {
 }
 
 class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
-  final int _step = 2; // Step 2 is document upload (after details / before review)
-  static const int _totalSteps = 3;
-
   List<_DocItem> _docs = [];
   Map<String, dynamic>? _scholar;
   Map<String, dynamic>? _program;
@@ -55,26 +49,25 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   void _initializeRequirements() {
     final reqs = _program?['application_requirements'];
     if (reqs == null) {
-      // Fallback default requirements
       _docs = [
         const _DocItem(
           name: 'PSA Birth Certificate',
-          hint: 'Required · Not yet uploaded',
+          hint: 'Required · PDF or Image',
           status: _DocStatus.notUploaded,
         ),
         const _DocItem(
-          name: 'Form 138 / Report Card',
-          hint: 'Required · Not yet uploaded',
+          name: 'Form 138 / Report Card or TOR',
+          hint: 'Required · PDF or Image',
           status: _DocStatus.notUploaded,
         ),
         const _DocItem(
-          name: 'ITR or Cert. of Indigency',
-          hint: 'Required · Not yet uploaded',
+          name: 'ITR or Certificate of Indigency',
+          hint: 'Required · PDF or Image',
           status: _DocStatus.notUploaded,
         ),
         const _DocItem(
-          name: 'Valid Government ID',
-          hint: 'Required · Not yet uploaded',
+          name: 'Valid Government or Student ID',
+          hint: 'Required · PDF or Image',
           status: _DocStatus.notUploaded,
         ),
       ];
@@ -100,7 +93,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         if (name.isNotEmpty) {
           loadedDocs.add(_DocItem(
             name: name,
-            hint: isRequired ? 'Required · Not yet uploaded' : 'Optional',
+            hint: isRequired ? 'Required · PDF or Image' : 'Optional',
             status: isRequired ? _DocStatus.notUploaded : _DocStatus.optional,
           ));
         }
@@ -110,7 +103,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     if (loadedDocs.isEmpty) {
       loadedDocs.add(const _DocItem(
         name: 'Scholarship Application Form',
-        hint: 'Required · Not yet uploaded',
+        hint: 'Required · PDF or Image',
         status: _DocStatus.notUploaded,
       ));
     }
@@ -121,7 +114,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   }
 
   String get _scholarFullName {
-    if (_scholar == null) return 'N/A';
+    if (_scholar == null) return 'Scholar Applicant';
     final first = _scholar!['first_name'] ?? '';
     final middle = _scholar!['middle_name'] ?? '';
     final last = _scholar!['last_name'] ?? '';
@@ -183,7 +176,6 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     if (user == null) return null;
 
     try {
-      // 1. Ensure user row exists in public.users table
       try {
         final existingUser = await Supabase.instance.client
             .from('users')
@@ -208,7 +200,6 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         debugPrint('Note checking public.users table: $uErr');
       }
 
-      // 2. Fetch or insert scholar row in public.scholar table
       final existingScholar = await Supabase.instance.client
           .from('scholar')
           .select()
@@ -220,7 +211,6 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         return existingScholar;
       }
 
-      // If no scholar row exists, insert one
       final firstName = user.userMetadata?['first_name']?.toString() ?? 'Scholar';
       final lastName = user.userMetadata?['last_name']?.toString() ?? 'Student';
       final school = user.userMetadata?['school']?.toString();
@@ -259,50 +249,56 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       showModalBottomSheet(
         context: context,
         shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         builder: (context) {
           return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(LucideIcons.trash2, color: AppColors.error),
-                  title: Text(
-                    'Remove ${doc.name}',
-                    style: GoogleFonts.inter(
-                        color: AppColors.error, fontWeight: FontWeight.w600),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Icon(LucideIcons.trash2, color: Color(0xFFB91C1C)),
+                    title: Text(
+                      'Remove ${doc.name}',
+                      style: GoogleFonts.inter(
+                          color: const Color(0xFFB91C1C), fontWeight: FontWeight.w700),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      setState(() {
+                        final idx = _docs.indexOf(doc);
+                        if (idx != -1) {
+                          final isRequired = doc.hint.toLowerCase().contains('required') ||
+                              doc.status == _DocStatus.notUploaded;
+                          _docs[idx] = _DocItem(
+                            name: doc.name,
+                            hint: isRequired
+                                ? 'Required · PDF or Image'
+                                : 'Optional',
+                            status: isRequired
+                                ? _DocStatus.notUploaded
+                                : _DocStatus.optional,
+                          );
+                        }
+                      });
+                    },
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    setState(() {
-                      final idx = _docs.indexOf(doc);
-                      if (idx != -1) {
-                        final isRequired = doc.hint.toLowerCase().contains('required') ||
-                            doc.status == _DocStatus.notUploaded;
-                        _docs[idx] = _DocItem(
-                          name: doc.name,
-                          hint: isRequired
-                              ? 'Required · Not yet uploaded'
-                              : 'Optional',
-                          status: isRequired
-                              ? _DocStatus.notUploaded
-                              : _DocStatus.optional,
-                        );
-                      }
-                    });
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(LucideIcons.eye),
-                  title: Text('View File', style: GoogleFonts.inter()),
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Opening ${doc.filename}...')),
-                    );
-                  },
-                ),
-              ],
+                  ListTile(
+                    leading: const Icon(LucideIcons.fileText, color: Color(0xFF1E3D2F)),
+                    title: Text('View File (${doc.filename})', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Viewing ${doc.filename}...'),
+                          backgroundColor: const Color(0xFF1E3D2F),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -345,7 +341,6 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                 final timeStamp = DateTime.now().millisecondsSinceEpoch;
                 final storagePath = '$scholarId/${cycleId}_${timeStamp}_$fileName';
 
-                // 1. Try Supabase storage upload & ensure bucket exists
                 try {
                   try {
                     await Supabase.instance.client.storage.createBucket(
@@ -364,7 +359,6 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                       .from('scholar-documents')
                       .getPublicUrl(storagePath);
                 } catch (_) {
-                  // Fallback: convert bytes to Data URL if storage bucket doesn't exist
                   final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
                   String mimeType = 'application/pdf';
                   if (ext == 'jpg' || ext == 'jpeg') {
@@ -411,8 +405,8 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 
             messenger.showSnackBar(
               SnackBar(
-                content: Text('Successfully uploaded $fileName for ${doc.name}!'),
-                backgroundColor: AppColors.primary,
+                content: Text('Successfully attached $fileName for ${doc.name}!'),
+                backgroundColor: const Color(0xFF1E3D2F),
               ),
             );
           },
@@ -436,26 +430,26 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
-              const Icon(LucideIcons.alertTriangle, color: AppColors.error),
+              const Icon(LucideIcons.alertTriangle, color: Color(0xFFB91C1C)),
               const SizedBox(width: 8),
               Text(
                 'No Active Cycle',
-                style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w800),
+                style: GoogleFonts.inter(fontWeight: FontWeight.w800),
               ),
             ],
           ),
           content: Text(
             'This scholarship program currently has no active application cycle open.',
-            style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF6B7280)),
           ),
           actions: [
             ElevatedButton(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                backgroundColor: const Color(0xFF1E3D2F),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
+              child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -470,26 +464,26 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
-              const Icon(LucideIcons.alertTriangle, color: AppColors.amber),
+              const Icon(LucideIcons.alertTriangle, color: Color(0xFFD97706)),
               const SizedBox(width: 8),
               Text(
-                'Incomplete Uploads',
-                style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w800),
+                'Incomplete Requirements',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w800),
               ),
             ],
           ),
           content: Text(
             'Please upload all required documents before submitting your application.',
-            style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF6B7280)),
           ),
           actions: [
             ElevatedButton(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                backgroundColor: const Color(0xFF1E3D2F),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
+              child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -510,7 +504,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Unable to resolve scholar profile. Please complete your profile first.'),
-            backgroundColor: AppColors.error,
+            backgroundColor: Color(0xFFB91C1C),
           ),
         );
       }
@@ -537,7 +531,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       final payload = {
         'cycle_id': cycleId,
         'scholar_id': scholarId,
-        'status': 'pending', // Per DB CHECK constraint (pending, under_review, for_exam, approved, rejected, withdrawn)
+        'status': 'pending',
         'submitted_documents': {
           'reference_number': refNum,
           'documents': uploadedDocsList,
@@ -578,12 +572,12 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
-              const Icon(LucideIcons.alertTriangle, color: AppColors.error),
+              const Icon(LucideIcons.alertTriangle, color: Color(0xFFB91C1C)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Submission Error',
-                  style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w800),
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
                 ),
               ),
             ],
@@ -591,111 +585,152 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           content: SingleChildScrollView(
             child: Text(
               errorMessage ?? 'An error occurred while submitting your application.',
-              style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+              style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF6B7280)),
             ),
           ),
           actions: [
             ElevatedButton(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                backgroundColor: const Color(0xFF1E3D2F),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
+              child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
             ),
           ],
         ),
       );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 16),
-            Container(
-              width: 64,
-              height: 64,
-              decoration: const BoxDecoration(
-                color: AppColors.successBg,
-                shape: BoxShape.circle,
+    } else {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFDCFCE7),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(LucideIcons.checkCheck, color: Color(0xFF16A34A), size: 32),
+                ),
               ),
-              child: const Icon(LucideIcons.checkCircle2, color: AppColors.primary, size: 36),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Application Submitted!',
-              style: GoogleFonts.playfairDisplay(
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-                color: AppColors.primaryDark,
+              const SizedBox(height: 16),
+              Text(
+                'Application Submitted!',
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF111827),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Ref #: $refNum',
-              style: GoogleFonts.dmMono(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: AppColors.primary,
+              const SizedBox(height: 6),
+              Text(
+                'Reference #: $refNum',
+                style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF15803D),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Your application for ${_program?['title'] ?? 'this scholarship'} has been submitted successfully.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 24),
-            CustomButton(
-              text: 'Back to Dashboard',
-              onPressed: () {
-                Navigator.pop(context); // Pop dialog
-                Navigator.pop(context); // Pop upload screen
-                Navigator.pop(context); // Pop detail screen
-              },
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'Your application for ${_program?['title'] ?? 'this scholarship'} has been submitted successfully to the scholarship provider.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(fontSize: 12.5, color: const Color(0xFF6B7280), height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context); // Pop dialog
+                    Navigator.pop(context); // Pop upload screen
+                    Navigator.pop(context); // Pop detail screen
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3D2F),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Return to Dashboard',
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final programTitle = _program?['title'] ?? 'Scholarship Program';
+    final providerName = (_program?['provider'] as Map<String, dynamic>?)?['name'] ?? 'Provider';
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFFAFCFA),
       body: Column(
         children: [
-          _buildHeader(context),
+          _buildHeader(context, programTitle),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Application Summary Hero Card
+                  _buildUploadHeroCard(programTitle, providerName),
                   const SizedBox(height: 20),
-                  _buildUploadZone(),
-                  const SizedBox(height: 22),
-                  const SectionHeading(title: 'Required Documents'),
+
+                  // Required Documents Section Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'REQUIRED DOCUMENTS',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF1E3D2F),
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _canSubmit ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '$_uploadedCount of $_requiredCount Uploaded',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _canSubmit ? const Color(0xFF15803D) : const Color(0xFFD97706),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
-                  ..._docs.map((d) => _DocTile(
-                        doc: d,
-                        onTap: () => _handleUpload(d),
-                      )),
-                  const SizedBox(height: 22),
-                  const SectionHeading(title: 'Personal Information'),
-                  const SizedBox(height: 12),
-                  _buildField('Full Name', _scholarFullName),
-                  const SizedBox(height: 10),
-                  _buildField('Course & Year', _scholarCourseAndYear),
-                  const SizedBox(height: 10),
-                  _buildField('School / University', _scholarSchool),
+
+                  // Document Tiles List
+                  ..._docs.map((d) => _buildDocTile(d)),
+                  const SizedBox(height: 20),
+
+                  // Scholar Verification Card
+                  _buildScholarInfoCard(),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -703,47 +738,59 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border(top: BorderSide(color: AppColors.rule)),
-          ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, -3),
+            ),
+          ],
+        ),
+        child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: CustomButton(
-                      text: 'Save Draft',
-                      isOutlined: true,
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Draft saved successfully!')),
-                        );
-                      },
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _isSubmitting ? null : _submitApplication,
+                  icon: _isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(LucideIcons.send, size: 16),
+                  label: Text(
+                    _isSubmitting ? 'Submitting Application...' : 'Submit Application',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: CustomButton(
-                      text: 'Submit Application',
-                      icon: LucideIcons.send,
-                      isLoading: _isSubmitting,
-                      onPressed: _submitApplication,
-                    ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3D2F),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
                   ),
-                ],
+                ),
               ),
               const SizedBox(height: 8),
               Text(
-                '$_uploadedCount of $_requiredCount documents uploaded · Complete all required files to submit',
+                '$_uploadedCount of $_requiredCount required documents uploaded · All files encrypted',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
-                    fontSize: 10, color: AppColors.textMuted),
+                  fontSize: 10.5,
+                  color: const Color(0xFF6B7280),
+                ),
               ),
             ],
           ),
@@ -752,195 +799,360 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  // ─── Header ─────────────────────────────────────────────────────────────────
+  Widget _buildHeader(BuildContext context, String programTitle) {
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-        child: Column(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.diamond_rounded,
-                      size: 14,
-                      color: AppColors.amber,
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
-                    const SizedBox(width: 6),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    LucideIcons.chevronLeft,
+                    color: Color(0xFF111827),
+                    size: 18,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.shieldCheck,
+                        size: 14,
+                        color: Color(0xFFD97706),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'SUBMIT APPLICATION',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFD97706),
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Upload Requirements',
+                    style: GoogleFonts.inter(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111827),
+                      height: 1.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Attach documents for $programTitle',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: const Color(0xFF6B7280),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Image.asset(
+              'assets/books-hats-icon.png',
+              width: 75,
+              height: 65,
+              fit: BoxFit.contain,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Hero Progress Card ─────────────────────────────────────────────────────
+  Widget _buildUploadHeroCard(String programTitle, String providerName) {
+    final progress = _requiredCount > 0 ? _uploadedCount / _requiredCount : 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(LucideIcons.fileUp, color: Color(0xFF16A34A), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      'DOCUMENT REPOSITORY',
+                      programTitle,
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111827),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      providerName,
+                      style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF6B7280)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Upload Progress',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF15803D)),
+              ),
+              Text(
+                '${(progress * 100).toInt()}% Complete',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: const Color(0xFF15803D)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: const Color(0xFFDCFCE7),
+              color: const Color(0xFF16A34A),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Document Tile Component ───────────────────────────────────────────────
+  Widget _buildDocTile(_DocItem doc) {
+    final isUploaded = doc.status == _DocStatus.uploaded;
+    final isOptional = doc.status == _DocStatus.optional;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isUploaded ? const Color(0xFFF0FDF4) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isUploaded ? const Color(0xFFDCFCE7) : const Color(0xFFE5E7EB),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: isUploaded ? const Color(0xFFDCFCE7) : (isOptional ? const Color(0xFFF3F4F6) : const Color(0xFFFEF3C7)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isUploaded ? LucideIcons.checkCircle2 : (isOptional ? LucideIcons.fileText : LucideIcons.fileUp),
+                  size: 18,
+                  color: isUploaded ? const Color(0xFF16A34A) : (isOptional ? const Color(0xFF6B7280) : const Color(0xFFD97706)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doc.name,
+                      style: GoogleFonts.inter(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111827),
+                      ),
+                    ),
+                    Text(
+                      isUploaded ? '${doc.filename} · ${doc.filesize}' : doc.hint,
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.amberDeep,
-                        letterSpacing: 1.2,
+                        color: isUploaded ? const Color(0xFF15803D) : const Color(0xFF6B7280),
                       ),
                     ),
                   ],
                 ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.rule, width: 0.8),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primaryDark.withAlpha(10),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        LucideIcons.chevronLeft,
-                        color: AppColors.primary,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'Upload\ndocuments.',
-                  style: GoogleFonts.playfairDisplay(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primaryDark,
-                    height: 1.15,
-                  ),
-                ),
-                Row(
-                  children: List.generate(_totalSteps, (i) {
-                    final active = i == _step - 1;
-                    final done = i < _step - 1;
-                    return Container(
-                      margin: const EdgeInsets.only(left: 6),
-                      width: active ? 22 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: done
-                            ? AppColors.primary
-                            : active
-                                ? AppColors.amber
-                                : AppColors.rule,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    );
-                  }),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Step $_step of $_totalSteps — Upload requirements for verification',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: AppColors.textSecondary,
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUploadZone() {
-    return GestureDetector(
-      onTap: () {
-        final firstPending = _docs.firstWhere(
-          (d) => d.status == _DocStatus.notUploaded || d.status == _DocStatus.optional || d.status == _DocStatus.pending,
-          orElse: () => _docs.first,
-        );
-        _handleUpload(firstPending);
-      },
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-        decoration: BoxDecoration(
-          color: AppColors.successBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: AppColors.primary.withAlpha(80),
-              width: 1.5,
-              strokeAlign: BorderSide.strokeAlignInside),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isUploaded ? const Color(0xFFDCFCE7) : (isOptional ? const Color(0xFFF3F4F6) : const Color(0xFFFEF3C7)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  isUploaded ? 'Attached' : (isOptional ? 'Optional' : 'Required'),
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: isUploaded ? const Color(0xFF15803D) : (isOptional ? const Color(0xFF6B7280) : const Color(0xFFD97706)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => _handleUpload(doc),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: AppColors.primary.withAlpha(22),
-                borderRadius: BorderRadius.circular(14),
+                color: isUploaded ? Colors.white : const Color(0xFFFAFCFA),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isUploaded ? const Color(0xFFDCFCE7) : const Color(0xFFD1D5DB),
+                  width: 1,
+                ),
               ),
-              child: const Icon(LucideIcons.uploadCloud,
-                  color: AppColors.primary, size: 26),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Tap to upload or pick a file',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primary,
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isUploaded ? LucideIcons.rotateCcw : LucideIcons.plusCircle,
+                      size: 14,
+                      color: const Color(0xFF1E3D2F),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isUploaded ? 'Change Document File' : 'Select & Attach File (PDF / Image)',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1E3D2F),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'PDF, JPG, PNG, DOC · Max 10 MB per file',
-              style: GoogleFonts.inter(
-                  fontSize: 11, color: AppColors.textSecondary),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildField(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  // ─── Scholar Info Card ──────────────────────────────────────────────────────
+  Widget _buildScholarInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.userCheck, size: 16, color: Color(0xFF16A34A)),
+              const SizedBox(width: 8),
+              Text(
+                'APPLICANT VERIFICATION DETAILS',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF16A34A),
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildInfoRow('Full Name', _scholarFullName),
+          const SizedBox(height: 6),
+          _buildInfoRow('School / University', _scholarSchool),
+          const SizedBox(height: 6),
+          _buildInfoRow('Course & Year Level', _scholarCourseAndYear),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String val) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label.toUpperCase(),
-          style: GoogleFonts.inter(
-            fontSize: 10,
-            color: AppColors.textMuted,
-            letterSpacing: 0.8,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.rule),
-          ),
+        Text(label, style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF6B7280))),
+        Flexible(
           child: Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w500,
-            ),
+            val,
+            style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
+            textAlign: TextAlign.end,
           ),
         ),
       ],
@@ -948,9 +1160,8 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   }
 }
 
-// ─── Doc tile ────────────────────────────────────────────────────────────────
-
-enum _DocStatus { uploaded, pending, notUploaded, optional }
+// ─── Doc Item Model ───────────────────────────────────────────────────────────
+enum _DocStatus { notUploaded, uploaded, optional }
 
 class _DocItem {
   final String name;
@@ -988,117 +1199,7 @@ class _DocItem {
   }
 }
 
-class _DocTile extends StatelessWidget {
-  final _DocItem doc;
-  final VoidCallback? onTap;
-
-  const _DocTile({required this.doc, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    Color borderColor;
-    Color iconBg;
-    Color iconColor;
-    Widget trailing;
-    Widget leadingIcon;
-
-    switch (doc.status) {
-      case _DocStatus.uploaded:
-        borderColor = AppColors.primary.withAlpha(60);
-        iconBg = AppColors.successBg;
-        iconColor = AppColors.primary;
-        leadingIcon = const Icon(LucideIcons.check, size: 18);
-        trailing = StatusChip(label: 'Uploaded', type: StatusType.approved);
-        break;
-      case _DocStatus.pending:
-        borderColor = AppColors.amber.withAlpha(80);
-        iconBg = AppColors.pendingBg;
-        iconColor = AppColors.amber;
-        leadingIcon = const Icon(LucideIcons.uploadCloud, size: 18);
-        trailing = StatusChip(label: 'Pending', type: StatusType.pending);
-        break;
-      case _DocStatus.notUploaded:
-        borderColor = AppColors.rule;
-        iconBg = AppColors.surfaceAlt;
-        iconColor = AppColors.textMuted;
-        leadingIcon = const Icon(LucideIcons.fileText, size: 18);
-        trailing = StatusChip(label: 'Upload', type: StatusType.info);
-        break;
-      case _DocStatus.optional:
-        borderColor = AppColors.rule;
-        iconBg = AppColors.surfaceAlt;
-        iconColor = AppColors.textMuted;
-        leadingIcon = const Icon(LucideIcons.fileText, size: 18);
-        trailing = StatusChip(label: 'Optional', type: StatusType.info);
-        break;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            color: doc.status == _DocStatus.pending
-                ? AppColors.pendingBg
-                : AppColors.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: ColoredBox(
-                  color: Colors.transparent,
-                  child: IconTheme(
-                    data: IconThemeData(color: iconColor),
-                    child: Center(child: leadingIcon),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      doc.name,
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      doc.filename != null
-                          ? '${doc.filename} · ${doc.filesize}'
-                          : doc.hint,
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              trailing,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
+// ─── Upload Progress Dialog ───────────────────────────────────────────────────
 class _UploadProgressDialog extends StatefulWidget {
   final String docName;
   final String pickedFileName;
@@ -1120,87 +1221,65 @@ class _UploadProgressDialogState extends State<_UploadProgressDialog> {
   @override
   void initState() {
     super.initState();
-    _startProgress();
+    _startSimulatedProgress();
   }
 
-  void _startProgress() {
-    const steps = 10;
-    const duration = Duration(milliseconds: 100);
-    int currentStep = 0;
-
-    void updateProgress() {
-      Future.delayed(duration, () async {
-        if (!mounted) return;
-        currentStep++;
+  void _startSimulatedProgress() async {
+    for (int i = 1; i <= 10; i++) {
+      await Future.delayed(const Duration(milliseconds: 60));
+      if (mounted) {
         setState(() {
-          _progress = currentStep / steps;
+          _progress = i / 10;
         });
-        if (currentStep < steps) {
-          updateProgress();
-        } else {
-          Navigator.pop(context); // Close progress dialog
-          await widget.onComplete();
-        }
-      });
+      }
     }
-    updateProgress();
+    await widget.onComplete();
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 40),
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(20),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      content: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(
-              width: 48,
-              height: 48,
+              width: 42,
+              height: 42,
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
                 strokeWidth: 3.5,
+                color: Color(0xFF1E3D2F),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Text(
-              'Uploading ${widget.pickedFileName}...',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textPrimary),
+              'Encrypting & Uploading...',
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF111827),
+              ),
             ),
             const SizedBox(height: 6),
             Text(
-              widget.docName,
+              '${widget.pickedFileName} for ${widget.docName}',
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
+              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF6B7280)),
             ),
             const SizedBox(height: 16),
             ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
                 value: _progress,
-                backgroundColor: AppColors.rule,
-                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
                 minHeight: 6,
+                backgroundColor: const Color(0xFFF3F4F6),
+                color: const Color(0xFF16A34A),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${(_progress * 100).toInt()}% uploaded',
-              style: GoogleFonts.dmMono(fontSize: 11, color: AppColors.textMuted),
             ),
           ],
         ),

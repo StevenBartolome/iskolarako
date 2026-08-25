@@ -312,9 +312,22 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       covers_stipend: dbProg.covers_stipend,
       stipend_amount: dbProg.stipend_amount,
       covers_allowance: dbProg.covers_allowance,
-      allowance_amount: dbProg.allowance_amount,
-      other_benefits: dbProg.other_benefits,
-      budget_total: dbProg.budget_total,
+      total_slots: dbProg.total_slots,
+      totalSlots: dbProg.total_slots,
+      target_education_level: dbProg.target_education_level,
+      targetEducationLevel: dbProg.target_education_level,
+      grading_system: dbProg.grading_system,
+      minimum_gwa: dbProg.minimum_gwa,
+      application_requirements: dbProg.application_requirements,
+      applicationRequirements: dbProg.application_requirements,
+      availability_scope: dbProg.availability_scope,
+      available_regions: dbProg.available_regions,
+      available_provinces: dbProg.available_provinces,
+      available_municipalities: dbProg.available_municipalities,
+      available_barangays: dbProg.available_barangays,
+      available_schools: dbProg.available_schools,
+      allow_freshman_intended_school: dbProg.allow_freshman_intended_school,
+      is_incoming_freshman_supported: dbProg.is_incoming_freshman_supported,
       tuition_payout_mode: dbProg.tuition_payout_mode || 'direct_to_student',
       tuition_coverage_type: dbProg.tuition_coverage_type || 'fixed_cap',
       tuition_max_amount: dbProg.tuition_max_amount ? String(dbProg.tuition_max_amount) : '',
@@ -361,8 +374,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       disbursed_total: dbProg.disbursed_total || 0,
       disbursedTotal: dbProg.disbursedTotal || 0,
       rejectionRemarks: dbProg.rejection_remarks || undefined,
-      targetEducationLevel: dbProg.target_education_level || 'college',
-      gradingSystem: dbProg.grading_system || 'scale_5',
     };
   };
 
@@ -1664,9 +1675,26 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     setActiveTab('create-program');
   };
 
+  const [isCycleSelectModalOpen, setIsCycleSelectModalOpen] = useState(false);
+  const [programForCycleSelect, setProgramForCycleSelect] = useState<Program | null>(null);
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+
   const handleEditProgram = (prog: Program) => {
-    setSelectedProgram(prog);
-    setActiveTab('create-program');
+    const cycles = prog.cycles || [];
+    const openCycles = cycles.filter((c: any) => (c.status || '').toLowerCase() === 'open');
+
+    if (openCycles.length > 1) {
+      setProgramForCycleSelect(prog);
+      setIsCycleSelectModalOpen(true);
+    } else if (openCycles.length === 1) {
+      setSelectedCycleId(openCycles[0].id);
+      setSelectedProgram(prog);
+      setActiveTab('create-program');
+    } else {
+      setSelectedCycleId(null);
+      setSelectedProgram(prog);
+      setActiveTab('create-program');
+    }
   };
 
   const handleCloseProgram = async () => {
@@ -2669,8 +2697,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         {activeTab === 'create-program' && (
           <ProviderProgramFormTab
             programToEdit={selectedProgram}
+            selectedCycleId={selectedCycleId}
             onCancel={() => {
               setSelectedProgram(null);
+              setSelectedCycleId(null);
               setActiveTab('programs');
             }}
             onSubmit={async (formData, isEdit) => {
@@ -2733,7 +2763,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   target_education_level: formData.target_education_level || 'college',
                   grading_system: formData.grading_system || 'scale_5',
                   minimum_gwa: formData.minimumGwa ? parseFloat(formData.minimumGwa) : null,
-                  total_slots: formData.total_slots ? parseInt(formData.total_slots, 10) : null,
+                  total_slots: (formData.total_slots !== undefined && formData.total_slots !== null && formData.total_slots !== '' && !isNaN(parseInt(String(formData.total_slots), 10))) ? parseInt(String(formData.total_slots), 10) : ((formData.totalSlots !== undefined && formData.totalSlots !== null && formData.totalSlots !== '' && !isNaN(parseInt(String(formData.totalSlots), 10))) ? parseInt(String(formData.totalSlots), 10) : null),
                   budget_total: formData.amount ? parseFloat(formData.amount) : null,
                   funding_frequency: mapFundingFreq(formData.funding_frequency),
                   covers_tuition: formData.coverstuition ?? false,
@@ -2750,6 +2780,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   tuition_max_amount: formData.tuition_max_amount ? parseFloat(formData.tuition_max_amount) : 0,
                   custom_benefits: formData.custom_benefits || [],
                   low_budget_threshold: formData.low_budget_threshold ? parseFloat(formData.low_budget_threshold) : 0.20,
+                  availability_scope: formData.availability_scope || 'nationwide',
+                  available_regions: formData.available_regions || [],
+                  available_provinces: formData.available_provinces || [],
+                  available_municipalities: formData.available_municipalities || [],
+                  available_barangays: formData.available_barangays || [],
+                  available_schools: formData.available_schools || [],
                 };
                 if (categoryId) {
                   updatePayload.category_id = categoryId;
@@ -2769,7 +2805,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                     const startMid = parseLocalMidnight(formData.application_start_date);
                     const cycleStatus = endMid < todayMid ? 'closed' : (startMid > todayMid ? 'upcoming' : 'open');
 
-                    const existingCycle = selectedProgram.cycles && selectedProgram.cycles.length > 0 ? selectedProgram.cycles[0] : null;
+                    const cyclesList = selectedProgram.cycles || [];
+                    const openCycles = cyclesList.filter((c: any) => (c.status || '').toLowerCase() === 'open');
+                    const existingCycle = selectedCycleId
+                      ? cyclesList.find((c: any) => c.id === selectedCycleId)
+                      : (openCycles.length > 0 ? openCycles[0] : (cyclesList.length > 0 ? cyclesList[0] : null));
                     if (existingCycle?.id) {
                       await supabase
                         .from('application_cycles')
@@ -2798,6 +2838,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   createAuditLog('UPDATED PROGRAM', `Program: ${formData.title}`, actor);
                   await fetchPrograms();
                   setSelectedProgram(null);
+                  setSelectedCycleId(null);
                   setActiveTab('programs');
                 }
               } else {
@@ -2811,7 +2852,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   target_education_level: formData.target_education_level || 'college',
                   grading_system: formData.grading_system || 'scale_5',
                   minimum_gwa: formData.minimumGwa ? parseFloat(formData.minimumGwa) : null,
-                  total_slots: formData.total_slots ? parseInt(formData.total_slots, 10) : null,
+                  total_slots: (formData.total_slots !== undefined && formData.total_slots !== null && formData.total_slots !== '' && !isNaN(parseInt(String(formData.total_slots), 10))) ? parseInt(String(formData.total_slots), 10) : ((formData.totalSlots !== undefined && formData.totalSlots !== null && formData.totalSlots !== '' && !isNaN(parseInt(String(formData.totalSlots), 10))) ? parseInt(String(formData.totalSlots), 10) : null),
                   budget_total: formData.amount ? parseFloat(formData.amount) : null,
                   funding_frequency: mapFundingFreq(formData.funding_frequency),
                   covers_tuition: formData.coverstuition ?? false,
@@ -2828,6 +2869,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   tuition_max_amount: formData.tuition_max_amount ? parseFloat(formData.tuition_max_amount) : 0,
                   custom_benefits: formData.custom_benefits || [],
                   low_budget_threshold: formData.low_budget_threshold ? parseFloat(formData.low_budget_threshold) : 0.20,
+                  availability_scope: formData.availability_scope || 'nationwide',
+                  available_regions: formData.available_regions || [],
+                  available_provinces: formData.available_provinces || [],
+                  available_municipalities: formData.available_municipalities || [],
+                  available_barangays: formData.available_barangays || [],
+                  available_schools: formData.available_schools || [],
                   status: 'pending',
                 };
                 const { data: progData, error } = await supabase
@@ -3121,6 +3168,75 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 onClick={() => { setIsViewModalOpen(false); handleEditProgram(selectedProgram); }}
                 className="px-5 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-sm font-bold border-0 cursor-pointer transition-all"
               >Edit Program</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Select Open Cycle Modal ─── */}
+      {isCycleSelectModalOpen && programForCycleSelect && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex justify-between items-start border-b border-[#EDE8DE] pb-4">
+              <div>
+                <span className="text-[10px] uppercase font-extrabold text-[#D97706] tracking-widest block">Multiple Open Cycles</span>
+                <h3 className="text-lg font-extrabold text-[#1A3C2E] font-serif mt-1">Select Open Cycle to Edit</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsCycleSelectModalOpen(false);
+                  setProgramForCycleSelect(null);
+                }}
+                className="w-8 h-8 rounded-full bg-[#EDE8DE] hover:bg-[#D9D2C5] flex items-center justify-center text-[#1A3C2E] font-bold border-0 cursor-pointer text-sm"
+              >×</button>
+            </div>
+
+            <p className="text-xs text-[#6C6C70]">
+              This program currently has <strong>{(programForCycleSelect.cycles || []).filter((c: any) => (c.status || '').toLowerCase() === 'open').length} open cycles</strong>. Choose which cycle schedule you want to edit:
+            </p>
+
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+              {(programForCycleSelect.cycles || [])
+                .filter((c: any) => (c.status || '').toLowerCase() === 'open')
+                .map((cyc: any) => (
+                  <button
+                    key={cyc.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCycleId(cyc.id);
+                      setSelectedProgram(programForCycleSelect);
+                      setIsCycleSelectModalOpen(false);
+                      setProgramForCycleSelect(null);
+                      setActiveTab('create-program');
+                    }}
+                    className="w-full text-left p-4 rounded-2xl border-2 border-[#1A3C2E]/20 hover:border-[#1A3C2E] bg-[#F9F5EF] hover:bg-[#EBF5EE] transition-all cursor-pointer group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-extrabold text-[#1A3C2E] group-hover:text-[#15803D]">
+                        {cyc.name || cyc.cycle_name || 'Application Cycle'}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#DCFCE7] text-[#15803D]">
+                        OPEN
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#6C6C70] mt-1.5 flex items-center gap-2">
+                      <span>📅 {cyc.startDate || cyc.application_start_date || 'Open'} → {cyc.endDate || cyc.application_end_date || 'Ongoing'}</span>
+                    </div>
+                  </button>
+                ))}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCycleSelectModalOpen(false);
+                  setProgramForCycleSelect(null);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-xs font-bold border-0 cursor-pointer"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

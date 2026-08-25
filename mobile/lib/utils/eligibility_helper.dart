@@ -76,7 +76,7 @@ class EligibilityHelper {
   }
 
   /// Normalises any GPA/grade value to a 0–100 percentage for cross-scale comparison.
-  static double _normalizeGpa(double value, String scale) {
+  static double normalizeGpa(double value, String scale) {
     switch (scale) {
       case 'scale_4':
         // 4.0 = 100%, 0.0 = 0%
@@ -129,62 +129,45 @@ class EligibilityHelper {
       if (!match) return false;
     }
 
-    // 3. GPA / grade check — scale-aware with cross-scale normalization
-    final minGwa = program['minimum_gwa'];
-    if (minGwa != null) {
-      final scholarGpa = scholar['gpa'] != null
-          ? double.tryParse(scholar['gpa'].toString())
-          : null;
-      final programMinGwa = double.tryParse(minGwa.toString());
-      final programScale = program['grading_system']?.toString() ?? 'scale_5';
-      final scholarScale = scholar['gpa_scale']?.toString() ?? 'scale_5';
-
-      if (scholarGpa != null && programMinGwa != null) {
-        final scholarPct = _normalizeGpa(scholarGpa, scholarScale);
-        final minPct     = _normalizeGpa(programMinGwa, programScale);
-        if (scholarPct < minPct) return false;
-      }
-    }
-
-    // 4. Availability scope & Location check
+    // 3. Availability scope & Location check
     final scope = program['availability_scope']?.toString().toLowerCase() ?? 'nationwide';
     if (scope == 'nationwide') {
       return true;
     } else if (scope == 'regional') {
       final scholarRegion = scholar['region']?.toString().toLowerCase().trim() ?? '';
       final availableRegions = program['available_regions'];
-      if (availableRegions is List) {
+      if (availableRegions is List && availableRegions.isNotEmpty) {
         return availableRegions.any((r) => r.toString().toLowerCase().trim() == scholarRegion);
       }
-      return false;
+      return true;
     } else if (scope == 'provincial') {
       final scholarProvince = scholar['province']?.toString().toLowerCase().trim() ?? '';
       final availableProvinces = program['available_provinces'];
-      if (availableProvinces is List) {
+      if (availableProvinces is List && availableProvinces.isNotEmpty) {
         return availableProvinces.any((p) => p.toString().toLowerCase().trim() == scholarProvince);
       }
-      return false;
+      return true;
     } else if (scope == 'municipality') {
       final scholarMunicipality = scholar['municipality']?.toString().toLowerCase().trim() ?? '';
       final availableMunicipalities = program['available_municipalities'];
-      if (availableMunicipalities is List) {
+      if (availableMunicipalities is List && availableMunicipalities.isNotEmpty) {
         return availableMunicipalities.any((m) => m.toString().toLowerCase().trim() == scholarMunicipality);
       }
-      return false;
+      return true;
     } else if (scope == 'barangay') {
       final scholarBarangay = scholar['barangay']?.toString().toLowerCase().trim() ?? '';
       final availableBarangays = program['available_barangays'];
-      if (availableBarangays is List) {
+      if (availableBarangays is List && availableBarangays.isNotEmpty) {
         return availableBarangays.any((b) => b.toString().toLowerCase().trim() == scholarBarangay);
       }
-      return false;
+      return true;
     } else if (scope == 'specific_schools') {
       final scholarSchool = scholar['school']?.toString().toLowerCase().trim() ?? '';
       final availableSchools = program['available_schools'];
-      if (availableSchools is List) {
+      if (availableSchools is List && availableSchools.isNotEmpty) {
         return availableSchools.any((s) => scholarSchool.contains(s.toString().toLowerCase().trim()) || s.toString().toLowerCase().trim().contains(scholarSchool));
       }
-      return false;
+      return true;
     }
 
     return true;
@@ -194,23 +177,21 @@ class EligibilityHelper {
   static bool isProgramOpen(Map<String, dynamic>? program) {
     if (program == null) return false;
     final status = program['status']?.toString().toLowerCase().trim();
-    if (status != 'active' && status != 'approved') return false;
+    if (status != null && status.isNotEmpty && status == 'closed') return false;
 
     final cycles = program['cycles'] as List<dynamic>?;
-    if (cycles == null || cycles.isEmpty) return false;
+    if (cycles == null || cycles.isEmpty) return true;
 
     final now = DateTime.now();
     final todayMidnight = DateTime(now.year, now.month, now.day);
 
-    // Check if there is at least one cycle that is open, not expired, AND meant for new applicants
-    return cycles.any((c) {
+    // Check if there is at least one cycle that is open or active
+    final hasOpenCycle = cycles.any((c) {
       if (c is! Map<String, dynamic>) return false;
       final cStatus = c['status']?.toString().toLowerCase().trim();
-      
-      // Cycle status must be open or active
-      if (cStatus != 'open' && cStatus != 'active') return false;
+      if (cStatus == 'closed') return false;
 
-      // Renewal-only cycles are reserved for approved continuing scholars in their Application Tracker
+      // Renewal-only cycles are reserved for approved continuing scholars
       final cType = c['cycle_type']?.toString().toLowerCase().trim() ?? '';
       final cName = c['cycle_name']?.toString().toLowerCase() ?? '';
       if (cType == 'renewal' || cName.contains('renewal') || cName.contains('sem renewal')) {
@@ -230,5 +211,7 @@ class EligibilityHelper {
       }
       return true;
     });
+
+    return hasOpenCycle || cycles.isEmpty;
   }
 }

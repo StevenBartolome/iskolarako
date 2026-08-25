@@ -129,7 +129,7 @@ class DashboardScreenState extends State<DashboardScreen> {
         Supabase.instance.client
             .from('scholarship_programs')
             .select('*, provider:provider_id(*), cycles:application_cycles(*)')
-            .eq('status', 'active'),
+            .neq('status', 'closed'),
 
         // [1] Unread notifications count
         Supabase.instance.client

@@ -1923,10 +1923,37 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            GestureDetector(
+              onTap: () => Navigator.pop(context, true),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    LucideIcons.chevronLeft,
+                    color: Color(0xFF111827),
+                    size: 18,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1934,7 +1961,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   Row(
                     children: [
                       const Icon(
-                        LucideIcons.shieldCheck,
+                        LucideIcons.userCheck,
                         size: 14,
                         color: Color(0xFFD97706),
                       ),
@@ -1950,98 +1977,70 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
-                    'Edit profile.',
+                    'Edit Profile',
                     style: GoogleFonts.inter(
-                      fontSize: 28,
+                      fontSize: 22,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF111827),
-                      height: 1.15,
+                      height: 1.2,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 2),
                   Text(
-                    'Update education level, location details & security credentials',
+                    'Update education, location & personal info',
                     style: GoogleFonts.inter(
-                      fontSize: 12.5,
+                      fontSize: 12,
                       color: const Color(0xFF6B7280),
-                      height: 1.35,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context, true),
-                      child: Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.03),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            LucideIcons.chevronLeft,
-                            color: Color(0xFF111827),
-                            size: 18,
-                          ),
-                        ),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      if (_isAnyEditing) {
+                        _editingAcademic = false;
+                        _editingPersonal = false;
+                        _editingAddress = false;
+                      } else {
+                        _editingAcademic = true;
+                        _editingPersonal = true;
+                        _editingAddress = true;
+                      }
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _isAnyEditing ? const Color(0xFFD97706) : const Color(0xFF1E3D2F),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _isAnyEditing ? 'View Mode' : 'Edit All',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          if (_isAnyEditing) {
-                            _editingAcademic = false;
-                            _editingPersonal = false;
-                            _editingAddress = false;
-                          } else {
-                            _editingAcademic = true;
-                            _editingPersonal = true;
-                            _editingAddress = true;
-                          }
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: _isAnyEditing ? const Color(0xFFD97706) : const Color(0xFF1E3D2F),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _isAnyEditing ? 'View Mode' : 'Edit All',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
                 Image.asset(
                   'assets/books-hats-icon.png',
-                  width: 85,
-                  height: 75,
+                  width: 70,
+                  height: 60,
                   fit: BoxFit.contain,
                 ),
               ],

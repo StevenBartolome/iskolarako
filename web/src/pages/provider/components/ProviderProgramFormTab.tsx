@@ -11,6 +11,7 @@ import {
 
 interface ProviderProgramFormTabProps {
   programToEdit?: Program | null;
+  selectedCycleId?: string | null;
   onCancel: () => void;
   onSubmit: (formData: any, isEditMode: boolean) => Promise<void>;
   providerDetails?: any;
@@ -18,6 +19,7 @@ interface ProviderProgramFormTabProps {
 
 export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   programToEdit,
+  selectedCycleId,
   onCancel,
   onSubmit,
 }) => {
@@ -38,7 +40,10 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   // Step 1: Application Intake Period (Opening & Closing Dates)
   const defaultStartDate = new Date().toISOString().split('T')[0];
   const defaultEndDate = new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0];
-  const initialCycle = programToEdit?.cycles && programToEdit.cycles.length > 0 ? programToEdit.cycles[0] : null;
+  const openCycles = (programToEdit?.cycles || []).filter((c: any) => (c.status || '').toLowerCase() === 'open');
+  const initialCycle = selectedCycleId
+    ? programToEdit?.cycles?.find((c: any) => c.id === selectedCycleId)
+    : (openCycles.length > 0 ? openCycles[0] : (programToEdit?.cycles && programToEdit.cycles.length > 0 ? programToEdit.cycles[0] : null));
 
   const [cycleName, setCycleName] = useState(
     initialCycle?.name || `AY ${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
@@ -125,9 +130,6 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
       ? String(programToEdit.gpa_requirement || programToEdit.minimum_gwa || programToEdit.minimumGwa)
       : ''
   );
-  const [incomeCeiling, setIncomeCeiling] = useState(
-    programToEdit?.income_ceiling ? String(programToEdit.income_ceiling) : ''
-  );
 
   // Dynamic Year Levels State (stored as numbers [1, 2, 3...] for Postgres integer[] column)
   const [selectedYearLevels, setSelectedYearLevels] = useState<number[]>(() => {
@@ -176,6 +178,41 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   const [customCourseInput, setCustomCourseInput] = useState('');
   const [customStrandInput, setCustomStrandInput] = useState('');
 
+  // Target Geographic Location & Scope State
+  const [availabilityScope, setAvailabilityScope] = useState<string>(
+    programToEdit?.availability_scope || programToEdit?.availabilityScope || 'nationwide'
+  );
+  const [availableRegions, setAvailableRegions] = useState<string[]>(() => {
+    const r = programToEdit?.available_regions || programToEdit?.availableRegions || programToEdit?.eligible_regions;
+    if (Array.isArray(r)) return r.map(String);
+    if (typeof r === 'string' && r) return r.split(',').map(s => s.trim()).filter(Boolean);
+    return [];
+  });
+  const [availableProvinces, setAvailableProvinces] = useState<string[]>(() => {
+    const p = programToEdit?.available_provinces || programToEdit?.availableProvinces;
+    if (Array.isArray(p)) return p.map(String);
+    if (typeof p === 'string' && p) return p.split(',').map(s => s.trim()).filter(Boolean);
+    return [];
+  });
+  const [availableMunicipalities, setAvailableMunicipalities] = useState<string[]>(() => {
+    const m = programToEdit?.available_municipalities || programToEdit?.availableMunicipalities;
+    if (Array.isArray(m)) return m.map(String);
+    if (typeof m === 'string' && m) return m.split(',').map(s => s.trim()).filter(Boolean);
+    return [];
+  });
+  const [availableBarangays, setAvailableBarangays] = useState<string[]>(() => {
+    const b = programToEdit?.available_barangays || programToEdit?.availableBarangays;
+    if (Array.isArray(b)) return b.map(String);
+    if (typeof b === 'string' && b) return b.split(',').map(s => s.trim()).filter(Boolean);
+    return [];
+  });
+  const [availableSchools, setAvailableSchools] = useState<string[]>(() => {
+    const s = programToEdit?.available_schools || programToEdit?.availableSchools;
+    if (Array.isArray(s)) return s.map(String);
+    if (typeof s === 'string' && s) return s.split(',').map(s => s.trim()).filter(Boolean);
+    return [];
+  });
+
   // Re-sync on programToEdit change so editing an existing program always pre-selects its saved values
   React.useEffect(() => {
     if (programToEdit) {
@@ -209,7 +246,6 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           ? String(programToEdit.gpa_requirement || programToEdit.minimum_gwa || programToEdit.minimumGwa)
           : ''
       );
-      setIncomeCeiling(programToEdit.income_ceiling ? String(programToEdit.income_ceiling) : '');
 
       // Sync tuition modes, custom benefits & budget threshold
       setTuitionPayoutMode(programToEdit.tuition_payout_mode || 'direct_to_student');
@@ -262,12 +298,18 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         }
       }
 
-      // Pre-populate intake cycle dates
-      const cyc = programToEdit.cycles && programToEdit.cycles.length > 0 ? programToEdit.cycles[0] : null;
+      // Pre-populate intake cycle dates from selected open cycle
+      const openCyclesList = (programToEdit.cycles || []).filter((c: any) => (c.status || '').toLowerCase() === 'open');
+      const cyc = selectedCycleId
+        ? programToEdit.cycles?.find((c: any) => c.id === selectedCycleId)
+        : (openCyclesList.length > 0 ? openCyclesList[0] : (programToEdit.cycles && programToEdit.cycles.length > 0 ? programToEdit.cycles[0] : null));
+
       if (cyc) {
-        setCycleName(cyc.name || `AY ${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
-        if (cyc.startDate) setApplicationStartDate(cyc.startDate);
-        if (cyc.endDate) setApplicationEndDate(cyc.endDate);
+        setCycleName(cyc.name || cyc.cycle_name || `AY ${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+        const sDate = cyc.startDate || cyc.application_start_date;
+        const eDate = cyc.endDate || cyc.application_end_date;
+        if (sDate) setApplicationStartDate(sDate);
+        if (eDate) setApplicationEndDate(eDate);
       }
 
       // Pre-populate requirements
@@ -284,8 +326,16 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           };
         }));
       }
+
+      // Sync location scope & target regions/provinces/municipalities/schools
+      setAvailabilityScope(programToEdit.availability_scope || programToEdit.availabilityScope || 'nationwide');
+      setAvailableRegions(Array.isArray(programToEdit.available_regions) ? programToEdit.available_regions.map(String) : (Array.isArray(programToEdit.eligible_regions) ? programToEdit.eligible_regions.map(String) : []));
+      setAvailableProvinces(Array.isArray(programToEdit.available_provinces) ? programToEdit.available_provinces.map(String) : []);
+      setAvailableMunicipalities(Array.isArray(programToEdit.available_municipalities) ? programToEdit.available_municipalities.map(String) : []);
+      setAvailableBarangays(Array.isArray(programToEdit.available_barangays) ? programToEdit.available_barangays.map(String) : []);
+      setAvailableSchools(Array.isArray(programToEdit.available_schools) ? programToEdit.available_schools.map(String) : []);
     }
-  }, [programToEdit]);
+  }, [programToEdit, selectedCycleId]);
 
   // Handle Education Level change and re-sync Year Levels options
   const handleEducationLevelChange = (newLevel: EducationLevel) => {
@@ -435,7 +485,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         application_end_date: applicationEndDate || defaultEndDate,
         amount: parseFloat(amount) || 0,
         funding_frequency: fundingFreq,
-        total_slots: parseInt(totalSlots, 10) || 0,
+        total_slots: totalSlots && !isNaN(parseInt(totalSlots, 10)) ? parseInt(totalSlots, 10) : null,
+        totalSlots: totalSlots && !isNaN(parseInt(totalSlots, 10)) ? parseInt(totalSlots, 10) : null,
         coverstuition: coversTuition,
         coversStipend: coversStipend,
         stipendAmount: parseFloat(stipendAmount) || 0,
@@ -444,9 +495,14 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         otherBenefits,
         grading_system: gradingSystem,
         minimumGwa: gpaRequirement,
-        income_ceiling: incomeCeiling,
         eligible_courses: finalCourses,
         eligible_year_levels: selectedYearLevels,
+        availability_scope: availabilityScope,
+        available_regions: availableRegions,
+        available_provinces: availableProvinces,
+        available_municipalities: availableMunicipalities,
+        available_barangays: availableBarangays,
+        available_schools: availableSchools,
         applicationRequirements: requirementsList,
         allow_freshman_intended_school: allowFreshmanIntendedSchool,
         is_incoming_freshman_supported: isFreshmanTarget,
@@ -710,7 +766,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               2. Financial Benefits & Allowance Coverage
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
                   Grant Budget Allocation (PHP)
@@ -740,6 +796,19 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   <option value="Once a Year">Once a Year (Annual)</option>
                   <option value="One-time">One-Time Grant</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
+                  Total Available Slots / Applicant Limit
+                </label>
+                <input
+                  type="number"
+                  placeholder="e.g. 50 (Leave empty for Unlimited)"
+                  value={totalSlots}
+                  onChange={(e) => setTotalSlots(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none text-sm font-semibold bg-white"
+                />
               </div>
             </div>
 
@@ -958,27 +1027,6 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 </button>
               </div>
             </div>
-
-            {/* Low Budget Alert Threshold */}
-            <div className="p-5 rounded-3xl bg-[#FFF8EE] border border-[#F5EAD6] space-y-2">
-              <h4 className="text-xs font-bold text-[#C97B2E] uppercase tracking-wide flex items-center gap-1.5">
-                <span>⚠️</span> Low Budget Warning Alert Threshold
-              </h4>
-              <p className="text-[11px] text-[#6C6C70] leading-relaxed">
-                Set at what percentage of remaining budget the system should trigger a <strong>Low Program Budget Warning Alert</strong>.
-              </p>
-              <div className="flex items-center gap-3 pt-1">
-                <input
-                  type="number"
-                  min="5"
-                  max="50"
-                  value={lowBudgetThreshold}
-                  onChange={(e) => setLowBudgetThreshold(e.target.value)}
-                  className="w-24 px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white font-bold text-[#1A3C2E] text-center"
-                />
-                <span className="text-xs font-bold text-[#1A3C2E]">% Remaining Budget</span>
-              </div>
-            </div>
           </div>
         )}
 
@@ -1112,19 +1160,6 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               )}
             </div>
 
-            {/* Income Ceiling */}
-            <div>
-              <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
-                Annual Household Income Ceiling (PHP)
-              </label>
-              <input
-                type="number"
-                placeholder="e.g. 300000 (Leave empty if no financial limit)"
-                value={incomeCeiling}
-                onChange={(e) => setIncomeCeiling(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none text-sm"
-              />
-            </div>
 
             {/* DYNAMIC COURSES / STRANDS SECTION */}
             {/* CASE A: Junior High School or Elementary -> DO NOT SHOW COURSE INPUT */}
@@ -1604,6 +1639,159 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 )}
               </div>
             )}
+
+            {/* Target Geographic Location & Scope */}
+            <div className="p-6 rounded-3xl bg-[#F9F5EF] border border-[#D9D2C5] space-y-5">
+              <div>
+                <h4 className="text-sm font-extrabold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-2">
+                  <span>📍</span>
+                  <span>Target Geographic Location & Scope</span>
+                </h4>
+                <p className="text-xs text-[#6C6C70] mt-1">
+                  Specify where applicants must be located or which regions/provinces/schools this program targets.
+                </p>
+              </div>
+
+              {/* Scope Selection Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {[
+                  { id: 'nationwide', label: 'Nationwide', icon: '🌐', desc: 'Open to all PH applicants' },
+                  { id: 'regional', label: 'Regional', icon: '🗺️', desc: 'Specific Regions' },
+                  { id: 'provincial', label: 'Provincial', icon: '🏙️', desc: 'Specific Provinces' },
+                  { id: 'municipality', label: 'City / Municipality', icon: '🏛️', desc: 'Specific Cities/Towns' },
+                  { id: 'barangay', label: 'Barangay', icon: '🏘️', desc: 'Specific Barangays' },
+                  { id: 'specific_schools', label: 'Specific Schools', icon: '🏫', desc: 'Targeted Institutions' },
+                ].map((scopeItem) => {
+                  const isSelected = availabilityScope === scopeItem.id;
+                  return (
+                    <button
+                      key={scopeItem.id}
+                      type="button"
+                      onClick={() => setAvailabilityScope(scopeItem.id)}
+                      className={`p-3 rounded-2xl text-left transition-all border cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#1A3C2E] text-white border-[#1A3C2E] shadow-sm'
+                          : 'bg-white text-[#1C1C1E] border-[#D9D2C5] hover:bg-[#EDE8DE]/60'
+                      }`}
+                    >
+                      <div className="text-lg">{scopeItem.icon}</div>
+                      <div className="text-xs font-bold mt-1.5">{scopeItem.label}</div>
+                      <div className={`text-[10px] mt-0.5 ${isSelected ? 'text-emerald-200' : 'text-[#6C6C70]'}`}>
+                        {scopeItem.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Scope Detail Options */}
+
+              {/* 1. NATIONWIDE */}
+              {availabilityScope === 'nationwide' && (
+                <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] flex items-center gap-3">
+                  <span className="text-xl">🌐</span>
+                  <p className="text-xs font-medium text-[#1A3C2E]">
+                    This scholarship program will be open to eligible student applicants from all 17 administrative regions across the Philippines.
+                  </p>
+                </div>
+              )}
+
+              {/* 2. REGIONAL */}
+              {availabilityScope === 'regional' && (
+                <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#1A3C2E] uppercase">Select Eligible Regions ({availableRegions.length} selected):</span>
+                    {availableRegions.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAvailableRegions([])}
+                        className="text-[11px] font-bold text-rose-600 hover:underline border-0 bg-transparent cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+                    {PH_REGIONS.map((r) => {
+                      const isChecked = availableRegions.includes(r.code) || availableRegions.includes(r.label);
+                      return (
+                        <button
+                          key={r.code}
+                          type="button"
+                          onClick={() => {
+                            if (isChecked) {
+                              setAvailableRegions(prev => prev.filter(x => x !== r.code && x !== r.label));
+                            } else {
+                              setAvailableRegions(prev => [...prev, r.code]);
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all border cursor-pointer flex items-center justify-between ${
+                            isChecked
+                              ? 'bg-[#1A3C2E] text-white border-[#1A3C2E]'
+                              : 'bg-[#F9F5EF] text-[#1C1C1E] border-[#D9D2C5] hover:bg-[#EDE8DE]'
+                          }`}
+                        >
+                          <span className="truncate">{r.label}</span>
+                          <span className="text-[10px] font-bold ml-1">{isChecked ? '✓' : '+'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. PROVINCIAL */}
+              {availabilityScope === 'provincial' && (
+                <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
+                  <span className="text-xs font-bold text-[#1A3C2E] uppercase">Eligible Provinces:</span>
+                  <TagInput
+                    tags={availableProvinces}
+                    placeholder="Type province name (e.g. Laguna, Cebu, Cavite) & press Enter..."
+                    onAdd={(tag) => setAvailableProvinces(prev => [...prev, tag])}
+                    onRemove={(index) => setAvailableProvinces(prev => prev.filter((_, i) => i !== index))}
+                  />
+                </div>
+              )}
+
+              {/* 4. MUNICIPALITY */}
+              {availabilityScope === 'municipality' && (
+                <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
+                  <span className="text-xs font-bold text-[#1A3C2E] uppercase">Eligible Cities / Municipalities:</span>
+                  <TagInput
+                    tags={availableMunicipalities}
+                    placeholder="Type city/municipality (e.g. Quezon City, Calamba, Davao City) & press Enter..."
+                    onAdd={(tag) => setAvailableMunicipalities(prev => [...prev, tag])}
+                    onRemove={(index) => setAvailableMunicipalities(prev => prev.filter((_, i) => i !== index))}
+                  />
+                </div>
+              )}
+
+              {/* 5. BARANGAY */}
+              {availabilityScope === 'barangay' && (
+                <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
+                  <span className="text-xs font-bold text-[#1A3C2E] uppercase">Eligible Barangays:</span>
+                  <TagInput
+                    tags={availableBarangays}
+                    placeholder="Type barangay name (e.g. Barangay Batasan Hills, Barangay 171) & press Enter..."
+                    onAdd={(tag) => setAvailableBarangays(prev => [...prev, tag])}
+                    onRemove={(index) => setAvailableBarangays(prev => prev.filter((_, i) => i !== index))}
+                  />
+                </div>
+              )}
+
+              {/* 6. SPECIFIC SCHOOLS */}
+              {availabilityScope === 'specific_schools' && (
+                <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
+                  <span className="text-xs font-bold text-[#1A3C2E] uppercase">Target Schools / Universities:</span>
+                  <TagInput
+                    tags={availableSchools}
+                    placeholder="Type school name (e.g. UP Diliman, PUP, Ateneo) & press Enter..."
+                    onAdd={(tag) => setAvailableSchools(prev => [...prev, tag])}
+                    onRemove={(index) => setAvailableSchools(prev => prev.filter((_, i) => i !== index))}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1827,6 +2015,94 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           )}
         </div>
       </form>
+    </div>
+  );
+};
+
+const PH_REGIONS = [
+  { code: 'NCR', label: 'NCR - National Capital Region' },
+  { code: 'CAR', label: 'CAR - Cordillera Administrative Region' },
+  { code: 'Region I', label: 'Region I - Ilocos Region' },
+  { code: 'Region II', label: 'Region II - Cagayan Valley' },
+  { code: 'Region III', label: 'Region III - Central Luzon' },
+  { code: 'Region IV-A', label: 'Region IV-A - CALABARZON' },
+  { code: 'Region IV-B', label: 'Region IV-B - MIMAROPA' },
+  { code: 'Region V', label: 'Region V - Bicol Region' },
+  { code: 'Region VI', label: 'Region VI - Western Visayas' },
+  { code: 'Region VII', label: 'Region VII - Central Visayas' },
+  { code: 'Region VIII', label: 'Region VIII - Eastern Visayas' },
+  { code: 'Region IX', label: 'Region IX - Zamboanga Peninsula' },
+  { code: 'Region X', label: 'Region X - Northern Mindanao' },
+  { code: 'Region XI', label: 'Region XI - Davao Region' },
+  { code: 'Region XII', label: 'Region XII - SOCCSKSARGEN' },
+  { code: 'Region XIII', label: 'Region XIII - Caraga' },
+  { code: 'BARMM', label: 'BARMM - Bangsamoro Autonomous Region' },
+];
+
+const TagInput: React.FC<{
+  tags: string[];
+  placeholder: string;
+  onAdd: (tag: string) => void;
+  onRemove: (index: number) => void;
+}> = ({ tags, placeholder, onAdd, onRemove }) => {
+  const [inputVal, setInputVal] = useState('');
+
+  const handleAdd = () => {
+    const trimmed = inputVal.trim();
+    if (!trimmed) return;
+    const items = trimmed.split(',').map(s => s.trim()).filter(Boolean);
+    items.forEach(item => {
+      if (!tags.includes(item)) {
+        onAdd(item);
+      }
+    });
+    setInputVal('');
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={inputVal}
+          placeholder={placeholder}
+          onChange={(e) => setInputVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleAdd();
+            }
+          }}
+          className="flex-1 px-4 py-2.5 rounded-xl border border-[#D9D2C5] text-xs bg-white focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          className="px-4 py-2.5 rounded-xl bg-[#1A3C2E] text-white text-xs font-bold border-0 cursor-pointer hover:bg-[#2D5941]"
+        >
+          + Add
+        </button>
+      </div>
+
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {tags.map((tag, idx) => (
+            <span
+              key={idx}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#EDE8DE] text-[#1A3C2E] text-xs font-semibold"
+            >
+              <span>{tag}</span>
+              <button
+                type="button"
+                onClick={() => onRemove(idx)}
+                className="hover:text-rose-600 border-0 bg-transparent cursor-pointer text-xs font-bold ml-1"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
