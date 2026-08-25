@@ -515,7 +515,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             const SizedBox(height: 16),
             Text(
               'No notifications in this category',
-              style: GoogleFonts.playfairDisplay(
+              style: GoogleFonts.inter(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: AppColors.primaryDark,
@@ -593,7 +593,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             const SizedBox(height: 16),
             Text(
               'Alerts &\nannouncements.',
-              style: GoogleFonts.playfairDisplay(
+              style: GoogleFonts.inter(
                 fontSize: 34,
                 fontWeight: FontWeight.w900,
                 color: AppColors.primaryDark,

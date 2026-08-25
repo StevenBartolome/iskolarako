@@ -4,7 +4,7 @@ import 'app_colors.dart';
 
 class AppTheme {
   // ─── Text Styles ──────────────────────────────────────────
-  static TextStyle get displayFont => GoogleFonts.playfairDisplay(
+  static TextStyle get displayFont => GoogleFonts.inter(
         color: AppColors.primaryDark,
         fontWeight: FontWeight.w700,
       );
@@ -31,25 +31,25 @@ class AppTheme {
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        titleTextStyle: GoogleFonts.playfairDisplay(
+        titleTextStyle: GoogleFonts.inter(
           color: AppColors.primaryDark,
           fontSize: 20,
           fontWeight: FontWeight.w700,
         ),
       ),
       textTheme: TextTheme(
-        // Display — Playfair Display (credibility / authority)
-        displayLarge: GoogleFonts.playfairDisplay(
+        // Display — Inter modern sans-serif
+        displayLarge: GoogleFonts.inter(
           color: AppColors.primaryDark,
           fontSize: 34,
           fontWeight: FontWeight.w900,
         ),
-        displayMedium: GoogleFonts.playfairDisplay(
+        displayMedium: GoogleFonts.inter(
           color: AppColors.primaryDark,
           fontSize: 26,
           fontWeight: FontWeight.w700,
         ),
-        displaySmall: GoogleFonts.playfairDisplay(
+        displaySmall: GoogleFonts.inter(
           color: AppColors.primaryDark,
           fontSize: 22,
           fontWeight: FontWeight.w700,
@@ -187,16 +187,16 @@ class AppTheme {
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: AppColors.darkTextPrimary),
-        titleTextStyle: GoogleFonts.playfairDisplay(
+        titleTextStyle: GoogleFonts.inter(
           color: AppColors.darkTextPrimary,
           fontSize: 20,
           fontWeight: FontWeight.w700,
         ),
       ),
       textTheme: TextTheme(
-        displayLarge: GoogleFonts.playfairDisplay(color: AppColors.darkTextPrimary, fontSize: 34, fontWeight: FontWeight.w900),
-        displayMedium: GoogleFonts.playfairDisplay(color: AppColors.darkTextPrimary, fontSize: 26, fontWeight: FontWeight.w700),
-        displaySmall: GoogleFonts.playfairDisplay(color: AppColors.darkTextPrimary, fontSize: 22, fontWeight: FontWeight.w700),
+        displayLarge: GoogleFonts.inter(color: AppColors.darkTextPrimary, fontSize: 34, fontWeight: FontWeight.w900),
+        displayMedium: GoogleFonts.inter(color: AppColors.darkTextPrimary, fontSize: 26, fontWeight: FontWeight.w700),
+        displaySmall: GoogleFonts.inter(color: AppColors.darkTextPrimary, fontSize: 22, fontWeight: FontWeight.w700),
         titleLarge: GoogleFonts.inter(color: AppColors.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w700),
         titleMedium: GoogleFonts.inter(color: AppColors.darkTextPrimary, fontSize: 16, fontWeight: FontWeight.w600),
         titleSmall: GoogleFonts.inter(color: AppColors.darkTextSecondary, fontSize: 13, fontWeight: FontWeight.w600),

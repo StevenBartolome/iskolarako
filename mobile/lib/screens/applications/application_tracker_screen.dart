@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/widgets/app_components.dart';
+import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/bank_account_modal.dart';
 import 'package:iskoako/widgets/appeal_modal.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -97,7 +98,8 @@ class TrackerStep {
 }
 
 class ApplicationTrackerScreen extends StatefulWidget {
-  const ApplicationTrackerScreen({super.key});
+  final ValueChanged<int>? onSelectTab;
+  const ApplicationTrackerScreen({super.key, this.onSelectTab});
 
   @override
   State<ApplicationTrackerScreen> createState() => _ApplicationTrackerScreenState();
@@ -1316,27 +1318,100 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(LucideIcons.folderOpen, size: 48, color: Color(0xFF9CA3AF)),
-            const SizedBox(height: 16),
+            Container(
+              width: 130,
+              height: 130,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF4F7EB),
+                shape: BoxShape.circle,
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    LucideIcons.fileText,
+                    size: 56,
+                    color: Color(0xFF1E3D2F),
+                  ),
+                  Positioned(
+                    right: 22,
+                    bottom: 22,
+                    child: Transform.rotate(
+                      angle: 0.4,
+                      child: const Icon(
+                        LucideIcons.leaf,
+                        color: Color(0xFF5BA778),
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    top: 24,
+                    right: 24,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 16,
+                    ),
+                  ),
+                  const Positioned(
+                    bottom: 30,
+                    left: 20,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             Text(
               'No applications found',
               style: GoogleFonts.inter(
                 fontSize: 18,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 color: const Color(0xFF111827),
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Try changing your filter settings to see other status items.',
+              'You have not submitted any scholarship applications yet or try adjusting your filter status.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
-                fontSize: 12.5,
+                fontSize: 13,
                 color: const Color(0xFF6B7280),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+            GestureDetector(
+              onTap: () {
+                if (widget.onSelectTab != null) {
+                  widget.onSelectTab!(1);
+                } else {
+                  Navigator.pushNamed(context, AppRouter.scholarships);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E3D2F),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Text(
+                  'Browse Scholarships',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ],

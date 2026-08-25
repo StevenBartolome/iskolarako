@@ -5,7 +5,8 @@ import 'package:iskoako/widgets/blockchain_verified_badge.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class FundTrackingScreen extends StatefulWidget {
-  const FundTrackingScreen({super.key});
+  final ValueChanged<int>? onSelectTab;
+  const FundTrackingScreen({super.key, this.onSelectTab});
 
   @override
   State<FundTrackingScreen> createState() => _FundTrackingScreenState();
@@ -861,37 +862,81 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-      ),
-      child: Column(
-        children: [
-          const Icon(LucideIcons.inbox, size: 48, color: Color(0xFF9CA3AF)),
-          const SizedBox(height: 16),
-          Text(
-            'No Fund Disbursements Yet',
-            style: GoogleFonts.inter(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF111827),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 130,
+              height: 130,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF4F7EB),
+                shape: BoxShape.circle,
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    LucideIcons.wallet,
+                    size: 56,
+                    color: Color(0xFF1E3D2F),
+                  ),
+                  Positioned(
+                    right: 22,
+                    bottom: 22,
+                    child: Transform.rotate(
+                      angle: 0.4,
+                      child: const Icon(
+                        LucideIcons.leaf,
+                        color: Color(0xFF5BA778),
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    top: 24,
+                    right: 24,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 16,
+                    ),
+                  ),
+                  const Positioned(
+                    bottom: 30,
+                    left: 20,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 12,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'When providers release scholarship funds, the transaction details and immutable blockchain records will appear here per program.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              fontSize: 12.5,
-              color: const Color(0xFF6B7280),
-              height: 1.45,
+            const SizedBox(height: 20),
+            Text(
+              'No Fund Disbursements Yet',
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111827),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              'When providers release scholarship funds, the transaction details and immutable blockchain records will appear here per program.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: const Color(0xFF6B7280),
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

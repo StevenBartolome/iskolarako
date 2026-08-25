@@ -656,56 +656,229 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: _buildAppBar(),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 350),
-        transitionBuilder: (child, anim) =>
-            FadeTransition(opacity: anim, child: child),
-        child: _buildCurrentStep(),
+      backgroundColor: const Color(0xFFFAFCFA),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildTopHeader(context),
+            _buildStepIndicator(),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 350),
+                transitionBuilder: (child, anim) =>
+                    FadeTransition(opacity: anim, child: child),
+                child: _buildCurrentStep(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    final titles = {
-      _VerificationStep.intro: 'Identity Verification',
-      _VerificationStep.idSelect: 'Select ID Type',
-      _VerificationStep.idCaptureFront: 'Capture ID Front',
-      _VerificationStep.idCaptureBack: 'Capture ID Back',
-      _VerificationStep.idVerifying: 'AI Verification Check',
-      _VerificationStep.blink: 'Liveness — Blink',
-      _VerificationStep.turnLeft: 'Liveness — Turn Left',
-      _VerificationStep.turnRight: 'Liveness — Turn Right',
-      _VerificationStep.selfie: 'Take a Selfie',
-      _VerificationStep.analyzing: 'Analyzing',
-      _VerificationStep.result: 'Verification Result',
-    };
-    return AppBar(
-      backgroundColor: AppColors.primaryDark,
-      foregroundColor: Colors.white,
-      elevation: 0,
-      title: Text(
-        titles[_step] ?? 'Verification',
-        style: GoogleFonts.playfairDisplay(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-        ),
-      ),
-      centerTitle: true,
-      leading: _step != _VerificationStep.analyzing
-          ? IconButton(
-              icon: const Icon(LucideIcons.arrowLeft),
-              onPressed: () {
+  Widget _buildTopHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+      color: const Color(0xFFFAFCFA),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (_step != _VerificationStep.analyzing)
+            GestureDetector(
+              onTap: () {
                 if (_step == _VerificationStep.intro) {
                   Navigator.pop(context);
                 } else {
                   _resetAll();
                 }
               },
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  LucideIcons.arrowLeft,
+                  color: Color(0xFF111827),
+                  size: 18,
+                ),
+              ),
             )
-          : const SizedBox.shrink(),
+          else
+            const SizedBox(width: 40, height: 40),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      LucideIcons.shieldCheck,
+                      size: 13,
+                      color: Color(0xFFD97706),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'BIOMETRIC VERIFICATION',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFFD97706),
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _getHeaderTitle(),
+                  style: GoogleFonts.inter(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF111827),
+                  ),
+                ),
+                Text(
+                  _getHeaderSubtitle(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5,
+                    color: const Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Image.asset(
+            'assets/books-hats-icon.png',
+            width: 75,
+            height: 65,
+            fit: BoxFit.contain,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getHeaderTitle() {
+    switch (_step) {
+      case _VerificationStep.intro:
+        return 'Verify Identity';
+      case _VerificationStep.idSelect:
+        return 'Select ID Type';
+      case _VerificationStep.idCaptureFront:
+        return 'Capture Front ID';
+      case _VerificationStep.idCaptureBack:
+        return 'Capture Back ID';
+      case _VerificationStep.idVerifying:
+        return 'AI Verification Check';
+      case _VerificationStep.blink:
+      case _VerificationStep.turnLeft:
+      case _VerificationStep.turnRight:
+        return 'Liveness Check';
+      case _VerificationStep.selfie:
+        return 'Take a Selfie';
+      case _VerificationStep.analyzing:
+        return 'Analyzing Biometrics';
+      case _VerificationStep.result:
+        return 'Verification Result';
+    }
+  }
+
+  String _getHeaderSubtitle() {
+    switch (_step) {
+      case _VerificationStep.intro:
+        return 'Earn your verified scholar badge';
+      case _VerificationStep.idSelect:
+        return 'Choose your official government or school ID';
+      case _VerificationStep.idCaptureFront:
+        return 'Align front of ID inside camera box';
+      case _VerificationStep.idCaptureBack:
+        return 'Align back of ID inside camera box';
+      case _VerificationStep.idVerifying:
+        return 'Extracting and matching profile details';
+      case _VerificationStep.blink:
+        return 'Look directly at camera and blink eyes';
+      case _VerificationStep.turnLeft:
+        return 'Slowly turn your head to the left';
+      case _VerificationStep.turnRight:
+        return 'Slowly turn your head to the right';
+      case _VerificationStep.selfie:
+        return 'Capture a clear portrait selfie photo';
+      case _VerificationStep.analyzing:
+        return 'Facial similarity & liveness score check';
+      case _VerificationStep.result:
+        return 'Identity verification review complete';
+    }
+  }
+
+  Widget _buildStepIndicator() {
+    int currentStepNum = 1;
+    switch (_step) {
+      case _VerificationStep.intro:
+        currentStepNum = 1;
+        break;
+      case _VerificationStep.idSelect:
+        currentStepNum = 2;
+        break;
+      case _VerificationStep.idCaptureFront:
+        currentStepNum = 3;
+        break;
+      case _VerificationStep.idCaptureBack:
+        currentStepNum = 4;
+        break;
+      case _VerificationStep.idVerifying:
+        currentStepNum = 4;
+        break;
+      case _VerificationStep.blink:
+      case _VerificationStep.turnLeft:
+      case _VerificationStep.turnRight:
+        currentStepNum = 5;
+        break;
+      case _VerificationStep.selfie:
+        currentStepNum = 5;
+        break;
+      case _VerificationStep.analyzing:
+      case _VerificationStep.result:
+        currentStepNum = 6;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      color: const Color(0xFFFAFCFA),
+      child: Row(
+        children: List.generate(6, (index) {
+          final isDone = (index + 1) < currentStepNum;
+          final isCurrent = (index + 1) == currentStepNum;
+          return Expanded(
+            child: Container(
+              height: 4,
+              margin: EdgeInsets.only(right: index == 5 ? 0 : 6),
+              decoration: BoxDecoration(
+                color: isDone || isCurrent
+                    ? const Color(0xFF1E3D2F)
+                    : const Color(0xFFE5E7EB),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          );
+        }),
+      ),
     );
   }
 
@@ -774,45 +947,73 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           // Hero illustration
           Center(
             child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                gradient: AppColors.signatureGradient,
+              width: 130,
+              height: 130,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF4F7EB),
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withAlpha(60),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    LucideIcons.shieldCheck,
+                    size: 56,
+                    color: Color(0xFF1E3D2F),
+                  ),
+                  Positioned(
+                    right: 22,
+                    bottom: 22,
+                    child: Transform.rotate(
+                      angle: 0.4,
+                      child: const Icon(
+                        LucideIcons.leaf,
+                        color: Color(0xFF5BA778),
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    top: 24,
+                    right: 24,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 16,
+                    ),
+                  ),
+                  const Positioned(
+                    bottom: 30,
+                    left: 20,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 12,
+                    ),
                   ),
                 ],
-              ),
-              child: const Icon(
-                LucideIcons.shieldCheck,
-                color: Colors.white,
-                size: 52,
               ),
             ),
           ),
           const SizedBox(height: 28),
           Text(
             'Verify Your Identity',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 26,
+            style: GoogleFonts.inter(
+              fontSize: 24,
               fontWeight: FontWeight.w800,
-              color: AppColors.primaryDark,
+              color: const Color(0xFF111827),
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Complete a quick 3-step check to earn your verified scholar badge. Your data is secured and never shared.',
             style: GoogleFonts.inter(
-              fontSize: 14,
-              color: AppColors.textSecondary,
-              height: 1.6,
+              fontSize: 13.5,
+              color: const Color(0xFF6B7280),
+              height: 1.5,
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
           _buildStepPreviewCard(
             number: '01',
             icon: LucideIcons.creditCard,
@@ -845,7 +1046,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
               'Your biometric data is processed securely and not stored.',
               style: GoogleFonts.inter(
                 fontSize: 11,
-                color: AppColors.textMuted,
+                color: const Color(0xFF9CA3AF),
               ),
               textAlign: TextAlign.center,
             ),
@@ -864,12 +1065,12 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.rule),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(8),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -881,10 +1082,11 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              gradient: AppColors.signatureGradient,
+              color: const Color(0xFFF0FDF4),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: Icon(icon, color: const Color(0xFF1E3D2F), size: 20),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -896,7 +1098,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                   style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: const Color(0xFF111827),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -904,7 +1106,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                   desc,
                   style: GoogleFonts.inter(
                     fontSize: 12,
-                    color: AppColors.textSecondary,
+                    color: const Color(0xFF6B7280),
                   ),
                 ),
               ],
@@ -927,7 +1129,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           const SizedBox(height: 24),
           Text(
             'Select ID Type',
-            style: GoogleFonts.playfairDisplay(
+            style: GoogleFonts.inter(
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: AppColors.primaryDark,
@@ -1057,7 +1259,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           const SizedBox(height: 24),
           Text(
             'Capture Front of ID',
-            style: GoogleFonts.playfairDisplay(
+            style: GoogleFonts.inter(
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: AppColors.primaryDark,
@@ -1133,7 +1335,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           const SizedBox(height: 24),
           Text(
             'Capture Back of ID',
-            style: GoogleFonts.playfairDisplay(
+            style: GoogleFonts.inter(
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: AppColors.primaryDark,
@@ -1214,7 +1416,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             const SizedBox(height: 24),
             Text(
               'Running AI Verification Check',
-              style: GoogleFonts.playfairDisplay(
+              style: GoogleFonts.inter(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: AppColors.primaryDark,
@@ -1850,7 +2052,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             const SizedBox(height: 28),
             Text(
               'Analyzing Your Identity',
-              style: GoogleFonts.playfairDisplay(
+              style: GoogleFonts.inter(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: AppColors.primaryDark,
@@ -1906,7 +2108,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           const SizedBox(height: 20),
           Text(
             _verificationSuccess ? 'Identity Verified!' : 'Verification Failed',
-            style: GoogleFonts.playfairDisplay(
+            style: GoogleFonts.inter(
               fontSize: 26,
               fontWeight: FontWeight.w800,
               color: _verificationSuccess ? AppColors.primaryDark : AppColors.error,

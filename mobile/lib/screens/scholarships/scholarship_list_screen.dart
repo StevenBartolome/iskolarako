@@ -6,7 +6,8 @@ import 'package:iskoako/utils/eligibility_helper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ScholarshipListScreen extends StatefulWidget {
-  const ScholarshipListScreen({super.key});
+  final ValueChanged<int>? onSelectTab;
+  const ScholarshipListScreen({super.key, this.onSelectTab});
 
   @override
   State<ScholarshipListScreen> createState() => _ScholarshipListScreenState();

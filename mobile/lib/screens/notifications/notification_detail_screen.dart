@@ -220,7 +220,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                     // Title
                     Text(
                       _item.title,
-                      style: GoogleFonts.playfairDisplay(
+                      style: GoogleFonts.inter(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
                         color: AppColors.primaryDark,

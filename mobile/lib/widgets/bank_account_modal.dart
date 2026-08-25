@@ -85,7 +85,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
   // every frame while the keyboard animates in/out. Cache the styles once so
   // the field taps don't lag when the keyboard opens.
   late final TextStyle _badgeStyle = GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w800, color: AppColors.primary, letterSpacing: 0.8);
-  late final TextStyle _titleStyle = GoogleFonts.merriweather(fontSize: 18, fontWeight: FontWeight.w800, color: const Color(0xFF1A3C2E));
+  late final TextStyle _titleStyle = GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800, color: const Color(0xFF1A3C2E));
   late final TextStyle _subtitleStyle = GoogleFonts.inter(fontSize: 12, color: const Color(0xFF6C6C70), height: 1.4);
   late final TextStyle _errorStyle = GoogleFonts.inter(fontSize: 12, color: Colors.red.shade700, fontWeight: FontWeight.w600);
   late final TextStyle _sectionLabelStyle = GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w800, color: const Color(0xFF6C6C70));

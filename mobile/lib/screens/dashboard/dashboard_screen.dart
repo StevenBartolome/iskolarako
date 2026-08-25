@@ -379,7 +379,7 @@ class DashboardScreenState extends State<DashboardScreen> {
 
   // ─── 1. Top Header Row ──────────────────────────────────────────────────────
   Widget _buildTopHeader(BuildContext context, String displayName) {
-    final badgeCount = _unreadNotifCount > 0 ? _unreadNotifCount : 2;
+    final badgeCount = _unreadNotifCount;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -451,28 +451,29 @@ class DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-              Positioned(
-                top: -2,
-                right: -2,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEF4444),
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                  child: Center(
-                    child: Text(
-                      '$badgeCount',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
+              if (badgeCount > 0)
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEF4444),
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    child: Center(
+                      child: Text(
+                        '$badgeCount',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),

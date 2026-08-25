@@ -426,13 +426,19 @@ class _RegisterScreenState extends State<RegisterScreen>
                   position: _logoSlide,
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(28, 28, 28, 22),
+                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
                     decoration: const BoxDecoration(
-                      color: AppColors.primaryDark,
-                      borderRadius: BorderRadius.only(
-                        bottomLeft: Radius.circular(32),
-                        bottomRight: Radius.circular(32),
+                      color: Color(0xFF1E3D2F),
+                      borderRadius: BorderRadius.vertical(
+                        bottom: Radius.circular(36),
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 14,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: Column(
                       children: [
@@ -447,53 +453,74 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 }
                               },
                               child: Container(
-                                width: 38,
-                                height: 38,
+                                width: 40,
+                                height: 40,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(20),
-                                  borderRadius: BorderRadius.circular(10),
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
                                 ),
-                                child: const Icon(
-                                  LucideIcons.arrowLeft,
-                                  color: Colors.white,
-                                  size: 18,
+                                child: const Center(
+                                  child: Icon(
+                                    LucideIcons.chevronLeft,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 14),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Register Scholar',
-                                  style: GoogleFonts.playfairDisplay(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(LucideIcons.userPlus, color: Color(0xFFF59E0B), size: 12),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'SCHOLAR ENROLLMENT',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: const Color(0xFFF59E0B),
+                                          letterSpacing: 1.0,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                Text(
-                                  'Complete your application profile',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    color: Colors.white.withAlpha(155),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Create Account',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                            const Spacer(),
-                            SvgPicture.asset(
-                              'assets/logo/iskolarakologo-notext.svg',
-                              height: 40,
-                              colorFilter: ColorFilter.mode(
-                                Colors.white.withAlpha(60),
-                                BlendMode.srcIn,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3), width: 1),
+                              ),
+                              child: SvgPicture.asset(
+                                'assets/logo/iskolarakologo-notext.svg',
+                                height: 28,
+                                colorFilter: const ColorFilter.mode(
+                                  Color(0xFFF59E0B),
+                                  BlendMode.srcIn,
+                                ),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 20),
-                        // Beautiful step status indicator
+                        // Step status indicator
                         _buildStepIndicator(),
                       ],
                     ),
@@ -625,7 +652,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       children: [
         Text(
           'Step 1: Account Credentials',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
@@ -732,7 +759,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       children: [
         Text(
           'Step 2: Personal Profile Info',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
@@ -874,7 +901,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       children: [
         Text(
           'Step 3: Academic Details',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
@@ -1556,7 +1583,7 @@ class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
           const SizedBox(height: 20),
           Text(
             'Verify Email',
-            style: GoogleFonts.playfairDisplay(
+            style: GoogleFonts.inter(
               fontSize: 22,
               fontWeight: FontWeight.w700,
               color: AppColors.primaryDark,

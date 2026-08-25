@@ -34,9 +34,15 @@ class _MainLayoutState extends State<MainLayout>
       key: _dashboardKey,
       onSelectTab: _onTabTapped,
     ),
-    const ScholarshipListScreen(),
-    const ApplicationTrackerScreen(),
-    const FundTrackingScreen(),
+    ScholarshipListScreen(
+      onSelectTab: _onTabTapped,
+    ),
+    ApplicationTrackerScreen(
+      onSelectTab: _onTabTapped,
+    ),
+    FundTrackingScreen(
+      onSelectTab: _onTabTapped,
+    ),
     const ProfileScreen(),
   ];
 

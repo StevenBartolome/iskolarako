@@ -58,7 +58,7 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
       appBar: AppBar(
         title: Text(
           'Apply Scholarship',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
           ),
@@ -152,7 +152,7 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
       children: [
         Text(
           'Personal Information',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 22,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
@@ -182,7 +182,7 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
       children: [
         Text(
           'Academic Details',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 22,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
@@ -325,7 +325,7 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
       children: [
         Text(
           'Submit Requirements',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 22,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
@@ -391,7 +391,7 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
       children: [
         Text(
           'Final Review',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 22,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,

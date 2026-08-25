@@ -171,7 +171,7 @@ class _SplashScreenState extends State<SplashScreen>
                         children: [
                           Text(
                             'IskolarAko',
-                            style: GoogleFonts.playfairDisplay(
+                            style: GoogleFonts.inter(
                               fontSize: 38,
                               fontWeight: FontWeight.w900,
                               color: AppColors.primaryDark,

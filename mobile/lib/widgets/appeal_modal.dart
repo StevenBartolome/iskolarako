@@ -240,7 +240,7 @@ class _AppealModalState extends State<AppealModal> {
                       children: [
                         Text(
                           'File Formal Appeal / Dispute',
-                          style: GoogleFonts.playfairDisplay(
+                          style: GoogleFonts.inter(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: AppColors.primaryDark,
