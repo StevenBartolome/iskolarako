@@ -21,7 +21,6 @@ export const AdminLogsTab: React.FC<AdminLogsTabProps> = ({ auditLogs }) => {
               <th>Administrator</th>
               <th>Action Executed</th>
               <th>Target Object</th>
-              <th>IP Address</th>
             </tr>
           </thead>
           <tbody>
@@ -33,7 +32,6 @@ export const AdminLogsTab: React.FC<AdminLogsTabProps> = ({ auditLogs }) => {
                   <span className="font-bold text-[#C97B2E]">{log.action}</span>
                 </td>
                 <td>{log.target}</td>
-                <td className="font-mono text-[10px] text-[#8E8E93]">{log.ip}</td>
               </tr>
             ))}
           </tbody>

@@ -177,7 +177,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
                 <th>Admin</th>
                 <th>Action</th>
                 <th>Target Entity</th>
-                <th>IP Address</th>
               </tr>
             </thead>
             <tbody>
@@ -195,7 +194,6 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
                     </span>
                   </td>
                   <td>{log.target}</td>
-                  <td className="font-mono text-[10px]">{log.ip}</td>
                 </tr>
               ))}
             </tbody>

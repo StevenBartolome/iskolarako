@@ -51,7 +51,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
     : '100.0';
 
   const totalActiveScholars = useMemo(() => {
-    return students.length || 142;
+    return students.length;
   }, [students]);
 
   // Provider Type Distribution
@@ -195,7 +195,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
-              ₱{totalFundingDisbursed > 0 ? totalFundingDisbursed.toLocaleString() : '8,450,000'}
+              ₱{totalFundingDisbursed.toLocaleString()}
             </div>
             <p className="text-[11px] text-[#6C6C70] mt-0.5">
               Total grants released across {providers.length} registered providers

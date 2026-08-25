@@ -13,7 +13,6 @@ export type AdminTab =
   | 'reports'
   | 'funds'
   | 'notifications'
-  | 'users'
   | 'logs'
   | 'settings'
   | 'profile';

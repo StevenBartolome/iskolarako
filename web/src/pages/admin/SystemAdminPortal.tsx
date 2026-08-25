@@ -13,7 +13,6 @@ import { AdminDocumentsTab } from './components/AdminDocumentsTab';
 import { AdminReportsTab } from './components/AdminReportsTab';
 import { AdminFundsTab } from './components/AdminFundsTab';
 import { AdminNotificationsTab } from './components/AdminNotificationsTab';
-import { AdminUsersTab } from './components/AdminUsersTab';
 import { AdminLogsTab } from './components/AdminLogsTab';
 import { AdminSettingsTab } from './components/AdminSettingsTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
@@ -170,12 +169,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   const [providers, setProviders] = useState<ProviderOrg[]>([]);
   const [providerRequirementsMap, setProviderRequirementsMap] = useState<Record<string, RequirementItem[]>>({});
 
-  const [scholarships, setScholarships] = useState<ScholarshipAdminView[]>([
-    { id: 101, title: 'DOST Merit Scholarship 2026', providerName: 'Department of Science and Technology', category: 'STEM', amount: 40000, status: 'Published', dateCreated: 'Aug 01, 2026' },
-    { id: 102, title: 'ABC Tech Innovators Grant', providerName: 'ABC Foundation', category: 'Engineering & IT', amount: 25000, status: 'Pending Review', dateCreated: 'Aug 09, 2026' },
-    { id: 103, title: 'Megaworld Leadership Scholarship', providerName: 'Megaworld Foundation', category: 'General Academic', amount: 50000, status: 'Pending Review', dateCreated: 'Aug 08, 2026' },
-    { id: 104, title: 'Starlight Dreamer Grant', providerName: 'Starlight Grants Inc.', category: 'Arts', amount: 15000, status: 'Suspended', dateCreated: 'Feb 20, 2026' }
-  ]);
+  const [scholarships, setScholarships] = useState<ScholarshipAdminView[]>([]);
 
   const [students, setStudents] = useState<StudentAdminView[]>([]);
   const [loadingScholars, setLoadingScholars] = useState(false);
@@ -344,10 +338,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     fetchStudentsAndScholars();
   }, [activeTab]);
 
-  const [reports, setReports] = useState<AdminReport[]>([
-    { id: 1001, reportedEntity: 'Starlight Grants Inc.', type: 'Provider', reason: 'Suspicious fees requested during interview', reporter: 'Student #28491', status: 'Under Investigation', date: 'Aug 08, 2026' },
-    { id: 1002, reportedEntity: 'ABC Tech Innovators Grant', type: 'Scholarship', reason: 'Misleading description of benefits', reporter: 'Student #11054', status: 'Under Investigation', date: 'Aug 09, 2026' }
-  ]);
+  const [reports, setReports] = useState<AdminReport[]>([]);
 
 
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -1146,15 +1137,6 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
 
 
 
-  const [adminsList, setAdminsList] = useState([
-    { id: 1, username: 'admin01', role: 'Super Admin', status: 'Active' },
-    { id: 2, username: 'admin02', role: 'Moderator', status: 'Active' },
-    { id: 3, username: 'compliance_officer', role: 'Auditor', status: 'Active' }
-  ]);
-
-  const [newAdminUser, setNewAdminUser] = useState('');
-  const [newAdminRole, setNewAdminRole] = useState('Moderator');
-
   const showToast = (message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
@@ -1435,36 +1417,6 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     }
   };
 
-  const handleCreateAdmin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAdminUser) return;
-    const newAdmin = {
-      id: Date.now(),
-      username: newAdminUser,
-      role: newAdminRole,
-      status: 'Active'
-    };
-    setAdminsList([...adminsList, newAdmin]);
-    addAuditLog(`CREATED ADMIN ACCOUNT`, `${newAdminUser} (${newAdminRole})`);
-    showToast(`Admin account "${newAdminUser}" created.`);
-    setNewAdminUser('');
-  };
-
-  const handleToggleAdminStatus = (id: number) => {
-    setAdminsList(prev =>
-      prev.map(a => {
-        if (a.id === id) {
-          const nextStatus = a.status === 'Active' ? 'Disabled' : 'Active';
-          addAuditLog(`TOGGLED ADMIN STATUS`, `${a.username} to ${nextStatus}`);
-          showToast(`Admin "${a.username}" is now ${nextStatus}.`);
-          return { ...a, status: nextStatus };
-        }
-        return a;
-      })
-    );
-  };
-
-
   const handleDeleteCategory = async (id: string, name: string) => {
     try {
       const { error } = await supabase
@@ -1595,7 +1547,6 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
               {(!isCollapsed && collapsedGroups.control) ? null : (
                 <div className="space-y-1 animate-fade-in">
                   {renderSidebarBtn('notifications', 'Broadcast Portal', '📢')}
-                  {renderSidebarBtn('users', 'Admins & Roles', '👥')}
                   {renderSidebarBtn('logs', 'System Audit Logs', '📝')}
                   {renderSidebarBtn('settings', 'System Settings', '⚙️')}
                   {renderSidebarBtn('profile', 'Profile Settings', '👤')}
@@ -1761,18 +1712,6 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             adminBroadcasts={adminBroadcasts}
             isSendingAnnouncement={isSendingAnnouncement}
             onDeleteBroadcast={handleDeleteAdminBroadcast}
-          />
-        )}
-
-        {activeTab === 'users' && (
-          <AdminUsersTab
-            adminsList={adminsList}
-            handleToggleAdminStatus={handleToggleAdminStatus}
-            handleCreateAdmin={handleCreateAdmin}
-            newAdminUser={newAdminUser}
-            setNewAdminUser={setNewAdminUser}
-            newAdminRole={newAdminRole}
-            setNewAdminRole={setNewAdminRole}
           />
         )}
 
