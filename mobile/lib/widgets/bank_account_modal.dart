@@ -29,6 +29,8 @@ const List<String> kPhilippineBanks = [
 class BankAccountModal extends StatefulWidget {
   final String scholarId;
   final String scholarName;
+  final String? programId;
+  final String? applicationId;
   final String? requiredBankName;
   final VoidCallback? onSuccess;
 
@@ -36,6 +38,8 @@ class BankAccountModal extends StatefulWidget {
     super.key,
     required this.scholarId,
     required this.scholarName,
+    this.programId,
+    this.applicationId,
     this.requiredBankName,
     this.onSuccess,
   });
@@ -44,6 +48,8 @@ class BankAccountModal extends StatefulWidget {
     BuildContext context, {
     required String scholarId,
     required String scholarName,
+    String? programId,
+    String? applicationId,
     String? requiredBankName,
     VoidCallback? onSuccess,
   }) {
@@ -51,16 +57,13 @@ class BankAccountModal extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => AnimatedPadding(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: BankAccountModal(
-          scholarId: scholarId,
-          scholarName: scholarName,
-          requiredBankName: requiredBankName,
-          onSuccess: onSuccess,
-        ),
+      builder: (ctx) => BankAccountModal(
+        scholarId: scholarId,
+        scholarName: scholarName,
+        programId: programId,
+        applicationId: applicationId,
+        requiredBankName: requiredBankName,
+        onSuccess: onSuccess,
       ),
     );
   }
@@ -98,6 +101,8 @@ class _BankAccountModalState extends State<BankAccountModal> {
   late final TextStyle _accNumStyle = GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary, letterSpacing: 1.0);
   late final TextStyle _buttonStyle = GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white);
 
+  Map<String, dynamic>? _existingAccount;
+
   @override
   void initState() {
     super.initState();
@@ -107,6 +112,169 @@ class _BankAccountModalState extends State<BankAccountModal> {
     }
     _accountNameController = TextEditingController(text: widget.scholarName);
     _accountNumberController = TextEditingController();
+    // Defer the async fetch until after the first frame so that setState()
+    // is never called before the widget tree has been laid out. Calling it
+    // directly in initState() causes "Cannot hit test a render box that has
+    // never been laid out" when a second program's modal opens right after
+    // the first one closes.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchExistingAccount();
+    });
+  }
+
+  Future<void> _fetchExistingAccount() async {
+    try {
+      // 1. Try to find account specifically for this program first
+      if (widget.programId != null) {
+        final data = await Supabase.instance.client
+            .from('scholar_payment_accounts')
+            .select()
+            .eq('scholar_id', widget.scholarId)
+            .eq('program_id', widget.programId!)
+            .maybeSingle();
+
+        if (data != null) {
+          if (mounted) {
+            setState(() {
+              _existingAccount = data;
+            });
+          }
+          return;
+        }
+      }
+
+      // 2. Otherwise load any other account as a saved template
+      final list = await Supabase.instance.client
+          .from('scholar_payment_accounts')
+          .select()
+          .eq('scholar_id', widget.scholarId);
+
+      if (list.isNotEmpty && mounted) {
+        setState(() {
+          _existingAccount = list.first;
+        });
+      }
+    } catch (e) {
+      debugPrint('Note fetching existing account: $e');
+    }
+  }
+
+  Future<void> _useExistingAccountForProgram() async {
+    if (_existingAccount == null) return;
+    setState(() => _isSaving = true);
+
+    try {
+      final bankName = _existingAccount!['bank_name']?.toString() ?? 'Bank';
+      final accName = _existingAccount!['account_name']?.toString() ?? widget.scholarName;
+      final accNum = _existingAccount!['account_number']?.toString() ?? '';
+      final docUrl = _existingAccount!['document_proof_url']?.toString() ?? '';
+
+      List<String> programIds = [];
+      List<String> applicationIds = [];
+
+      final aiDataRaw = _existingAccount!['ai_extracted_data'];
+      Map<String, dynamic> aiData = aiDataRaw is Map ? Map<String, dynamic>.from(aiDataRaw) : {};
+
+      if (aiData['program_ids'] is List) {
+        programIds = List<String>.from((aiData['program_ids'] as List).map((e) => e.toString()));
+      }
+      if (aiData['application_ids'] is List) {
+        applicationIds = List<String>.from((aiData['application_ids'] as List).map((e) => e.toString()));
+      }
+
+      if (widget.programId != null && !programIds.contains(widget.programId)) {
+        programIds.add(widget.programId!);
+      }
+      if (widget.applicationId != null && !applicationIds.contains(widget.applicationId)) {
+        applicationIds.add(widget.applicationId!);
+      }
+
+      aiData['program_ids'] = programIds;
+      aiData['application_ids'] = applicationIds;
+
+      final payload = {
+        'scholar_id': widget.scholarId,
+        'program_id': widget.programId,
+        'account_type': 'bank_transfer',
+        'bank_name': bankName,
+        'account_name': accName,
+        'account_number': accNum,
+        'document_proof_url': docUrl,
+        'ai_extracted_data': aiData,
+        'is_primary': true,
+        'is_verified': true,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      try {
+        await Supabase.instance.client.from('scholar_payment_accounts').upsert(
+          payload,
+          onConflict: 'scholar_id, program_id',
+        );
+      } catch (upsertErr) {
+        try {
+          await Supabase.instance.client.from('scholar_payment_accounts').insert(payload);
+        } catch (_) {
+          await Supabase.instance.client
+              .from('scholar_payment_accounts')
+              .update(payload)
+              .eq('scholar_id', widget.scholarId)
+              .eq('program_id', widget.programId!);
+        }
+      }
+
+      if (widget.applicationId != null && widget.applicationId!.isNotEmpty) {
+        try {
+          final existingApp = await Supabase.instance.client
+              .from('scholarship_applications')
+              .select('submitted_documents')
+              .eq('id', widget.applicationId!)
+              .maybeSingle();
+
+          Map<String, dynamic> submittedDocs = {};
+          if (existingApp != null && existingApp['submitted_documents'] is Map) {
+            submittedDocs = Map<String, dynamic>.from(existingApp['submitted_documents']);
+          }
+
+          submittedDocs['bank_details'] = {
+            'bank_name': bankName,
+            'account_name': accName,
+            'account_number': accNum,
+            'document_proof_url': docUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          };
+
+          await Supabase.instance.client
+              .from('scholarship_applications')
+              .update({'submitted_documents': submittedDocs})
+              .eq('id', widget.applicationId!);
+        } catch (appErr) {
+          debugPrint('Note updating application submitted_documents: $appErr');
+        }
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✓ Attached $bankName account to this scholarship program!',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+            ),
+            backgroundColor: AppColors.primary,
+          ),
+        );
+        widget.onSuccess?.call();
+      }
+    } catch (e) {
+      debugPrint('Error attaching saved bank account: $e');
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _errorMessage = 'Failed to attach bank account: $e';
+        });
+      }
+    }
   }
 
   @override
@@ -126,6 +294,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
 
       if (result != null && result.files.isNotEmpty) {
         final picked = result.files.first;
+        if (!mounted) return;
         setState(() {
           _pickedFile = picked;
           _isScanning = true;
@@ -193,10 +362,12 @@ class _BankAccountModalState extends State<BankAccountModal> {
       }
     } catch (e) {
       debugPrint('File picker error: $e');
-      setState(() {
-        _isScanning = false;
-        _errorMessage = 'Failed to pick file. Please try again.';
-      });
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+          _errorMessage = 'Failed to pick file. Please try again.';
+        });
+      }
     }
   }
 
@@ -263,21 +434,47 @@ class _BankAccountModalState extends State<BankAccountModal> {
         }
       }
 
+      List<String> programIds = [];
+      List<String> applicationIds = [];
+
+      if (_existingAccount != null && _existingAccount!['ai_extracted_data'] is Map) {
+        final existingProgs = _existingAccount!['ai_extracted_data']['program_ids'];
+        if (existingProgs is List) {
+          programIds = List<String>.from(existingProgs.map((e) => e.toString()));
+        }
+        final existingApps = _existingAccount!['ai_extracted_data']['application_ids'];
+        if (existingApps is List) {
+          applicationIds = List<String>.from(existingApps.map((e) => e.toString()));
+        }
+      }
+
+      if (widget.programId != null && !programIds.contains(widget.programId)) {
+        programIds.add(widget.programId!);
+      }
+      if (widget.applicationId != null && !applicationIds.contains(widget.applicationId)) {
+        applicationIds.add(widget.applicationId!);
+      }
+
+      final Map<String, dynamic> aiData = _extractedInfo != null
+          ? {
+              'bank_name': _extractedInfo!.bankName,
+              'account_name': _extractedInfo!.accountName,
+              'account_number': _extractedInfo!.accountNumber,
+              'confidence_score': _extractedInfo!.confidenceScore,
+            }
+          : {};
+      aiData['program_ids'] = programIds;
+      aiData['application_ids'] = applicationIds;
+
       final payload = {
         'scholar_id': widget.scholarId,
+        'program_id': widget.programId,
         'account_type': 'bank_transfer',
         'bank_name': _selectedBank,
         'account_name': accName,
         'account_number': accNum.replaceAll(RegExp(r'\s+'), ''),
         'document_proof_url': documentProofUrl,
-        'ai_extracted_data': _extractedInfo != null
-            ? {
-                'bank_name': _extractedInfo!.bankName,
-                'account_name': _extractedInfo!.accountName,
-                'account_number': _extractedInfo!.accountNumber,
-                'confidence_score': _extractedInfo!.confidenceScore,
-              }
-            : {},
+        'ai_extracted_data': aiData,
         'ai_model_used': _extractedInfo?.aiModelUsed ?? 'Manual Input',
         'is_primary': true,
         'is_verified': true,
@@ -287,7 +484,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
       try {
         await Supabase.instance.client.from('scholar_payment_accounts').upsert(
           payload,
-          onConflict: 'scholar_id',
+          onConflict: 'scholar_id, program_id',
         );
       } catch (upsertErr) {
         try {
@@ -296,7 +493,38 @@ class _BankAccountModalState extends State<BankAccountModal> {
           await Supabase.instance.client
               .from('scholar_payment_accounts')
               .update(payload)
-              .eq('scholar_id', widget.scholarId);
+              .eq('scholar_id', widget.scholarId)
+              .eq('program_id', widget.programId!);
+        }
+      }
+
+      if (widget.applicationId != null && widget.applicationId!.isNotEmpty) {
+        try {
+          final existingApp = await Supabase.instance.client
+              .from('scholarship_applications')
+              .select('submitted_documents')
+              .eq('id', widget.applicationId!)
+              .maybeSingle();
+
+          Map<String, dynamic> submittedDocs = {};
+          if (existingApp != null && existingApp['submitted_documents'] is Map) {
+            submittedDocs = Map<String, dynamic>.from(existingApp['submitted_documents']);
+          }
+
+          submittedDocs['bank_details'] = {
+            'bank_name': _selectedBank,
+            'account_name': accName,
+            'account_number': accNum.replaceAll(RegExp(r'\s+'), ''),
+            'document_proof_url': documentProofUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          };
+
+          await Supabase.instance.client
+              .from('scholarship_applications')
+              .update({'submitted_documents': submittedDocs})
+              .eq('id', widget.applicationId!);
+        } catch (appErr) {
+          debugPrint('Note updating application submitted_documents: $appErr');
         }
       }
 
@@ -319,16 +547,20 @@ class _BankAccountModalState extends State<BankAccountModal> {
       }
     } catch (e) {
       debugPrint('Error saving payment account: $e');
-      setState(() {
-        _isSaving = false;
-        _errorMessage = 'Failed to save bank details: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _errorMessage = 'Failed to save bank details: $e';
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final keyboardPadding = MediaQuery.of(context).viewInsets.bottom;
     return Container(
+      padding: EdgeInsets.only(bottom: keyboardPadding),
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.88,
       ),
@@ -398,6 +630,57 @@ class _BankAccountModalState extends State<BankAccountModal> {
                   style: _subtitleStyle,
                 ),
                 const SizedBox(height: 16),
+
+                if (_existingAccount != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFDCFCE7), width: 1.5),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: const BoxDecoration(color: Color(0xFFDCFCE7), shape: BoxShape.circle),
+                          child: const Center(child: Text('💳', style: TextStyle(fontSize: 16))),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Saved Account Available',
+                                style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFF1A3C2E)),
+                              ),
+                              Text(
+                                '${_existingAccount!['bank_name']} (${_existingAccount!['account_number']})',
+                                style: GoogleFonts.inter(fontSize: 10.5, color: const Color(0xFF6C6C70)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: _isSaving ? null : _useExistingAccountForProgram,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: const Size(60, 30), // Fix global infinite width theme constraint
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            elevation: 0,
+                          ),
+                          child: Text('Attach Account', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 if (_errorMessage != null)
                   Container(

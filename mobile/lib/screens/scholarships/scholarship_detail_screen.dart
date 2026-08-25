@@ -130,6 +130,18 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
       benefitsList.add('Refer to scholarship program guidelines for complete benefit details');
     }
 
+    final mode = program?['disbursement_mode']?.toString() ?? program?['disbursementMode']?.toString() ?? 'online_transfer';
+    final onlineType = program?['online_bank_type']?.toString() ?? program?['onlineBankType']?.toString() ?? 'personal_bank';
+    if (mode == 'in_person_cash') {
+      benefitsList.add('Release Channel: Over-the-Counter Cash (On-Site Payout)');
+    } else {
+      if (onlineType == 'provider_issued_card') {
+        benefitsList.add('Release Channel: Online via Provider-Issued ATM Cash Card');
+      } else {
+        benefitsList.add('Release Channel: Online via Scholar Personal Bank / E-Wallet (GCash, Maya, etc.)');
+      }
+    }
+
     final eligibilityList = <String>[];
     if (program?['target_education_level'] != null) {
       const eduLabels = {

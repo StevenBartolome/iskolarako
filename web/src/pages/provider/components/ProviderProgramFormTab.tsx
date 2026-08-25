@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Program, EducationLevel, GradingSystem, ProgramRequirement } from '../types';
 import {
   YEAR_LEVELS_BY_EDUCATION_LEVEL,
@@ -104,6 +104,26 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   );
 
   // Tuition & Budget Allocation Modes
+  const [disbursementMode, setDisbursementMode] = useState<'online_transfer' | 'in_person_cash'>(() => {
+    const mode = String(programToEdit?.disbursement_mode || programToEdit?.disbursementMode || '').toLowerCase();
+    return (mode === 'in_person_cash' || mode === 'cash' || mode.includes('cash')) ? 'in_person_cash' : 'online_transfer';
+  });
+  const [onlineBankType, setOnlineBankType] = useState<'personal_bank' | 'provider_issued_card'>(() => {
+    const bankPol = String(programToEdit?.banking_policy || programToEdit?.bankingPolicy || programToEdit?.online_bank_type || programToEdit?.onlineBankType || '').toLowerCase();
+    return (bankPol === 'provider_issued' || bankPol === 'provider_issued_card' || bankPol.includes('provider')) ? 'provider_issued_card' : 'personal_bank';
+  });
+
+  useEffect(() => {
+    if (programToEdit) {
+      const mode = String(programToEdit.disbursement_mode || programToEdit.disbursementMode || '').toLowerCase();
+      const isCash = mode === 'in_person_cash' || mode === 'cash' || mode.includes('cash');
+      setDisbursementMode(isCash ? 'in_person_cash' : 'online_transfer');
+
+      const bankPol = String(programToEdit.banking_policy || programToEdit.bankingPolicy || programToEdit.online_bank_type || programToEdit.onlineBankType || '').toLowerCase();
+      const isCard = bankPol === 'provider_issued' || bankPol === 'provider_issued_card' || bankPol.includes('provider');
+      setOnlineBankType(isCard ? 'provider_issued_card' : 'personal_bank');
+    }
+  }, [programToEdit]);
   const [tuitionPayoutMode, setTuitionPayoutMode] = useState<'direct_to_student' | 'direct_to_school_off_system'>(
     programToEdit?.tuition_payout_mode || 'direct_to_student'
   );
@@ -697,6 +717,10 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         applicationRequirements: requirementsList,
         allow_freshman_intended_school: allowFreshmanIntendedSchool,
         is_incoming_freshman_supported: isFreshmanTarget,
+        disbursement_mode: disbursementMode,
+        disbursementMode: disbursementMode,
+        online_bank_type: onlineBankType,
+        onlineBankType: onlineBankType,
         tuition_payout_mode: tuitionPayoutMode,
         tuition_coverage_type: tuitionCoverageType,
         tuition_max_amount: parseFloat(tuitionMaxAmount) || 0,
@@ -1095,6 +1119,84 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                       />
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* Disbursement Release Method & Payout Channel */}
+            <div className="p-5 rounded-3xl bg-[#F4F6F4] border border-[#D9D2C5]/80 space-y-4">
+              <h4 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-2">
+                <span>💸</span> Disbursement & Payout Release Method
+              </h4>
+              <p className="text-[11.5px] text-[#6C6C70]">
+                Specify how scholars will receive their stipends, allowances, and monetary grants for this program.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Release Type: Cash vs Online */}
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                    Release Type *
+                  </label>
+                  <select
+                    value={disbursementMode}
+                    onChange={(e: any) => setDisbursementMode(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
+                  >
+                    <option value="online_transfer">🌐 Online Bank / Digital E-Wallet Transfer</option>
+                    <option value="in_person_cash">💵 Over-the-Counter Cash (On-Site Release)</option>
+                  </select>
+                </div>
+
+                {/* Online Account Category (if Online Transfer) */}
+                {disbursementMode === 'online_transfer' ? (
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">
+                      Online Bank / Account Category *
+                    </label>
+                    <select
+                      value={onlineBankType}
+                      onChange={(e: any) => setOnlineBankType(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
+                    >
+                      <option value="personal_bank">📱 Scholar's Personal Bank Account / E-Wallet (GCash, Maya, BDO, BPI, etc.)</option>
+                      <option value="provider_issued_card">💳 Provider-Issued ATM Card (New Partner Bank Card)</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#6C6C70] uppercase tracking-wide mb-1.5">
+                      Venue / Payout Location
+                    </label>
+                    <div className="px-4 py-2.5 rounded-2xl bg-[#EBE7DF] border border-[#D9D2C5] text-xs font-medium text-[#6C6C70]">
+                      Campus Cashier / Over-the-Counter Desk
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Explanatory Info Box */}
+              {disbursementMode === 'online_transfer' ? (
+                <div className="p-3 bg-[#EBF5EE] border border-[#2D5941]/20 rounded-xl text-[11px] text-[#1A3C2E] flex items-start gap-2">
+                  <span className="text-base">ℹ️</span>
+                  <div>
+                    {onlineBankType === 'personal_bank' ? (
+                      <p>
+                        <strong>Scholar Personal Account:</strong> Applicants will link their existing personal bank or e-wallet account (e.g. GCash, Maya, Landbank, BDO, BPI) during application.
+                      </p>
+                    ) : (
+                      <p>
+                        <strong>Provider-Issued ATM Card:</strong> The provider or partner bank will issue and distribute new dedicated ATM cash cards to accepted scholars upon program enrollment.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-[#FFFBEB] border border-[#F59E0B]/30 rounded-xl text-[11px] text-[#92400E] flex items-start gap-2">
+                  <span className="text-base">🏛️</span>
+                  <p>
+                    <strong>Over-the-Counter Cash Mode:</strong> Scholars will collect funds in cash at designated campus offices or provider payout venues. Bank account details are not required.
+                  </p>
                 </div>
               )}
             </div>
@@ -2402,6 +2504,24 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                     </span>
                   ))}
                 </div>
+              </div>
+
+              {/* Disbursement Release Method Review */}
+              <div className="pt-3 border-t border-[#D9D2C5]/50">
+                <span className="text-[#6C6C70] block uppercase font-bold text-[10px] mb-1.5">Disbursement Release Channel</span>
+                <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333] inline-flex items-center gap-1.5">
+                  {disbursementMode === 'online_transfer' ? (
+                    <>
+                      <span>🌐</span>
+                      <span>Online Transfer ({onlineBankType === 'personal_bank' ? "Scholar Personal Bank / E-Wallet" : "Provider-Issued ATM Card"})</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>💵</span>
+                      <span>Over-the-Counter Cash (On-Site Release)</span>
+                    </>
+                  )}
+                </span>
               </div>
 
               {isFreshmanTarget && (

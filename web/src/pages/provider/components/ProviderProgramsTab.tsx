@@ -263,14 +263,18 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                       <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
                       <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency || 'Per Semester'}</span>
                     </div>
-                    {rawBudget > 0 && (
-                      <div className="text-right">
-                        <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Total Budget / Remaining</span>
-                        <span className="text-[#1A3C2E] font-bold text-xs mt-0.5 block">
-                          ₱{rawBudget.toLocaleString()} <span className="text-[#C97B2E] text-[10px]">(₱{remainingBudget.toLocaleString()} left)</span>
-                        </span>
-                      </div>
-                    )}
+                    <div className="text-right">
+                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Total Budget / Remaining</span>
+                      <span className="text-[#1A3C2E] font-bold text-xs mt-0.5 block">
+                        {rawBudget > 0 ? (
+                          <>
+                            ₱{rawBudget.toLocaleString()} <span className="text-[#C97B2E] text-[10px]">(₱{remainingBudget.toLocaleString()} left)</span>
+                          </>
+                        ) : (
+                          <span className="text-gray-400 italic">Not set (₱0)</span>
+                        )}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Action Buttons Grid */}

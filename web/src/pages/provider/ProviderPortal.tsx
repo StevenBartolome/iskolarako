@@ -314,6 +314,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       covers_allowance: dbProg.covers_allowance,
       total_slots: dbProg.total_slots,
       totalSlots: dbProg.total_slots,
+      budget_total: dbProg.budget_total !== undefined && dbProg.budget_total !== null ? Number(dbProg.budget_total) : 0,
+      amount: dbProg.budget_total !== undefined && dbProg.budget_total !== null ? String(dbProg.budget_total) : '',
       target_education_level: dbProg.target_education_level,
       targetEducationLevel: dbProg.target_education_level,
       grading_system: dbProg.grading_system,
@@ -328,6 +330,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       available_schools: dbProg.available_schools,
       allow_freshman_intended_school: dbProg.allow_freshman_intended_school,
       is_incoming_freshman_supported: dbProg.is_incoming_freshman_supported,
+      disbursement_mode: dbProg.disbursement_mode || 'online',
+      disbursementMode: dbProg.disbursement_mode || 'online',
+      banking_policy: dbProg.banking_policy || 'any_bank',
+      bankingPolicy: dbProg.banking_policy || 'any_bank',
+      online_bank_type: dbProg.banking_policy === 'provider_issued' ? 'provider_issued_card' : 'personal_bank',
+      onlineBankType: dbProg.banking_policy === 'provider_issued' ? 'provider_issued_card' : 'personal_bank',
       tuition_payout_mode: dbProg.tuition_payout_mode || 'direct_to_student',
       tuition_coverage_type: dbProg.tuition_coverage_type || 'fixed_cap',
       tuition_max_amount: dbProg.tuition_max_amount ? String(dbProg.tuition_max_amount) : '',
@@ -898,7 +906,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 .in('scholar_id', scholarIds);
               if (pAccData) {
                 pAccData.forEach((p: any) => {
-                  scholarPaymentMap[p.scholar_id] = p;
+                  scholarPaymentMap[`${p.scholar_id}_${p.program_id || 'global'}`] = p;
+                  if (!scholarPaymentMap[p.scholar_id]) {
+                    scholarPaymentMap[p.scholar_id] = p;
+                  }
                 });
               }
             } catch (pErr) {
@@ -962,6 +973,55 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             return '1.50';
           };
 
+          const resolveScopedPaymentAccount = (scholarId: string, programId: string | undefined, applicationId: string | undefined, submittedDocs: any) => {
+            // 1. Prioritize application-specific bank details from submitted_documents
+            if (submittedDocs && typeof submittedDocs === 'object' && submittedDocs.bank_details) {
+              const bd = submittedDocs.bank_details;
+              return {
+                id: bd.id || 'app-bank-details',
+                bank_name: bd.bank_name,
+                account_name: bd.account_name,
+                account_number: bd.account_number,
+                document_proof_url: bd.document_proof_url,
+                ai_model_used: bd.ai_model_used || 'Extracted',
+                is_verified: true,
+              };
+            }
+
+            // 2. Look up specific payment account for this program
+            if (programId) {
+              const specificAcc = scholarPaymentMap[`${scholarId}_${programId}`];
+              if (specificAcc) return specificAcc;
+            }
+
+            // 3. Fallback to global payment account if scoped to this program/application
+            const globalPaymentAccount = scholarPaymentMap[scholarId] || null;
+            if (!globalPaymentAccount) return null;
+            
+            const aiData = globalPaymentAccount.ai_extracted_data || {};
+            const hasProgramIds = 'program_ids' in aiData;
+            const hasApplicationIds = 'application_ids' in aiData;
+
+            if (!hasProgramIds && !hasApplicationIds) {
+              return globalPaymentAccount;
+            }
+
+            const programIds: string[] = Array.isArray(aiData.program_ids) 
+              ? aiData.program_ids.map(String) 
+              : [];
+            const applicationIds: string[] = Array.isArray(aiData.application_ids) 
+              ? aiData.application_ids.map(String) 
+              : [];
+            
+            const matchesProg = programId && programIds.includes(String(programId));
+            const matchesApp = applicationId && applicationIds.includes(String(applicationId));
+
+            if (matchesProg || matchesApp) {
+              return globalPaymentAccount;
+            }
+            return null;
+          };
+
           const mappedApplicants: ApplicationDetail[] = data.map((app: any) => {
             const scholar = app.scholar || {};
             const user = scholar.user || {};
@@ -1018,6 +1078,21 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 remarks: d.remarks || '',
                 aiVerification: d.aiVerification,
               }));
+
+              if (app.submitted_documents.bank_details) {
+                const bd = app.submitted_documents.bank_details;
+                docs.push({
+                  id: bd.id || 'bank-details-doc',
+                  name: 'Bank Details / ATM Proof',
+                  filename: bd.document_proof_url ? bd.document_proof_url.split('/').pop() : 'bank_proof.pdf',
+                  document_url: bd.document_proof_url,
+                  url: bd.document_proof_url,
+                  submitted_at: bd.updated_at || 'Recently',
+                  status: 'Verified',
+                  remarks: '',
+                  aiVerification: undefined,
+                });
+              }
             }
 
             if (scholarDocsMap[scholar.id]) {
@@ -1078,10 +1153,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               email: email,
               phone: phone,
               program: prog.title || 'Scholarship Program',
-              program_id: prog.id,
+              program_id: prog.id ? String(prog.id) : undefined,
               disbursement_mode: prog.disbursement_mode || 'online',
               banking_policy: prog.banking_policy || 'any_bank',
-              paymentAccount: scholarPaymentMap[scholar.id] || null,
+              paymentAccount: resolveScopedPaymentAccount(scholar.id, prog.id, app.id, app.submitted_documents),
               cycle: cycle.cycle_name || 'Active Cycle',
               cycle_type: cycle.cycle_type,
               semester: cycle.semester,
@@ -1147,6 +1222,21 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 remarks: d.remarks || '',
                 aiVerification: d.aiVerification,
               }));
+
+              if (app.submitted_documents.bank_details) {
+                const bd = app.submitted_documents.bank_details;
+                docs.push({
+                  id: bd.id || 'bank-details-doc',
+                  name: 'Bank Details / ATM Proof',
+                  filename: bd.document_proof_url ? bd.document_proof_url.split('/').pop() : 'bank_proof.pdf',
+                  document_url: bd.document_proof_url,
+                  url: bd.document_proof_url,
+                  submitted_at: bd.updated_at || 'Recently',
+                  status: 'Verified',
+                  remarks: '',
+                  aiVerification: undefined,
+                });
+              }
             }
 
             if (scholarDocsMap[scholar.id]) {
@@ -1207,10 +1297,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               email: email,
               phone: phone,
               program: prog.title || 'Scholarship Program',
-              program_id: prog.id,
+              program_id: prog.id ? String(prog.id) : undefined,
               disbursement_mode: prog.disbursement_mode || 'online',
               banking_policy: prog.banking_policy || 'any_bank',
-              paymentAccount: scholarPaymentMap[scholar.id] || null,
+              paymentAccount: resolveScopedPaymentAccount(scholar.id, prog.id, app.id, app.submitted_documents),
               cycle: cycle.cycle_name || 'Active Cycle',
               school: school,
               course: course,
@@ -1251,7 +1341,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               dateAwarded: awardedDate,
               disbursement_mode: prog.disbursement_mode || 'online',
               banking_policy: prog.banking_policy || 'any_bank',
-              paymentAccount: scholarPaymentMap[scholar.id] || null,
+              paymentAccount: appDetail.paymentAccount,
               payoutHistory: releaseHistory,
               appDetail: appDetail
             };
@@ -2790,6 +2880,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   course_eligibility: parseStringArray(formData.eligible_courses).length > 0 ? parseStringArray(formData.eligible_courses) : ['All Degree Programs'],
                   year_level_eligibility: parseYearLevels(formData.eligible_year_levels),
                   application_requirements: formData.applicationRequirements || [],
+                  disbursement_mode: (formData.disbursement_mode === 'in_person_cash' || formData.disbursementMode === 'in_person_cash') ? 'in_person_cash' : 'online',
+                  banking_policy: (formData.online_bank_type === 'provider_issued_card' || formData.onlineBankType === 'provider_issued_card' || formData.banking_policy === 'provider_issued') ? 'provider_issued' : 'any_bank',
                   tuition_payout_mode: formData.tuition_payout_mode || 'direct_to_student',
                   tuition_coverage_type: formData.tuition_coverage_type || 'fixed_cap',
                   tuition_max_amount: formData.tuition_max_amount ? parseFloat(formData.tuition_max_amount) : 0,
@@ -2879,6 +2971,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   course_eligibility: parseStringArray(formData.eligible_courses).length > 0 ? parseStringArray(formData.eligible_courses) : ['All Degree Programs'],
                   year_level_eligibility: parseYearLevels(formData.eligible_year_levels),
                   application_requirements: formData.applicationRequirements || [],
+                  disbursement_mode: (formData.disbursement_mode === 'in_person_cash' || formData.disbursementMode === 'in_person_cash') ? 'in_person_cash' : 'online',
+                  banking_policy: (formData.online_bank_type === 'provider_issued_card' || formData.onlineBankType === 'provider_issued_card' || formData.banking_policy === 'provider_issued') ? 'provider_issued' : 'any_bank',
                   tuition_payout_mode: formData.tuition_payout_mode || 'direct_to_student',
                   tuition_coverage_type: formData.tuition_coverage_type || 'fixed_cap',
                   tuition_max_amount: formData.tuition_max_amount ? parseFloat(formData.tuition_max_amount) : 0,

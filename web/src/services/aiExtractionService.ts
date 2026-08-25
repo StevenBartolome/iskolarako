@@ -508,10 +508,12 @@ async function verifyWithOpenRouter(
   const prompt = buildDocVerificationPrompt(docName, context);
 
   const models = [
-    'mistralai/pixtral-12b',
-    'google/gemini-2.0-flash-001',
-    'meta-llama/llama-3.2-11b-vision-instruct:free',
+    'google/gemini-2.5-pro',
+    'openai/gpt-4o',
+    'anthropic/claude-3.5-sonnet',
     'qwen/qwen-2.5-vl-72b-instruct',
+    'google/gemini-2.5-flash',
+    'mistralai/pixtral-12b',
   ];
 
   let lastError = '';

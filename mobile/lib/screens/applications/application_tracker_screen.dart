@@ -29,12 +29,14 @@ class AppliedScholarship {
   final List<Map<String, dynamic>> submittedDocuments;
   final bool isCycleOpen;
   final String? cycleEndDate;
+  final String? disbursementMode;
 
   const AppliedScholarship({
     this.applicationId,
     this.scholarId,
     this.cycleId,
     this.programId,
+    this.disbursementMode,
     this.activeRenewalCycle,
     required this.providerName,
     required this.scholarshipName,
@@ -113,7 +115,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
   bool _isLoading = true;
   List<ProgramApplicationGroup> _programGroups = [];
   RealtimeChannel? _realtimeChannel;
-  Map<String, dynamic>? _paymentAccount;
+  List<Map<String, dynamic>> _paymentAccounts = [];
   String _currentScholarId = '';
   String _currentScholarName = 'Scholar';
 
@@ -139,6 +141,14 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'scholar_documents',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar_payment_accounts',
           callback: (payload) {
             if (mounted) _fetchApplications();
           },
@@ -190,16 +200,15 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
         debugPrint('Scholar lookup note: $sErr');
       }
 
-      Map<String, dynamic>? paymentAcc;
+      List<dynamic> paymentAccs = [];
       try {
         final pAccData = await Supabase.instance.client
             .from('scholar_payment_accounts')
             .select()
-            .filter('scholar_id', 'in', scholarIds)
-            .maybeSingle();
-        paymentAcc = pAccData;
+            .filter('scholar_id', 'in', scholarIds);
+        paymentAccs = pAccData as List<dynamic>? ?? [];
       } catch (pErr) {
-        debugPrint('Payment account fetch note: $pErr');
+        debugPrint('Payment accounts fetch note: $pErr');
       }
 
       dynamic appsData;
@@ -252,6 +261,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
         final cycle = row['cycle'] as Map<String, dynamic>?;
         final program = cycle?['program'] as Map<String, dynamic>?;
         final provider = program?['provider'] as Map<String, dynamic>?;
+        String? programId = program?['id']?.toString() ?? row['program_id']?.toString();
 
         String providerName = provider?['name'] ?? '';
         String scholarshipName = program?['title'] ?? '';
@@ -276,6 +286,9 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
 
               scholarshipName = fallbackProgram?['title'] ?? 'Scholarship Program';
               providerName = fallbackProvider?['name'] ?? 'Scholarship Provider';
+              if (fallbackProgram != null && fallbackProgram['id'] != null) {
+                programId = fallbackProgram['id'].toString();
+              }
             }
           } catch (fetchCycleErr) {
             debugPrint('Note fetching cycle details fallback: $fetchCycleErr');
@@ -302,8 +315,6 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           final semTitle = semester.isNotEmpty ? semester : '1st Semester';
           cycleLabel = '$semTitle Initial';
         }
-
-        String? programId = program?['id']?.toString() ?? row['program_id']?.toString();
 
         final dbStatus = row['status']?.toString().toLowerCase() ?? 'pending';
 
@@ -373,6 +384,12 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                 .whereType<Map>()
                 .map((d) => Map<String, dynamic>.from(d))
                 .toList();
+          }
+          if (submittedDocsObj['bank_details'] is Map) {
+            final bDetails = Map<String, dynamic>.from(submittedDocsObj['bank_details'] as Map);
+            bDetails['name'] = 'bank_details';
+            bDetails['document_name'] = 'bank_details';
+            parsedDocs.add(bDetails);
           }
         } else if (submittedDocsObj is List) {
           parsedDocs = submittedDocsObj
@@ -520,6 +537,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           scholarId: row['scholar_id']?.toString(),
           cycleId: row['cycle_id']?.toString(),
           programId: programId,
+          disbursementMode: program?['disbursement_mode']?.toString() ?? program?['disbursementMode']?.toString(),
           activeRenewalCycle: activeRenewalCycle,
           providerName: providerName,
           scholarshipName: scholarshipName,
@@ -563,7 +581,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
       if (mounted) {
         setState(() {
           _programGroups = groups;
-          _paymentAccount = paymentAcc;
+          _paymentAccounts = List<Map<String, dynamic>>.from(paymentAccs);
           _currentScholarId = resolvedScholarId;
           _currentScholarName = scholarName;
           _isLoading = false;
@@ -937,7 +955,10 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
                                                 if (scholarship.statusType == StatusType.approved) ...[
-                                                  _buildBankRequirementCard(scholarship),
+                                                  if (scholarship.disbursementMode == 'in_person_cash')
+                                                    _buildCashOtcInfoCard(scholarship)
+                                                  else
+                                                    _buildBankRequirementCard(scholarship),
                                                   const SizedBox(height: 12),
                                                 ],
                                                 if (scholarship.statusType == StatusType.rejected) ...[
@@ -987,13 +1008,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     );
   }
 
-  // ─── 1. Payout & Bank Account Card ──────────────────────────────────────────
-  Widget _buildBankRequirementCard(AppliedScholarship scholarship) {
-    final hasBank = _paymentAccount != null && _paymentAccount!['account_number'] != null;
-    final bankName = _paymentAccount?['bank_name']?.toString() ?? 'UnionBank of the Philippines';
-    final accNum = _paymentAccount?['account_number']?.toString() ?? '0923';
-    final maskedAcc = accNum.length > 4 ? '•••• ${accNum.substring(accNum.length - 4)}' : accNum;
-
+  Widget _buildCashOtcInfoCard(AppliedScholarship scholarship) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -1001,6 +1016,121 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
         color: const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              color: Color(0xFFDCFCE7),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Text('💵', style: TextStyle(fontSize: 20)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Over-the-Counter Cash Disbursement',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Your grant is disbursed in cash over-the-counter at your campus office / payout venue. Bank account submission is not required.',
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5,
+                    color: const Color(0xFF6B7280),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── 1. Payout & Bank Account Card ──────────────────────────────────────────
+  Widget _buildBankRequirementCard(AppliedScholarship scholarship) {
+    // Check if bank details are attached to this specific application or program
+    final appDocs = scholarship.submittedDocuments;
+    Map<String, dynamic>? appBankDoc;
+    for (final doc in appDocs) {
+      final dName = (doc['name'] ?? doc['document_name'] ?? '').toString().toLowerCase();
+      if (dName == 'bank_details' || dName.contains('bank') || dName.contains('atm')) {
+        appBankDoc = doc;
+        break;
+      }
+    }
+
+    Map<String, dynamic>? bankObj;
+
+    if (appBankDoc != null) {
+      bankObj = appBankDoc;
+    } else if (_paymentAccounts.isNotEmpty) {
+      // Find specific program account first
+      Map<String, dynamic>? specificAcc;
+      for (final acc in _paymentAccounts) {
+        if (acc['program_id']?.toString() == scholarship.programId) {
+          specificAcc = acc;
+          break;
+        }
+      }
+
+      if (specificAcc != null) {
+        bankObj = specificAcc;
+      } else {
+        // Fallback to legacy/global scoping checks
+        for (final acc in _paymentAccounts) {
+          final aiData = acc['ai_extracted_data'];
+          if (aiData is Map) {
+            final progIds = aiData['program_ids'];
+            final appIds = aiData['application_ids'];
+            final hasProgIds = aiData.containsKey('program_ids');
+            final hasAppIds = aiData.containsKey('application_ids');
+
+            if (!hasProgIds && !hasAppIds) {
+              bankObj = acc;
+              break;
+            } else {
+              final matchesProg = progIds is List && scholarship.programId != null && progIds.map((e) => e.toString()).contains(scholarship.programId!);
+              final matchesApp = appIds is List && scholarship.applicationId != null && appIds.map((e) => e.toString()).contains(scholarship.applicationId!);
+
+              if (matchesProg || matchesApp) {
+                bankObj = acc;
+                break;
+              }
+            }
+          } else {
+            bankObj = acc;
+            break;
+          }
+        }
+      }
+    }
+
+    final hasBank = bankObj != null;
+    final bankName = bankObj?['bank_name']?.toString() ?? 'UnionBank of the Philippines';
+    final accNum = bankObj?['account_number']?.toString() ?? '';
+    final maskedAcc = accNum.length > 4 ? '•••• ${accNum.substring(accNum.length - 4)}' : (accNum.isNotEmpty ? accNum : '••••');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: hasBank ? const Color(0xFFF0FDF4) : const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: hasBank ? const Color(0xFFDCFCE7) : const Color(0xFFFDE68A), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1010,14 +1140,14 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
               Container(
                 width: 36,
                 height: 36,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFDCFCE7),
+                decoration: BoxDecoration(
+                  color: hasBank ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
                   shape: BoxShape.circle,
                 ),
-                child: const Center(
+                child: Center(
                   child: Icon(
-                    Icons.check_rounded,
-                    color: Color(0xFF16A34A),
+                    hasBank ? Icons.check_rounded : Icons.account_balance_wallet_rounded,
+                    color: hasBank ? const Color(0xFF16A34A) : const Color(0xFFD97706),
                     size: 20,
                   ),
                 ),
@@ -1039,7 +1169,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                     Text(
                       hasBank
                           ? 'Your stipend will be deposited to $bankName ($maskedAcc). Provider releases will automatically route here.'
-                          : 'Please submit your official bank account or ATM card scan to receive stipend disbursements.',
+                          : 'Please submit your official bank account or ATM card scan for this scholarship program to receive disbursements.',
                       style: GoogleFonts.inter(
                         fontSize: 11.5,
                         color: const Color(0xFF6B7280),
@@ -1060,16 +1190,18 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                   context,
                   scholarId: _currentScholarId,
                   scholarName: _currentScholarName,
+                  programId: scholarship.programId,
+                  applicationId: scholarship.applicationId,
                   onSuccess: () => _fetchApplications(),
                 );
               },
-              icon: const Icon(LucideIcons.edit3, size: 14),
+              icon: Icon(hasBank ? LucideIcons.edit3 : LucideIcons.creditCard, size: 14),
               label: Text(
-                hasBank ? 'Update Bank Account Details' : 'Submit Bank Account & Card Scan 💳',
+                hasBank ? 'Update Bank Details for This Program' : 'Submit Bank Account & Card Scan 💳',
                 style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3D2F),
+                backgroundColor: hasBank ? const Color(0xFF1E3D2F) : const Color(0xFFD97706),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1561,33 +1693,68 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () async {
-                            final docUrl = doc['document_url']?.toString();
-                            if (docUrl != null && docUrl.isNotEmpty && docUrl != '#') {
-                              final uri = Uri.parse(docUrl);
-                              try {
-                                await launchUrl(uri, mode: LaunchMode.externalApplication);
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Could not open file: $e')),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                if (scholarship.applicationId != null && scholarship.scholarId != null) {
+                                  _openResubmitModal(
+                                    context,
+                                    applicationId: scholarship.applicationId!,
+                                    scholarId: scholarship.scholarId!,
+                                    docItem: doc,
+                                    allDocs: docs,
                                   );
                                 }
-                              }
-                            } else {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('File preview available upon upload.')),
-                                );
-                              }
-                            }
-                          },
-                          child: const Icon(
-                            LucideIcons.download,
-                            size: 16,
-                            color: Color(0xFF6B7280),
-                          ),
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF3F4F6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                                ),
+                                child: Text(
+                                  'Replace',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1E3D2F),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () async {
+                                final docUrl = doc['document_url']?.toString();
+                                if (docUrl != null && docUrl.isNotEmpty && docUrl != '#') {
+                                  final uri = Uri.parse(docUrl);
+                                  try {
+                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Could not open file: $e')),
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('File preview available upon upload.')),
+                                    );
+                                  }
+                                }
+                              },
+                              child: const Icon(
+                                LucideIcons.download,
+                                size: 16,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -2056,9 +2223,16 @@ class _ResubmitDocumentSheet extends StatefulWidget {
 }
 
 class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
+  late Map<String, dynamic> _selectedDoc;
   PlatformFile? _selectedFile;
   bool _isUploading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDoc = widget.docItem;
+  }
 
   Future<void> _pickFile() async {
     try {
@@ -2091,7 +2265,7 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
     });
 
     try {
-      final docName = (widget.docItem['name'] ?? widget.docItem['document_name'] ?? 'document').toString();
+      final docName = (_selectedDoc['name'] ?? _selectedDoc['document_name'] ?? 'document').toString();
       final fileExt = _selectedFile!.extension ?? 'pdf';
       final sanitizedName = docName.replaceAll(RegExp(r'\s+'), '_');
       final storagePath = '${widget.scholarId}/${sanitizedName}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
@@ -2165,7 +2339,7 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final docName = (widget.docItem['name'] ?? widget.docItem['document_name'] ?? 'Document').toString();
+    final selectedDocName = (_selectedDoc['name'] ?? _selectedDoc['document_name'] ?? 'Document').toString();
 
     return Padding(
       padding: EdgeInsets.only(
@@ -2193,7 +2367,7 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Resubmit Document',
+              'Manage & Replace Document',
               style: GoogleFonts.inter(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -2202,13 +2376,94 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              docName,
+              'Select which document you want to replace with a new file.',
               style: GoogleFonts.inter(
                 fontSize: 12.5,
                 color: const Color(0xFF6B7280),
               ),
             ),
             const SizedBox(height: 16),
+
+            // Document selection dropdown
+            Text(
+              'Target Document:',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<Map<String, dynamic>>(
+                  value: widget.allDocs.any((d) => (d['name'] ?? d['document_name']) == (_selectedDoc['name'] ?? _selectedDoc['document_name']))
+                      ? widget.allDocs.firstWhere((d) => (d['name'] ?? d['document_name']) == (_selectedDoc['name'] ?? _selectedDoc['document_name']))
+                      : (widget.allDocs.isNotEmpty ? widget.allDocs.first : _selectedDoc),
+                  isExpanded: true,
+                  icon: const Icon(LucideIcons.chevronDown, size: 18, color: Color(0xFF6B7280)),
+                  items: widget.allDocs.map((doc) {
+                    final name = (doc['name'] ?? doc['document_name'] ?? 'Document').toString();
+                    final rawStatus = (doc['status'] ?? doc['verification_status'] ?? 'pending').toString();
+                    return DropdownMenuItem<Map<String, dynamic>>(
+                      value: doc,
+                      child: Row(
+                        children: [
+                          const Icon(LucideIcons.fileText, size: 16, color: Color(0xFF1E3D2F)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF111827),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: rawStatus.toLowerCase().contains('flag') || rawStatus.toLowerCase().contains('reject')
+                                  ? const Color(0xFFFEE2E2)
+                                  : const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              rawStatus,
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: rawStatus.toLowerCase().contains('flag') || rawStatus.toLowerCase().contains('reject')
+                                    ? const Color(0xFFB91C1C)
+                                    : const Color(0xFFB45309),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (newDoc) {
+                    if (newDoc != null) {
+                      setState(() {
+                        _selectedDoc = newDoc;
+                        _selectedFile = null;
+                      });
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
             GestureDetector(
               onTap: _pickFile,
               child: Container(
@@ -2228,12 +2483,13 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _selectedFile != null ? _selectedFile!.name : 'Choose Replacement File',
+                      _selectedFile != null ? _selectedFile!.name : 'Choose Replacement File for "$selectedDocName"',
                       style: GoogleFonts.inter(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: const Color(0xFF111827),
                       ),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
@@ -2256,7 +2512,7 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
                 ),
                 child: _isUploading
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : Text('Upload Document', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+                    : Text('Replace Document', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
             ),
           ],

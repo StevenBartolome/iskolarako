@@ -74,19 +74,27 @@ If the document truly contains no banking information at all, return exactly:
     //    (huge photos are otherwise truncated/blurred, causing "no data found").
     //  - If a PDF has no embedded JPEG we can pull out, keep the native PDF
     //    payload so Gemini-based models can OCR it directly.
-    Uint8List visionBytes = actualBytes;
+    List<Uint8List> visionImages = [];
     String visionMime = mimeType;
+
     if (isPdf) {
-      final embeddedJpeg = _extractJpegFromPdf(actualBytes);
-      if (embeddedJpeg != null && embeddedJpeg.isNotEmpty) {
-        visionBytes = await _prepareImageForOcr(embeddedJpeg) ?? embeddedJpeg;
+      final embeddedJpegs = _extractJpegsFromPdf(actualBytes);
+      if (embeddedJpegs.isNotEmpty) {
+        for (final img in embeddedJpegs) {
+          final prepped = await _prepareImageForOcr(img);
+          if (prepped != null) {
+            visionImages.add(prepped);
+          }
+        }
         visionMime = 'image/jpeg';
-        debugPrint('Found embedded JPEG in PDF, prepared for OCR (${visionBytes.length} bytes)');
+        debugPrint('Found ${visionImages.length} embedded images in PDF, prepared for vision models.');
       } else {
-        debugPrint('No embedded JPEG found; keeping native PDF payload (${visionBytes.length} bytes)');
+        debugPrint('No embedded JPEG found; keeping native PDF payload (${actualBytes.length} bytes)');
+        visionImages.add(actualBytes);
       }
     } else {
-      visionBytes = await _prepareImageForOcr(actualBytes) ?? actualBytes;
+      final prepped = await _prepareImageForOcr(actualBytes);
+      visionImages.add(prepped ?? actualBytes);
     }
 
     // 1. Google Gemini (native PDF + vision). Model name auto-falls back
@@ -95,8 +103,8 @@ If the document truly contains no banking information at all, return exactly:
       try {
         debugPrint('Attempting extraction with Gemini...');
         final res = await _extractWithGemini(
-          bytes: actualBytes,
-          mimeType: mimeType,
+          images: visionImages,
+          mimeType: visionMime,
           apiKey: geminiKey,
         );
         if (res != null && res.confidenceScore > 0.1 && res.accountNumber.isNotEmpty) {
@@ -112,7 +120,7 @@ If the document truly contains no banking information at all, return exactly:
       try {
         debugPrint('Attempting extraction with OpenRouter...');
         final res = await _extractWithOpenRouter(
-          bytes: visionBytes,
+          images: visionImages,
           mimeType: visionMime,
           apiKey: openRouterKey,
         );
@@ -130,7 +138,7 @@ If the document truly contains no banking information at all, return exactly:
       try {
         debugPrint('Attempting extraction with Mistral OCR...');
         final ocrText = await _extractWithMistralOcr(
-          bytes: visionBytes,
+          bytes: visionImages.first,
           mimeType: visionMime,
           apiKey: mistralKey,
         );
@@ -205,13 +213,13 @@ If the document truly contains no banking information at all, return exactly:
     }
   }
 
-  /// Extracts the largest embedded JPEG stream from a scanned PDF.
-  /// PDFs often embed a small thumbnail before the actual photo, so we scan
-  /// for every JPEG block and return the biggest one (best OCR source).
-  static Uint8List? _extractJpegFromPdf(Uint8List bytes) {
+  /// Extracts all embedded JPEG streams from a scanned PDF.
+  /// PDFs often embed a photo for each scanned page. We return all JPEG blocks
+  /// found in order (Page 1 front, Page 2 back, etc.).
+  static List<Uint8List> _extractJpegsFromPdf(Uint8List bytes) {
+    final list = <Uint8List>[];
     try {
       final len = bytes.length;
-      Uint8List? largest;
       for (int i = 0; i < len - 3; i++) {
         if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF) {
           int end = -1;
@@ -221,20 +229,16 @@ If the document truly contains no banking information at all, return exactly:
               break;
             }
           }
-          if (end != -1 && (end - i) > 1000) {
-            final candidate = bytes.sublist(i, end);
-            if (largest == null || candidate.length > largest.length) {
-              largest = candidate;
-            }
+          if (end != -1 && (end - i) > 5000) { // minimum 5KB for real page images
+            list.add(bytes.sublist(i, end));
             i = end - 1;
           }
         }
       }
-      return largest;
     } catch (e) {
       debugPrint('PDF JPEG extract exception: $e');
     }
-    return null;
+    return list;
   }
 
   /// Extracts visible text from PDF streams
@@ -326,10 +330,30 @@ If the document truly contains no banking information at all, return exactly:
 
     String bank = '';
     final lower = text.toLowerCase();
-    for (final b in _knownBanks) {
-      if (lower.contains(b.toLowerCase())) {
-        bank = b;
-        break;
+    if (lower.contains('unionbank') || lower.contains('union bank') || lower.contains('ubp')) {
+      bank = 'UnionBank of the Philippines';
+    } else if (lower.contains('landbank') || lower.contains('land bank') || lower.contains('lbp')) {
+      bank = 'Landbank of the Philippines';
+    } else if (lower.contains('bdo') || lower.contains('bancodeoro') || lower.contains('unibank')) {
+      bank = 'BDO Unibank';
+    } else if (lower.contains('bpi') || lower.contains('philippine islands')) {
+      bank = 'BPI (Bank of the Philippine Islands)';
+    } else if (lower.contains('gcash')) {
+      bank = 'GCash / GCash Card';
+    } else if (lower.contains('maya')) {
+      bank = 'Maya Bank';
+    } else if (lower.contains('seabank')) {
+      bank = 'SeaBank Philippines';
+    } else if (lower.contains('metrobank')) {
+      bank = 'Metrobank';
+    }
+
+    if (bank.isEmpty) {
+      for (final b in _knownBanks) {
+        if (lower.contains(b.toLowerCase())) {
+          bank = b;
+          break;
+        }
       }
     }
     if (bank.isEmpty) bank = 'Landbank of the Philippines';
@@ -356,7 +380,11 @@ If the document truly contains no banking information at all, return exactly:
           l.contains('expir') ||
           l.contains('bank') ||
           l.contains('holder') ||
-          l.contains('name')) {
+          l.contains('name') ||
+          l.contains('authorized') ||
+          l.contains('signature') ||
+          l.contains('non-transferable') ||
+          l.contains('property of')) {
         continue;
       }
       if (RegExp(r'[A-Za-z]{2,}').hasMatch(t) && !RegExp(r'\d').hasMatch(t)) {
@@ -377,17 +405,29 @@ If the document truly contains no banking information at all, return exactly:
   /// Google retires model versions over time, so we try the newest first and
   /// fall back through older ones until one answers successfully.
   static Future<ExtractedBankInfo?> _extractWithGemini({
-    required Uint8List bytes,
+    required List<Uint8List> images,
     required String mimeType,
     required String apiKey,
   }) async {
-    const models = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
-    final base64Data = base64Encode(bytes);
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash'];
 
     for (final model in models) {
       try {
         final url = Uri.parse(
             'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey');
+
+        final parts = <Map<String, dynamic>>[
+          {'text': _systemPrompt},
+        ];
+
+        for (final img in images) {
+          parts.add({
+            'inline_data': {
+              'mime_type': mimeType,
+              'data': base64Encode(img),
+            },
+          });
+        }
 
         final response = await http
             .post(
@@ -396,15 +436,7 @@ If the document truly contains no banking information at all, return exactly:
               body: jsonEncode({
                 'contents': [
                   {
-                    'parts': [
-                      {'text': _systemPrompt},
-                      {
-                        'inline_data': {
-                          'mime_type': mimeType,
-                          'data': base64Data,
-                        },
-                      },
-                    ],
+                    'parts': parts,
                   },
                 ],
                 'generationConfig': {
@@ -432,24 +464,36 @@ If the document truly contains no banking information at all, return exactly:
 
   /// OpenRouter Vision
   static Future<ExtractedBankInfo?> _extractWithOpenRouter({
-    required Uint8List bytes,
+    required List<Uint8List> images,
     required String mimeType,
     required String apiKey,
   }) async {
     final url = Uri.parse('https://openrouter.ai/api/v1/chat/completions');
-    final base64Data = base64Encode(bytes);
 
-    // gpt-4o-mini is the only model usable with a $0 balance; the others are
-    // kept as fallbacks in case credits are added later.
-    final models = [
-      'openai/gpt-4o-mini',
-      'openai/gpt-4.1-mini',
+    const models = [
+      'google/gemini-2.5-pro',
       'openai/gpt-4o',
+      'anthropic/claude-3.5-sonnet',
+      'qwen/qwen-2.5-vl-72b-instruct',
       'google/gemini-2.5-flash',
+      'openai/gpt-4o-mini',
+      'google/gemini-2.5-flash:free',
+      'meta-llama/llama-3.2-11b-vision-instruct:free',
     ];
 
     for (final model in models) {
       try {
+        final contentList = <Map<String, dynamic>>[
+          {'type': 'text', 'text': _systemPrompt},
+        ];
+
+        for (final img in images) {
+          contentList.add({
+            'type': 'image_url',
+            'image_url': {'url': 'data:$mimeType;base64,${base64Encode(img)}'},
+          });
+        }
+
         final response = await http
             .post(
               url,
@@ -464,16 +508,9 @@ If the document truly contains no banking information at all, return exactly:
                 'messages': [
                   {
                     'role': 'user',
-                    'content': [
-                      {'type': 'text', 'text': _systemPrompt},
-                      {
-                        'type': 'image_url',
-                        'image_url': {'url': 'data:$mimeType;base64,$base64Data'},
-                      },
-                    ],
+                    'content': contentList,
                   },
                 ],
-                'temperature': 0.1,
               }),
             )
             .timeout(const Duration(seconds: 60));

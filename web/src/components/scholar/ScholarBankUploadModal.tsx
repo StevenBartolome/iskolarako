@@ -10,6 +10,7 @@ interface ScholarBankUploadModalProps {
   onSuccess: (accountData: any) => void;
   requiredBankPolicy?: 'specific_bank' | 'any_bank' | 'provider_issued';
   requiredBankName?: string;
+  programId?: string;
 }
 
 const PH_BANKS = [
@@ -87,6 +88,7 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
   onSuccess,
   requiredBankPolicy = 'any_bank',
   requiredBankName,
+  programId,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -209,7 +211,7 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
       }
 
       // Upsert into scholar_payment_accounts
-      const payload = {
+      const payload: any = {
         scholar_id: scholarId,
         account_type: 'bank_transfer',
         bank_name: bankName,
@@ -223,6 +225,10 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
         updated_at: new Date().toISOString(),
       };
 
+      if (programId) {
+        payload.program_id = programId;
+      }
+
       const { data: savedAccount, error: saveErr } = await supabase
         .from('scholar_payment_accounts')
         .insert(payload)
@@ -230,13 +236,15 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
         .single();
 
       if (saveErr) {
-        // If conflict on primary index, update existing
-        const { data: updatedAccount, error: updateErr } = await supabase
+        // If conflict on unique constraint, update existing
+        const query = supabase
           .from('scholar_payment_accounts')
           .update(payload)
-          .eq('scholar_id', scholarId)
-          .select()
-          .single();
+          .eq('scholar_id', scholarId);
+
+        const { data: updatedAccount, error: updateErr } = programId
+          ? await query.eq('program_id', programId).select().single()
+          : await query.is('program_id', null).select().single();
 
         if (updateErr) throw updateErr;
         onSuccess(updatedAccount);

@@ -14,12 +14,18 @@ interface ProviderDashboardTabProps {
 export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
   programsList,
   scholarsList,
-  applicantsList,
+  applicantsList: _applicantsList,
   totalCredited,
   totalPending,
   setActiveTab,
   onOpenCreateProgram,
 }) => {
+  const grossBudgetPool = (programsList || []).reduce((acc: number, p: any) => {
+    const b = Number(p.budget_total || p.budgetTotal || p.amount || 0);
+    return acc + (isNaN(b) ? 0 : b);
+  }, 0);
+  const netRemainingCashAllocation = Math.max(0, grossBudgetPool - totalCredited);
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
@@ -31,30 +37,18 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
         <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
           <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Permanent Programs</span>
           <h3 className="text-3xl font-bold text-[#1A3C2E] font-serif mt-1">{programsList.length}</h3>
-          <span className="text-xs text-[#2D5941] font-semibold flex items-center gap-1 mt-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#2D5941]" /> Fully Lifecycle Managed
-          </span>
         </div>
         <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-          <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Active Scholars (Awards)</span>
+          <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Active Scholars</span>
           <h3 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">{scholarsList.length}</h3>
-          <span className="text-xs text-[#C97B2E] font-semibold flex items-center gap-1 mt-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#C97B2E]" /> Undergoing renewal checks
-          </span>
         </div>
         <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-          <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Active Cycle Applicants</span>
-          <h3 className="text-3xl font-bold text-[#B34040] font-serif mt-1">{applicantsList.length}</h3>
-          <span className="text-xs text-[#B34040] font-semibold flex items-center gap-1 mt-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#B34040]" /> In active intake cycles
-          </span>
+          <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Net Remaining Budget</span>
+          <h3 className="text-3xl font-bold text-[#B34040] font-serif mt-1">₱{netRemainingCashAllocation.toLocaleString()}</h3>
         </div>
         <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
           <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Funds Released</span>
-          <h3 className="text-3xl font-bold text-[#2D5941] font-serif mt-1">₱{(totalCredited / 1000000).toFixed(2)}M</h3>
-          <span className="text-xs text-[#2D5941] font-semibold flex items-center gap-1 mt-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#2D5941]" /> ₱{(totalPending / 1000).toFixed(0)}K pending release
-          </span>
+          <h3 className="text-3xl font-bold text-[#2D5941] font-serif mt-1">₱{totalCredited.toLocaleString()}</h3>
         </div>
       </div>
 
@@ -111,7 +105,7 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
           />
           <ProviderQuickActionCard
             title="Release Funds"
-            subtitle={`₱${(totalPending / 1000).toFixed(0)}K pending`}
+            subtitle={`₱${totalPending.toLocaleString()} pending`}
             icon={<WalletIcon />}
             gradient="from-[#C97B2E] to-[#E8A838]"
             bgGradient="from-[#FFF8EE] to-[#FEF3E7]"

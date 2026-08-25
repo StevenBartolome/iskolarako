@@ -27,7 +27,7 @@ class _MainLayoutState extends State<MainLayout>
   late Animation<double> _bubbleHopAnimation;
   bool _isNavbarShrunk = false;
 
-  final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey<DashboardScreenState>();
+  static final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey<DashboardScreenState>();
 
   late final List<Widget> _pages = [
     DashboardScreen(
