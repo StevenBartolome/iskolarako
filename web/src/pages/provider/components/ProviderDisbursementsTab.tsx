@@ -16,6 +16,7 @@ interface ProviderDisbursementsTabProps {
   programsList?: any[];
   fetchPrograms?: () => Promise<void>;
   showToast?: (msg: string) => void;
+  providerDetails?: any;
 }
 
 interface BenefitSummary {
@@ -58,6 +59,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
   programsList = [],
   fetchPrograms,
   showToast,
+  providerDetails,
 }) => {
   const [isReleaseModalOpen, setIsReleaseModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
@@ -283,7 +285,41 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
   const fetchLiveReleases = async () => {
     try {
-      const { data, error } = await supabase
+      let providerId: string | null = providerDetails?.id || null;
+
+      if (!providerId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('provider_id')
+            .eq('id', user.id)
+            .maybeSingle();
+          providerId = userData?.provider_id || null;
+        }
+      }
+
+      // 1. Get Program IDs for this provider
+      let providerProgramIds: string[] = [];
+      if (providerId) {
+        const { data: progData } = await supabase
+          .from('scholarship_programs')
+          .select('id')
+          .eq('provider_id', providerId);
+        if (progData) {
+          providerProgramIds = progData.map((p: any) => p.id);
+        }
+      } else if (programsList && programsList.length > 0) {
+        providerProgramIds = programsList.map((p: any) => p.id).filter(Boolean);
+      }
+
+      // If provider has no programs yet, clear ledger
+      if (providerId && providerProgramIds.length === 0) {
+        setLiveLedger([]);
+        return;
+      }
+
+      let query = supabase
         .from('fund_releases')
         .select(`
           *,
@@ -291,8 +327,13 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           cycle:cycle_id(cycle_name, semester, cycle_type),
           scholarship_programs:program_id(title, provider:provider_id(name), disbursement_mode),
           payment_account:payment_account_id(bank_name, account_number, account_name, document_proof_url)
-        `)
-        .order('created_at', { ascending: false });
+        `);
+
+      if (providerProgramIds.length > 0) {
+        query = query.in('program_id', providerProgramIds);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (!error && data) {
         // Exclude cash-mode disbursements from digital disbursement ledger
@@ -405,6 +446,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
       const { data: programsData } = await programQuery;
       const programsMap: Record<string, any> = {};
+      const providerProgramIds: string[] = (programsData || []).map((p: any) => p.id);
+
       (programsData || []).forEach((p: any) => {
         const mode = p.disbursement_mode || 'online';
         const isCash =
@@ -432,9 +475,15 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       if (appsErr) console.warn('Apps query warning:', appsErr);
 
       // 3. Fetch existing fund_releases to filter out scholars already paid for this cycle
-      const { data: existingReleases } = await supabase
+      let existingReleasesQuery = supabase
         .from('fund_releases')
         .select('application_id, scholar_id, cycle_id, status, blockchain_verified');
+
+      if (providerProgramIds.length > 0) {
+        existingReleasesQuery = existingReleasesQuery.in('program_id', providerProgramIds);
+      }
+
+      const { data: existingReleases } = await existingReleasesQuery;
 
       const releasedAppIds = new Set<string>();
       const releasedScholarCycleKeys = new Set<string>();

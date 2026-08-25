@@ -2366,13 +2366,16 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       final expectedSide = isFront ? 'front' : 'back';
 
       if (side == 'invalid' || side == 'unknown') {
+        final errorMsg = isFront
+            ? 'ID Type Mismatch! You selected "$displayIdType". Please capture the front of your physical $displayIdType.'
+            : 'Could not detect back of ID. Please ensure the reverse side of your $displayIdType is clearly in frame.';
         setState(() {
-          _cameraScanError = '❌ Invalid or mismatched ID card! Please capture your physical $displayIdType.';
+          _cameraScanError = '❌ $errorMsg';
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'ID Type Mismatch! You selected "$displayIdType". Please capture your physical $displayIdType.',
+              errorMsg,
               style: GoogleFonts.inter(fontSize: 13),
             ),
             backgroundColor: AppColors.error,
