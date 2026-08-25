@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
-import 'package:iskoako/widgets/app_components.dart';
-import 'package:iskoako/widgets/custom_button.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 
 class ScholarshipListScreen extends StatefulWidget {
   const ScholarshipListScreen({super.key});
@@ -19,7 +15,12 @@ class ScholarshipListScreen extends StatefulWidget {
 class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
   int _activeFilter = 0;
   final List<String> _filters = [
-    'All', 'Government', 'NGO / Private', 'Merit', 'Need-based', 'STEM'
+    'All',
+    'Government',
+    'NGO / Private',
+    'Merit-Based',
+    'Need-Based',
+    'STEM'
   ];
 
   Map<String, dynamic>? _scholarProfile;
@@ -114,7 +115,6 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
           setState(() {
             _scholarProfile = scholarData;
             _isProfileComplete = EligibilityHelper.isProfileComplete(scholarData);
-            // Strictly filter out closed programs (no open cycle or past deadline)
             final openPrograms = (programsData as List<dynamic>?)
                     ?.where((p) => EligibilityHelper.isProgramOpen(p as Map<String, dynamic>?))
                     .toList() ??
@@ -161,9 +161,9 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
           final type = prov?['provider_type']?.toString().toLowerCase() ?? '';
           return type == 'private' || type == 'ngo';
         }).toList();
-      } else if (filterLabel == 'Merit') {
+      } else if (filterLabel.contains('Merit')) {
         filtered = filtered.where((p) => p['scholarship_type']?.toString().toLowerCase().contains('merit') == true).toList();
-      } else if (filterLabel == 'Need-based') {
+      } else if (filterLabel.contains('Need')) {
         filtered = filtered.where((p) => p['scholarship_type']?.toString().toLowerCase().contains('need') == true).toList();
       } else if (filterLabel == 'STEM') {
         filtered = filtered.where((p) {
@@ -193,6 +193,7 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFFAFCFA),
       body: Column(
         children: [
           SafeArea(
@@ -202,102 +203,96 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Top bar
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.diamond_rounded,
-                            size: 14,
-                            color: AppColors.amber,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'SCHOLARSHIPS & GRANTS',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.amberDeep,
-                              letterSpacing: 1.2,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  LucideIcons.shieldCheck,
+                                  size: 14,
+                                  color: Color(0xFFD97706),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'SCHOLARSHIPS & GRANTS',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFFD97706),
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.rule, width: 0.8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primaryDark.withAlpha(10),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Browse\nscholarships.',
+                              style: GoogleFonts.inter(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF111827),
+                                height: 1.15,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Find scholarships that fit your goals and help you achieve your dreams',
+                              style: GoogleFonts.inter(
+                                fontSize: 12.5,
+                                color: const Color(0xFF6B7280),
+                                height: 1.35,
+                              ),
                             ),
                           ],
                         ),
-                        child: const Center(
-                          child: Icon(
-                            LucideIcons.sliders,
-                            color: AppColors.primary,
-                            size: 20,
-                          ),
-                        ),
+                      ),
+                      Image.asset(
+                        'assets/books-hats-icon.png',
+                        width: 85,
+                        height: 75,
+                        fit: BoxFit.contain,
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    'Browse\nscholarships.',
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.primaryDark,
-                      height: 1.15,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Filter by category, income level, or academic field',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+
                   // Search bar
                   Container(
-                    height: 50,
+                    height: 48,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(25),
-                      border: Border.all(color: AppColors.rule, width: 0.8),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryDark.withAlpha(8),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
                     child: Row(
                       children: [
-                        const Icon(LucideIcons.search,
-                            color: AppColors.primary, size: 18),
+                        const Icon(
+                          LucideIcons.search,
+                          color: Color(0xFF9CA3AF),
+                          size: 18,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: TextField(
                             controller: _searchController,
                             onChanged: (_) => _applyFilters(),
                             decoration: InputDecoration(
-                              hintText: 'Search by name or provider…',
+                              hintText: 'Search by name or provider...',
                               hintStyle: GoogleFonts.inter(
-                                color: AppColors.textMuted,
+                                color: const Color(0xFF9CA3AF),
                                 fontSize: 13,
                               ),
                               border: InputBorder.none,
@@ -309,6 +304,18 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
                             ),
                           ),
                         ),
+                        if (_searchController.text.isNotEmpty)
+                          GestureDetector(
+                            onTap: () {
+                              _searchController.clear();
+                              _applyFilters();
+                            },
+                            child: const Icon(
+                              LucideIcons.x,
+                              color: Color(0xFF9CA3AF),
+                              size: 16,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -316,12 +323,13 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
               ),
             ),
           ),
-          // Filter chips
+
+          // Horizontal Filter Chips
           SizedBox(
-            height: 50,
+            height: 42,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               itemCount: _filters.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (_, i) {
@@ -333,26 +341,23 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
                   }),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: active
-                          ? AppColors.primaryDark
-                          : AppColors.surface,
+                      color: active ? const Color(0xFF1E3D2F) : Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: active ? AppColors.primaryDark : AppColors.rule,
+                        color: active ? const Color(0xFF1E3D2F) : const Color(0xFFE5E7EB),
+                        width: 1,
                       ),
                     ),
-                    child: Text(
-                      _filters[i],
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight:
-                            active ? FontWeight.w700 : FontWeight.w500,
-                        color: active
-                            ? Colors.white
-                            : AppColors.textSecondary,
+                    child: Center(
+                      child: Text(
+                        _filters[i],
+                        style: GoogleFonts.inter(
+                          fontSize: 12.5,
+                          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                          color: active ? Colors.white : const Color(0xFF374151),
+                        ),
                       ),
                     ),
                   ),
@@ -360,131 +365,91 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
               },
             ),
           ),
-          if (!_isProfileComplete)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.amber.withAlpha(25),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.amber.withAlpha(80), width: 1),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.alertTriangle, color: AppColors.amberDeep, size: 22),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Profile Incomplete',
-                            style: GoogleFonts.inter(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primaryDark,
-                            ),
-                          ),
-                          Text(
-                            'Complete your details to see matching scholarships.',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.pushNamed(context, AppRouter.profileEdit).then((_) => _loadData());
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(LucideIcons.userCheck, size: 14, color: Colors.white),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Complete',
-                              style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          // Count
+
+          // Counter Text
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
             child: Row(
               children: [
                 Text(
                   '${_displayedPrograms.length} scholarships available',
                   style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w500),
+                    fontSize: 12,
+                    color: const Color(0xFF6B7280),
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
           ),
-          // List
+
+          // Scrollable List or Empty State
           Expanded(
             child: RefreshIndicator(
               onRefresh: _loadData,
-              color: AppColors.primary,
+              color: const Color(0xFF1E3D2F),
               child: _isLoading
                   ? const Center(
                       child: CircularProgressIndicator(
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(AppColors.primary)))
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E3D2F)),
+                      ),
+                    )
                   : _displayedPrograms.isEmpty
                       ? ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: [
-                            const SizedBox(height: 60),
+                            const SizedBox(height: 40),
                             Center(
                               child: Padding(
-                                padding: const EdgeInsets.all(20.0),
+                                padding: const EdgeInsets.all(24.0),
                                 child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Icon(LucideIcons.graduationCap,
-                                        size: 48, color: AppColors.textMuted),
-                                    const SizedBox(height: 12),
+                                    const _EmptyScholarshipGraphic(),
+                                    const SizedBox(height: 20),
                                     Text(
-                                      !_isProfileComplete
-                                          ? 'Complete your profile to view matching scholarships'
-                                          : 'No qualified scholarships found.',
+                                      'No scholarships found',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF111827),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Try adjusting your search or filters to\nsee more results.',
                                       textAlign: TextAlign.center,
                                       style: GoogleFonts.inter(
-                                          color: AppColors.textSecondary,
-                                          fontSize: 14),
+                                        fontSize: 13,
+                                        color: const Color(0xFF6B7280),
+                                        height: 1.4,
+                                      ),
                                     ),
-                                    if (!_isProfileComplete) ...[
-                                      const SizedBox(height: 20),
-                                      SizedBox(
-                                        width: 220,
-                                        child: CustomButton(
-                                          text: 'Complete Profile Now',
-                                          icon: LucideIcons.userCheck,
-                                          onPressed: () {
-                                            Navigator.pushNamed(context, AppRouter.profileEdit)
-                                                .then((_) => _loadData());
-                                          },
+                                    const SizedBox(height: 20),
+                                    GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _searchController.clear();
+                                          _activeFilter = 0;
+                                          _applyFilters();
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF1E3D2F),
+                                          borderRadius: BorderRadius.circular(24),
+                                        ),
+                                        child: Text(
+                                          'Clear Filters',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       ),
-                                    ],
+                                    ),
                                   ],
                                 ),
                               ),
@@ -509,38 +474,81 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
   }
 }
 
-// ─── Card ────────────────────────────────────────────────────────────────────
+// ─── Custom Graphic for Empty Scholarship State ──────────────────────────────
+class _EmptyScholarshipGraphic extends StatelessWidget {
+  const _EmptyScholarshipGraphic();
 
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 130,
+      height: 130,
+      decoration: const BoxDecoration(
+        color: Color(0xFFF4F7EB),
+        shape: BoxShape.circle,
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(
+            LucideIcons.graduationCap,
+            size: 56,
+            color: Color(0xFF1E3D2F),
+          ),
+          Positioned(
+            right: 22,
+            bottom: 22,
+            child: Transform.rotate(
+              angle: 0.4,
+              child: const Icon(
+                LucideIcons.leaf,
+                color: Color(0xFF5BA778),
+                size: 26,
+              ),
+            ),
+          ),
+          const Positioned(
+            top: 24,
+            right: 24,
+            child: Icon(
+              LucideIcons.sparkles,
+              color: Color(0xFFEAB308),
+              size: 16,
+            ),
+          ),
+          const Positioned(
+            bottom: 30,
+            left: 20,
+            child: Icon(
+              LucideIcons.sparkles,
+              color: Color(0xFFEAB308),
+              size: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Scholarship Card Component ──────────────────────────────────────────────
 class _ScholarshipCard extends StatelessWidget {
   final Map<String, dynamic> program;
   final Map<String, dynamic>? scholar;
 
   const _ScholarshipCard({required this.program, this.scholar});
 
-  Color get _accentColor {
-    final type = program['scholarship_type']?.toString().toLowerCase() ?? 'merit';
-    if (type.contains('merit')) {
-      return AppColors.primary;
-    } else if (type.contains('need')) {
-      return AppColors.amber;
-    } else {
-      return AppColors.released;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = program['provider'] as Map<String, dynamic>?;
     final providerName = provider?['name'] ?? 'Provider';
-    final title = program['title'] ?? 'Scholarship';
+    final title = program['title'] ?? 'Scholarship Program';
     final coversTuition = program['covers_tuition'] == true;
     final coversStipend = program['covers_stipend'] == true;
     final stipendAmt = program['stipend_amount'] != null ? '₱${program['stipend_amount']}' : '₱0';
     final amountText = coversStipend ? stipendAmt : (coversTuition ? 'Tuition Covered' : 'Varies');
-    final periodText = coversStipend ? 'per semester' : '';
 
-    return AppCard(
-      borderLeftColor: _accentColor,
+    return GestureDetector(
       onTap: () => Navigator.pushNamed(
         context,
         AppRouter.scholarshipDetail,
@@ -549,112 +557,71 @@ class _ScholarshipCard extends StatelessWidget {
           'scholar': scholar,
         },
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    StatusChip(
-                      label: providerName.length > 25
-                          ? providerName.substring(0, 25) + '...'
-                          : providerName,
-                      type: program['scholarship_type']
-                                  ?.toString()
-                                  .toLowerCase()
-                                  .contains('merit') ==
-                              true
-                          ? StatusType.approved
-                          : StatusType.pending,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      title,
-                      style: GoogleFonts.playfairDisplay(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      providerName,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(12),
               ),
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: _accentColor.withAlpha(22),
-                  borderRadius: BorderRadius.circular(12),
-                ),
+              child: const Center(
                 child: Icon(
-                  program['scholarship_type']
-                              ?.toString()
-                              .toLowerCase()
-                              .contains('need') ==
-                          true
-                      ? LucideIcons.award
-                      : LucideIcons.graduationCap,
-                  color: _accentColor,
+                  LucideIcons.graduationCap,
+                  color: Color(0xFF1E3D2F),
                   size: 22,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Divider(height: 1, color: AppColors.rule),
-          const SizedBox(height: 12),
-          // Footer
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
-                  '$amountText $periodText',
-                  style: GoogleFonts.dmMono(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: _accentColor,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    LucideIcons.clock,
-                    size: 11,
-                    color: AppColors.textMuted,
-                  ),
-                  const SizedBox(width: 4),
                   Text(
-                    'Open',
+                    title,
                     style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textMuted,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    providerName,
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      color: const Color(0xFF6B7280),
                     ),
                   ),
                 ],
               ),
-            ],
-          ),
-        ],
+            ),
+            Text(
+              amountText,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1E3D2F),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

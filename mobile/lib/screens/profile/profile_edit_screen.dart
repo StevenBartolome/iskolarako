@@ -6,12 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:iskoako/constants/app_colors.dart';
-import 'package:iskoako/widgets/app_components.dart';
-import 'package:iskoako/widgets/custom_button.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:iskoako/services/audit_log_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
@@ -74,7 +70,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     'incoming_college': 'Incoming College (Graduating SHS)',
   };
 
-
   String? _getSafeGenderValue() {
     if (_selectedGender == null) return null;
     final val = _selectedGender!.trim().toLowerCase();
@@ -94,8 +89,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     if (val.contains('vocational') || val.contains('tvet')) return 'vocational';
     return 'college';
   }
-
-
 
   int? _getSafeYearLevel() {
     if (_selectedYearLevel != null && _selectedYearLevel! >= 1 && _selectedYearLevel! <= 5) {
@@ -251,7 +244,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       }
     }
 
-    // Populate PSGC dropdowns in background without blocking UI render
     _populatePsgcDropdowns();
   }
 
@@ -434,12 +426,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       SnackBar(
         content: Row(
           children: [
-            Icon(isError ? LucideIcons.alertCircle : LucideIcons.checkCircle, color: Colors.white, size: 18),
+            Icon(isError ? LucideIcons.alertCircle : Icons.check_circle_rounded, color: Colors.white, size: 18),
             const SizedBox(width: 10),
             Expanded(child: Text(message, style: GoogleFonts.inter(fontSize: 13))),
           ],
         ),
-        backgroundColor: isError ? AppColors.error : AppColors.primary,
+        backgroundColor: isError ? const Color(0xFFB91C1C) : const Color(0xFF1E3D2F),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -461,7 +453,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           builder: (context, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text('Change Password', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
+              title: Text('Change Password', style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: const Color(0xFF111827))),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -516,7 +508,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: const Color(0xFF1E3D2F),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   child: isUpdating
@@ -542,14 +534,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           builder: (context, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text('Change Email Address', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
+              title: Text('Change Email Address', style: GoogleFonts.inter(fontWeight: FontWeight.w800, color: const Color(0xFF111827))),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       'Enter your new email address. A confirmation email will be sent to verify your change.',
-                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
+                      style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF6B7280)),
                     ),
                     const SizedBox(height: 14),
                     TextField(
@@ -596,7 +588,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: const Color(0xFF1E3D2F),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   child: isUpdating
@@ -614,7 +606,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   void _showPhotoOptionsModal() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -628,10 +620,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               children: [
                 Text(
                   'Profile Photo Options',
-                  style: GoogleFonts.playfairDisplay(
-                    fontSize: 20,
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.primaryDark,
+                    color: const Color(0xFF111827),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -639,7 +631,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   'Take a photo now or select an image from your gallery',
                   style: GoogleFonts.inter(
                     fontSize: 12,
-                    color: AppColors.textSecondary,
+                    color: const Color(0xFF6B7280),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -649,43 +641,43 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withAlpha(20),
+                      color: const Color(0xFFDCFCE7),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(LucideIcons.camera, color: AppColors.primary, size: 20),
+                    child: const Icon(LucideIcons.camera, color: Color(0xFF15803D), size: 20),
                   ),
                   title: Text(
                     'Take Photo with Camera',
-                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
                   ),
                   subtitle: Text(
                     'Use your camera to capture a new profile picture',
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280)),
                   ),
                   onTap: () {
                     Navigator.pop(ctx);
                     _pickAndUploadImage(ImageSource.camera);
                   },
                 ),
-                const Divider(height: 16, color: AppColors.rule),
+                const Divider(height: 16, color: Color(0xFFE5E7EB)),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Container(
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: AppColors.amber.withAlpha(20),
+                      color: const Color(0xFFFEF3C7),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(LucideIcons.image, color: AppColors.amberDeep, size: 20),
+                    child: const Icon(LucideIcons.image, color: Color(0xFFD97706), size: 20),
                   ),
                   title: Text(
                     'Upload Photo from Gallery',
-                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
                   ),
                   subtitle: Text(
                     'Choose an existing photo from device storage',
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280)),
                   ),
                   onTap: () {
                     Navigator.pop(ctx);
@@ -725,7 +717,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         } catch (e) {
           if (e.toString().contains('channel-error') || e.toString().contains('MissingPlugin')) {
             _showSnackBar(
-              'Camera plugin requires restarting the app after installation. Please restart flutter run or pick from gallery.',
+              'Camera plugin requires restarting the app. Please pick from gallery.',
               isError: true,
             );
             return;
@@ -871,7 +863,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
   }
 
-  // ── Header Card ─────────────────────────────────────────────────────────────
+  // ── Profile Header Card ──────────────────────────────────────────────────────
 
   Widget _buildProfileHeaderCard() {
     final first = _firstNameController.text.trim();
@@ -896,8 +888,20 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         _selectedMunicipalityName != null &&
         _selectedBarangayName != null;
 
-    return AppCard(
+    return Container(
       padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -912,12 +916,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       width: 76,
                       height: 76,
                       decoration: BoxDecoration(
-                        gradient: AppColors.signatureGradient,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF1E3D2F), Color(0xFF162E23)],
+                        ),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2.5),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.primaryDark.withAlpha(25),
+                            color: const Color(0xFF1E3D2F).withValues(alpha: 0.2),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -943,16 +949,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     child: GestureDetector(
                       onTap: _showPhotoOptionsModal,
                       child: Container(
-                        width: 26,
-                        height: 26,
+                        width: 24,
+                        height: 24,
                         decoration: BoxDecoration(
-                          color: AppColors.primary,
+                          color: const Color(0xFF1E3D2F),
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5),
                         ),
                         child: const Icon(
                           LucideIcons.camera,
-                          size: 13,
+                          size: 12,
                           color: Colors.white,
                         ),
                       ),
@@ -965,16 +971,27 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (isComplete)
-                      const VerifiedBadge(label: 'Verified Scholar')
-                    else
-                      const StatusChip(label: 'Incomplete Profile', type: StatusType.pending),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isComplete ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        isComplete ? '✓ Verified Scholar' : '● Incomplete Profile',
+                        style: GoogleFonts.inter(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: isComplete ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 6),
                     Text(
                       _userEmail.isNotEmpty ? _userEmail : 'scholar@iskolarako.ph',
                       style: GoogleFonts.inter(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: const Color(0xFF6B7280),
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -984,7 +1001,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       style: GoogleFonts.inter(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.amberDeep,
+                        color: const Color(0xFFD97706),
                       ),
                     ),
                   ],
@@ -992,17 +1009,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: AppColors.rule),
           const SizedBox(height: 14),
+          const Divider(height: 1, color: Color(0xFFF3F4F6)),
+          const SizedBox(height: 12),
 
-          // Prominent Scholar Full Name (Uncut, multiline support)
           Text(
             fullName,
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: AppColors.primaryDark,
+            style: GoogleFonts.inter(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF111827),
               height: 1.25,
             ),
           ),
@@ -1025,10 +1041,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         children: [
           Text(
             title,
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 18,
+            style: GoogleFonts.inter(
+              fontSize: 16,
               fontWeight: FontWeight.w800,
-              color: AppColors.primaryDark,
+              color: const Color(0xFF111827),
             ),
           ),
           GestureDetector(
@@ -1036,17 +1052,17 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: isEditing ? AppColors.amber.withAlpha(30) : AppColors.surface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: isEditing ? AppColors.amber : AppColors.rule),
+                color: isEditing ? const Color(0xFFFEF3C7) : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: isEditing ? const Color(0xFFD97706) : const Color(0xFFE5E7EB)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
                     isEditing ? LucideIcons.xCircle : LucideIcons.pencil,
-                    size: 14,
-                    color: isEditing ? AppColors.amberDeep : AppColors.primary,
+                    size: 13,
+                    color: isEditing ? const Color(0xFFD97706) : const Color(0xFF1E3D2F),
                   ),
                   const SizedBox(width: 4),
                   Text(
@@ -1054,7 +1070,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     style: GoogleFonts.inter(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
-                      color: isEditing ? AppColors.amberDeep : AppColors.primary,
+                      color: isEditing ? const Color(0xFFD97706) : const Color(0xFF1E3D2F),
                     ),
                   ),
                 ],
@@ -1066,7 +1082,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
   }
 
-  // ── SECTION BUILDERS (ACADEMIC, PERSONAL, ADDRESS, SECURITY) ──────────────
+  // ── SECTION BUILDERS ──────────────────────────────────────────────────────
 
   Widget _buildAcademicSection() {
     return Column(
@@ -1126,8 +1142,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     final course = _courseController.text.trim().isNotEmpty ? _courseController.text.trim() : 'Not specified';
     final year = _selectedYearLevel != null ? 'Year $_selectedYearLevel' : 'Not specified';
 
-    return AppCard(
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
       child: Column(
         children: [
           _buildViewDetailRow(
@@ -1135,19 +1156,19 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             label: 'Education Level',
             value: _eduLabels[_educationLevel] ?? 'Undergraduate / College',
           ),
-          const Divider(height: 20, color: AppColors.rule),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
           _buildViewDetailRow(
             icon: LucideIcons.building,
             label: 'School / University',
             value: school,
           ),
-          const Divider(height: 20, color: AppColors.rule),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
           _buildViewDetailRow(
             icon: LucideIcons.bookOpen,
             label: 'Course / Degree Program',
             value: course,
           ),
-          const Divider(height: 20, color: AppColors.rule),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
           _buildViewDetailRow(
             icon: LucideIcons.calendar,
             label: 'Year Level',
@@ -1171,8 +1192,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         : 'Not set';
     final gender = _selectedGender ?? 'Not set';
 
-    return AppCard(
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
       child: Column(
         children: [
           _buildViewDetailRow(
@@ -1180,19 +1206,19 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             label: 'Full Name',
             value: fullName.isNotEmpty ? fullName : 'Not set',
           ),
-          const Divider(height: 20, color: AppColors.rule),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
           _buildViewDetailRow(
             icon: LucideIcons.phone,
             label: 'Phone Number',
             value: phone,
           ),
-          const Divider(height: 20, color: AppColors.rule),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
           _buildViewDetailRow(
             icon: LucideIcons.calendar,
             label: 'Birth Date & Gender',
             value: '$dob • $gender',
           ),
-          const Divider(height: 20, color: AppColors.rule),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
           _buildViewDetailRow(
             icon: LucideIcons.flag,
             label: 'Citizenship',
@@ -1211,8 +1237,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     if (_selectedRegionName != null) addressParts.add(_selectedRegionName!);
     final fullAddress = addressParts.isNotEmpty ? addressParts.join(', ') : 'Location not set';
 
-    return AppCard(
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
       child: _buildViewDetailRow(
         icon: LucideIcons.mapPin,
         label: 'Residential Address',
@@ -1229,36 +1260,41 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           padding: const EdgeInsets.only(bottom: 10),
           child: Text(
             'Security & Credentials',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 18,
+            style: GoogleFonts.inter(
+              fontSize: 16,
               fontWeight: FontWeight.w800,
-              color: AppColors.primaryDark,
+              color: const Color(0xFF111827),
             ),
           ),
         ),
-        AppCard(
+        Container(
           padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+          ),
           child: Column(
             children: [
               Row(
                 children: [
                   Container(
-                    width: 38,
-                    height: 38,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withAlpha(18),
+                      color: const Color(0xFFF0FDF4),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(LucideIcons.mail, color: AppColors.primary, size: 18),
+                    child: const Icon(LucideIcons.mail, color: Color(0xFF16A34A), size: 18),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Account Email', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary)),
+                        Text('Account Email', style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280))),
                         Text(_userEmail.isNotEmpty ? _userEmail : 'scholar@iskolarako.ph',
-                            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: const Color(0xFF111827))),
                       ],
                     ),
                   ),
@@ -1267,33 +1303,33 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.primary),
+                        border: Border.all(color: const Color(0xFF1E3D2F)),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text('Change Email', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                      child: Text('Change Email', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF1E3D2F))),
                     ),
                   ),
                 ],
               ),
-              const Divider(height: 24, color: AppColors.rule),
+              const Divider(height: 24, color: Color(0xFFF3F4F6)),
               Row(
                 children: [
                   Container(
-                    width: 38,
-                    height: 38,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withAlpha(18),
+                      color: const Color(0xFFF0FDF4),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(LucideIcons.lock, color: AppColors.primary, size: 18),
+                    child: const Icon(LucideIcons.lock, color: Color(0xFF16A34A), size: 18),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Password', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary)),
-                        Text('••••••••••••', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                        Text('Password', style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280))),
+                        Text('••••••••••••', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: const Color(0xFF111827))),
                       ],
                     ),
                   ),
@@ -1302,7 +1338,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppColors.primary,
+                        color: const Color(0xFF1E3D2F),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -1337,10 +1373,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color: AppColors.primary.withAlpha(15),
+            color: const Color(0xFFF0FDF4),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, color: AppColors.primary, size: 16),
+          child: Icon(icon, color: const Color(0xFF16A34A), size: 16),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1349,18 +1385,18 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             children: [
               Text(
                 label,
-                style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280)),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
               ),
               if (subtitle != null) ...[
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.primary),
+                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: const Color(0xFF1E3D2F)),
                 ),
               ],
             ],
@@ -1373,8 +1409,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   // ── EDIT MODE SECTIONS ─────────────────────────────────────────────────────
 
   Widget _buildEditPersonalSection() {
-    return AppCard(
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
       child: Column(
         children: [
           _buildTextField(
@@ -1432,16 +1473,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Birth Date *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    Text('Birth Date *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
                     const SizedBox(height: 6),
                     GestureDetector(
                       onTap: () => _selectBirthDate(context),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
-                          color: AppColors.surface,
+                          color: const Color(0xFFFAFCFA),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.rule),
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1452,10 +1493,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                   : 'Select Date',
                               style: GoogleFonts.inter(
                                 fontSize: 13,
-                                color: _selectedBirthDate != null ? AppColors.textPrimary : AppColors.textMuted,
+                                color: _selectedBirthDate != null ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
                               ),
                             ),
-                            const Icon(LucideIcons.calendar, size: 16, color: AppColors.primary),
+                            const Icon(LucideIcons.calendar, size: 16, color: Color(0xFF1E3D2F)),
                           ],
                         ),
                       ),
@@ -1468,7 +1509,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Gender *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    Text('Gender *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
                       isExpanded: true,
@@ -1476,11 +1517,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       decoration: InputDecoration(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         filled: true,
-                        fillColor: AppColors.surface,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
+                        fillColor: const Color(0xFFFAFCFA),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
                       ),
-                      hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+                      hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF9CA3AF))),
                       items: const [
                         DropdownMenuItem(value: 'Male', child: Text('Male')),
                         DropdownMenuItem(value: 'Female', child: Text('Female')),
@@ -1501,20 +1542,25 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: OutlinedButton(
                   onPressed: () => setState(() => _editingPersonal = false),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.rule),
+                    side: const BorderSide(color: Color(0xFFE5E7EB)),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: Text('Cancel', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+                  child: Text('Cancel', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF6B7280))),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: CustomButton(
-                  text: 'Save Personal Details',
-                  icon: LucideIcons.check,
-                  isLoading: _isSaving,
-                  onPressed: _savePersonalSection,
+                child: ElevatedButton.icon(
+                  onPressed: _isSaving ? null : _savePersonalSection,
+                  icon: const Icon(LucideIcons.check, size: 14, color: Colors.white),
+                  label: Text('Save Details', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3D2F),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
                 ),
               ),
             ],
@@ -1525,8 +1571,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   }
 
   Widget _buildEditAddressSection() {
-    return AppCard(
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1616,20 +1667,25 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: OutlinedButton(
                   onPressed: () => setState(() => _editingAddress = false),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.rule),
+                    side: const BorderSide(color: Color(0xFFE5E7EB)),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: Text('Cancel', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+                  child: Text('Cancel', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF6B7280))),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: CustomButton(
-                  text: 'Save Address Details',
-                  icon: LucideIcons.check,
-                  isLoading: _isSaving,
-                  onPressed: _saveAddressSection,
+                child: ElevatedButton.icon(
+                  onPressed: _isSaving ? null : _saveAddressSection,
+                  icon: const Icon(LucideIcons.check, size: 14, color: Colors.white),
+                  label: Text('Save Address', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3D2F),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
                 ),
               ),
             ],
@@ -1640,15 +1696,19 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   }
 
   Widget _buildEditAcademicSection() {
-    return AppCard(
+    return Container(
       padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
       child: Column(
         children: [
-          // Education Level Dropdown
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Education Level *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Text('Education Level *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
                 isExpanded: true,
@@ -1656,9 +1716,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 decoration: InputDecoration(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   filled: true,
-                  fillColor: AppColors.surface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
+                  fillColor: const Color(0xFFFAFCFA),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
                 ),
                 items: _eduLabels.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value, style: GoogleFonts.inter(fontSize: 13)))).toList(),
                 onChanged: (val) {
@@ -1690,7 +1750,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Year Level *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Text('Year Level *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
               const SizedBox(height: 6),
               DropdownButtonFormField<int>(
                 isExpanded: true,
@@ -1698,11 +1758,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 decoration: InputDecoration(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   filled: true,
-                  fillColor: AppColors.surface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
+                  fillColor: const Color(0xFFFAFCFA),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
                 ),
-                hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+                hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF9CA3AF))),
                 items: const [
                   DropdownMenuItem(value: 1, child: Text('1st Year')),
                   DropdownMenuItem(value: 2, child: Text('2nd Year')),
@@ -1722,20 +1782,25 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: OutlinedButton(
                   onPressed: () => setState(() => _editingAcademic = false),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.rule),
+                    side: const BorderSide(color: Color(0xFFE5E7EB)),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: Text('Cancel', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+                  child: Text('Cancel', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF6B7280))),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: CustomButton(
-                  text: 'Save Academic Details',
-                  icon: LucideIcons.check,
-                  isLoading: _isSaving,
-                  onPressed: _saveAcademicSection,
+                child: ElevatedButton.icon(
+                  onPressed: _isSaving ? null : _saveAcademicSection,
+                  icon: const Icon(LucideIcons.check, size: 14, color: Colors.white),
+                  label: Text('Save Academic', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3D2F),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
                 ),
               ),
             ],
@@ -1757,7 +1822,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+        Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
@@ -1767,9 +1832,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             hintText: hint,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             filled: true,
-            fillColor: AppColors.surface,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
+            fillColor: const Color(0xFFFAFCFA),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
           ),
         ),
       ],
@@ -1789,7 +1854,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+        Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
           isExpanded: true,
@@ -1797,11 +1862,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           decoration: InputDecoration(
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             filled: true,
-            fillColor: AppColors.surface,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rule)),
+            fillColor: const Color(0xFFFAFCFA),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
           ),
-          hint: Text(hint, style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+          hint: Text(hint, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF9CA3AF))),
           items: items,
           onChanged: onChanged,
         ),
@@ -1812,126 +1877,177 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                ),
-              )
-            : Column(
-                children: [
-                  // Consistent Top Bar Header
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context, true),
-                          child: Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.rule),
-                            ),
-                            child: const Icon(LucideIcons.chevronLeft,
-                                color: AppColors.primary, size: 20),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            _isAnyEditing ? 'Edit Profile Details' : 'Student Profile',
-                            style: GoogleFonts.playfairDisplay(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primaryDark,
-                            ),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              if (_isAnyEditing) {
-                                _editingAcademic = false;
-                                _editingPersonal = false;
-                                _editingAddress = false;
-                              } else {
-                                _editingAcademic = true;
-                                _editingPersonal = true;
-                                _editingAddress = true;
-                              }
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: _isAnyEditing ? AppColors.amberDeep : AppColors.primary,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _isAnyEditing ? LucideIcons.eye : LucideIcons.pencil,
-                                  size: 14,
-                                  color: Colors.white,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _isAnyEditing ? 'View Mode' : 'Edit All',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+      backgroundColor: const Color(0xFFFAFCFA),
+      body: Column(
+        children: [
+          _buildHeader(context),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF1E3D2F)),
+                  )
+                : SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 8),
+                          _buildProfileHeaderCard(),
+                          const SizedBox(height: 20),
+
+                          _buildAcademicSection(),
+                          const SizedBox(height: 20),
+
+                          _buildPersonalSection(),
+                          const SizedBox(height: 20),
+
+                          _buildAddressSection(),
+                          const SizedBox(height: 20),
+
+                          _buildSecuritySection(),
+                        ],
+                      ),
                     ),
                   ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                  // Main Content
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Profile Avatar Summary Header
-                            _buildProfileHeaderCard(),
-                            const SizedBox(height: 20),
-
-                            // Academic Section (Independent Edit/View)
-                            _buildAcademicSection(),
-                            const SizedBox(height: 20),
-
-                            // Personal Section (Independent Edit/View)
-                            _buildPersonalSection(),
-                            const SizedBox(height: 20),
-
-                            // Address Section (Independent Edit/View)
-                            _buildAddressSection(),
-                            const SizedBox(height: 20),
-
-                            // Security & Credentials
-                            _buildSecuritySection(),
-                          ],
+  // ── Header Top Bar ────────────────────────────────────────────────────────
+  Widget _buildHeader(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.shieldCheck,
+                        size: 14,
+                        color: Color(0xFFD97706),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'EDIT PROFILE',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFD97706),
+                          letterSpacing: 1.0,
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Edit profile.',
+                    style: GoogleFonts.inter(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111827),
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Update education level, location details & security credentials',
+                    style: GoogleFonts.inter(
+                      fontSize: 12.5,
+                      color: const Color(0xFF6B7280),
+                      height: 1.35,
                     ),
                   ),
                 ],
               ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context, true),
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            LucideIcons.chevronLeft,
+                            color: Color(0xFF111827),
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          if (_isAnyEditing) {
+                            _editingAcademic = false;
+                            _editingPersonal = false;
+                            _editingAddress = false;
+                          } else {
+                            _editingAcademic = true;
+                            _editingPersonal = true;
+                            _editingAddress = true;
+                          }
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _isAnyEditing ? const Color(0xFFD97706) : const Color(0xFF1E3D2F),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _isAnyEditing ? 'View Mode' : 'Edit All',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Image.asset(
+                  'assets/books-hats-icon.png',
+                  width: 85,
+                  height: 75,
+                  fit: BoxFit.contain,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

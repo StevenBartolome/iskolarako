@@ -30,7 +30,10 @@ class _MainLayoutState extends State<MainLayout>
   final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey<DashboardScreenState>();
 
   late final List<Widget> _pages = [
-    DashboardScreen(key: _dashboardKey),
+    DashboardScreen(
+      key: _dashboardKey,
+      onSelectTab: _onTabTapped,
+    ),
     const ScholarshipListScreen(),
     const ApplicationTrackerScreen(),
     const FundTrackingScreen(),

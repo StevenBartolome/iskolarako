@@ -5,10 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
-import 'package:iskoako/widgets/app_components.dart';
-import 'package:iskoako/widgets/custom_button.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -38,7 +35,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'vocational': 'Vocational / TVET',
     'incoming_college': 'Incoming College (Graduating SHS)',
   };
-
 
   @override
   void initState() {
@@ -82,13 +78,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _fullName = nameParts.trim().isNotEmpty ? nameParts : 'Scholar Student';
               _initials = '${first.isNotEmpty ? first[0] : ''}${last.isNotEmpty ? last[0] : ''}'.toUpperCase();
               _academicDetails = '$eduLevel • $course\n$school';
-              // Face verification
-              _faceVerificationStatus =
-                  data['face_verification_status']?.toString() ?? 'unverified';
+              _faceVerificationStatus = data['face_verification_status']?.toString() ?? 'unverified';
               final verifiedAtRaw = data['face_verified_at']?.toString();
-              _faceVerifiedAt = verifiedAtRaw != null
-                  ? DateTime.tryParse(verifiedAtRaw)
-                  : null;
+              _faceVerifiedAt = verifiedAtRaw != null ? DateTime.tryParse(verifiedAtRaw) : null;
             } else {
               _isProfileComplete = false;
               _fullName = user.email ?? 'Scholar Student';
@@ -112,7 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showPhotoOptionsModal() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -126,10 +118,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Text(
                   'Profile Photo Options',
-                  style: GoogleFonts.playfairDisplay(
-                    fontSize: 20,
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.primaryDark,
+                    color: const Color(0xFF111827),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -137,7 +129,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'Take a photo now or select an image from your gallery',
                   style: GoogleFonts.inter(
                     fontSize: 12,
-                    color: AppColors.textSecondary,
+                    color: const Color(0xFF6B7280),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -147,43 +139,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withAlpha(20),
+                      color: const Color(0xFFDCFCE7),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(LucideIcons.camera, color: AppColors.primary, size: 20),
+                    child: const Icon(LucideIcons.camera, color: Color(0xFF15803D), size: 20),
                   ),
                   title: Text(
                     'Take Photo with Camera',
-                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
                   ),
                   subtitle: Text(
                     'Use your camera to capture a new profile picture',
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280)),
                   ),
                   onTap: () {
                     Navigator.pop(ctx);
                     _pickAndUploadImage(ImageSource.camera);
                   },
                 ),
-                const Divider(height: 16, color: AppColors.rule),
+                const Divider(height: 16, color: Color(0xFFE5E7EB)),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Container(
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: AppColors.amber.withAlpha(20),
+                      color: const Color(0xFFFEF3C7),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(LucideIcons.image, color: AppColors.amberDeep, size: 20),
+                    child: const Icon(LucideIcons.image, color: Color(0xFFD97706), size: 20),
                   ),
                   title: Text(
                     'Upload Photo from Gallery',
-                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
                   ),
                   subtitle: Text(
                     'Choose an existing photo from device storage',
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                    style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280)),
                   ),
                   onTap: () {
                     Navigator.pop(ctx);
@@ -225,9 +217,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Camera plugin requires restarting the app after installation. Please restart flutter run or pick from gallery.'),
-                  backgroundColor: AppColors.error,
-                  duration: Duration(seconds: 5),
+                  content: Text('Camera requires restarting the app. Please pick from gallery.'),
+                  backgroundColor: Color(0xFFB91C1C),
                 ),
               );
             }
@@ -325,7 +316,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Profile photo updated successfully!'),
-            backgroundColor: AppColors.success,
+            backgroundColor: Color(0xFF15803D),
           ),
         );
       }
@@ -335,7 +326,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to update photo: $e'),
-            backgroundColor: AppColors.error,
+            backgroundColor: const Color(0xFFB91C1C),
           ),
         );
       }
@@ -391,32 +382,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // FACE VERIFICATION CARD
-  // ─────────────────────────────────────────────────────────────────────────
-
+  // ─── Face Verification Card ────────────────────────────────────────────────
   Widget _buildFaceVerificationCard() {
     if (_faceVerificationStatus == 'verified') {
-      // Green verified card
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.successBg,
+          color: const Color(0xFFF0FDF4),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.primary.withAlpha(60)),
+          border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
         ),
         child: Row(
           children: [
             Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withAlpha(20),
+              width: 42,
+              height: 42,
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCFCE7),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 LucideIcons.shieldCheck,
-                color: AppColors.primary,
+                color: Color(0xFF16A34A),
                 size: 22,
               ),
             ),
@@ -428,9 +415,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text(
                     'Identity Verified',
                     style: GoogleFonts.inter(
-                      fontSize: 14,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
+                      color: const Color(0xFF111827),
                     ),
                   ),
                   if (_faceVerifiedAt != null)
@@ -438,44 +425,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       'Verified on ${_faceVerifiedAt!.day}/${_faceVerifiedAt!.month}/${_faceVerifiedAt!.year}',
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: AppColors.textSecondary,
+                        color: const Color(0xFF6B7280),
                       ),
                     ),
                 ],
               ),
             ),
-            const Icon(LucideIcons.checkCircle,
-                color: AppColors.primary, size: 20),
+            const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 20),
           ],
         ),
       );
     } else if (_faceVerificationStatus == 'failed') {
-      // Red failed card with retry
       return GestureDetector(
         onTap: () async {
-          final result = await Navigator.pushNamed(
-              context, AppRouter.faceVerification);
+          final result = await Navigator.pushNamed(context, AppRouter.faceVerification);
           if (result == true) _loadProfileData();
         },
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.errorBg,
+            color: const Color(0xFFFDF2F2),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.error.withAlpha(60)),
+            border: Border.all(color: const Color(0xFFFEE2E2), width: 1),
           ),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.error.withAlpha(20),
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFEE2E2),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   LucideIcons.shieldOff,
-                  color: AppColors.error,
+                  color: Color(0xFFB91C1C),
                   size: 22,
                 ),
               ),
@@ -487,56 +471,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       'Verification Failed',
                       style: GoogleFonts.inter(
-                        fontSize: 14,
+                        fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.error,
+                        color: const Color(0xFFB91C1C),
                       ),
                     ),
                     Text(
                       'Tap to retry identity verification',
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: AppColors.textSecondary,
+                        color: const Color(0xFF6B7280),
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(LucideIcons.arrowRight,
-                  color: AppColors.error, size: 18),
+              const Icon(LucideIcons.arrowRight, color: Color(0xFFB91C1C), size: 18),
             ],
           ),
         ),
       );
     } else {
-      // Unverified — amber CTA banner
       return GestureDetector(
         onTap: () async {
-          final result = await Navigator.pushNamed(
-              context, AppRouter.faceVerification);
+          final result = await Navigator.pushNamed(context, AppRouter.faceVerification);
           if (result == true) _loadProfileData();
         },
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFFF8EE), Color(0xFFFFF0D4)],
-            ),
+            color: const Color(0xFFFFF8EE),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.amber.withAlpha(80)),
+            border: Border.all(color: const Color(0xFFFDE8D0), width: 1),
           ),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.amber.withAlpha(30),
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFEF3C7),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   LucideIcons.shieldAlert,
-                  color: AppColors.amberDeep,
+                  color: Color(0xFFD97706),
                   size: 22,
                 ),
               ),
@@ -548,27 +527,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       'Verify Your Identity',
                       style: GoogleFonts.inter(
-                        fontSize: 14,
+                        fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.amberDeep,
+                        color: const Color(0xFF111827),
                       ),
                     ),
                     Text(
                       'Upload your ID + face check to get verified',
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: AppColors.textSecondary,
+                        color: const Color(0xFF6B7280),
                       ),
                     ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.amberDeep,
-                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(0xFFD97706),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   'Verify Now',
@@ -589,325 +567,370 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                ),
-              )
-            : SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Consistent Top Bar Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      backgroundColor: const Color(0xFFFAFCFA),
+      body: Column(
+        children: [
+          _buildHeader(context),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF1E3D2F)),
+                  )
+                : SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.diamond_rounded,
-                              size: 14,
-                              color: AppColors.amber,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'STUDENT PROFILE',
+                        const SizedBox(height: 8),
+
+                        // Scholar Profile Hero Card
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.03),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Stack(
+                                    children: [
+                                      GestureDetector(
+                                        onTap: _showPhotoOptionsModal,
+                                        child: Container(
+                                          width: 80,
+                                          height: 80,
+                                          decoration: BoxDecoration(
+                                            gradient: const LinearGradient(
+                                              colors: [Color(0xFF1E3D2F), Color(0xFF162E23)],
+                                            ),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: Colors.white, width: 3),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: const Color(0xFF1E3D2F).withValues(alpha: 0.2),
+                                                blurRadius: 12,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
+                                          ),
+                                          child: _isUploadingPhoto
+                                              ? const Center(
+                                                  child: SizedBox(
+                                                    width: 24,
+                                                    height: 24,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 2.5,
+                                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                                    ),
+                                                  ),
+                                                )
+                                              : _buildAvatarImage(),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        bottom: 0,
+                                        right: 0,
+                                        child: GestureDetector(
+                                          onTap: _showPhotoOptionsModal,
+                                          child: Container(
+                                            width: 26,
+                                            height: 26,
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF1E3D2F),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: Colors.white, width: 2),
+                                            ),
+                                            child: const Icon(
+                                              LucideIcons.camera,
+                                              size: 13,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: (_isProfileComplete && _faceVerificationStatus == 'verified')
+                                                ? const Color(0xFFDCFCE7)
+                                                : const Color(0xFFFEF3C7),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            (_isProfileComplete && _faceVerificationStatus == 'verified')
+                                                ? '✓ Verified Scholar'
+                                                : '● Incomplete Profile',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: (_isProfileComplete && _faceVerificationStatus == 'verified')
+                                                  ? const Color(0xFF15803D)
+                                                  : const Color(0xFFB45309),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Tap photo to change profile picture',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 11,
+                                            color: const Color(0xFF9CA3AF),
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                              const SizedBox(height: 14),
+
+                              Text(
+                                _fullName,
+                                style: GoogleFonts.inter(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF111827),
+                                  height: 1.25,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Academic Details Card
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF0FDF4),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(LucideIcons.graduationCap, size: 20, color: Color(0xFF16A34A)),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        _academicDetails,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: const Color(0xFF1E3D2F),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              GestureDetector(
+                                onTap: () async {
+                                  final updated = await Navigator.pushNamed(context, AppRouter.profileEdit);
+                                  if (updated == true) {
+                                    _loadProfileData();
+                                  }
+                                },
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(vertical: 11),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFF1E3D2F), width: 1),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(LucideIcons.pencil, size: 14, color: Color(0xFF1E3D2F)),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Edit Profile & Information',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF1E3D2F),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Face Verification Banner
+                        _buildFaceVerificationCard(),
+                        const SizedBox(height: 20),
+
+                        // Menu Settings Section
+                        Text(
+                          'ACCOUNT SETTINGS',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF1E3D2F),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                          ),
+                          child: Column(
+                            children: [
+                              _buildProfileItem(
+                                icon: LucideIcons.userCheck,
+                                title: 'Personal & Academic Information',
+                                subtitle: 'Education level, location & details',
+                                onTap: () async {
+                                  final updated = await Navigator.pushNamed(context, AppRouter.profileEdit);
+                                  if (updated == true) {
+                                    _loadProfileData();
+                                  }
+                                },
+                              ),
+                              const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                              _buildProfileItem(
+                                icon: LucideIcons.shieldCheck,
+                                title: 'Security Credentials',
+                                subtitle: 'Change email address & account password',
+                                onTap: () async {
+                                  final updated = await Navigator.pushNamed(context, AppRouter.profileEdit);
+                                  if (updated == true) {
+                                    _loadProfileData();
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Log Out Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: _handleLogout,
+                            icon: const Icon(LucideIcons.logOut, size: 16, color: Color(0xFFB91C1C)),
+                            label: Text(
+                              'Log Out',
                               style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.amberDeep,
-                                letterSpacing: 1.2,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFB91C1C),
                               ),
                             ),
-                          ],
-                        ),
-                        GestureDetector(
-                          onTap: () async {
-                            final updated = await Navigator.pushNamed(context, AppRouter.profileEdit);
-                            if (updated == true) {
-                              _loadProfileData();
-                            }
-                          },
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppColors.rule, width: 0.8),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primaryDark.withAlpha(10),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                LucideIcons.pencil,
-                                color: AppColors.primary,
-                                size: 20,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFDF2F2),
+                              foregroundColor: const Color(0xFFB91C1C),
+                              elevation: 0,
+                              side: const BorderSide(color: Color(0xFFFEE2E2), width: 1),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
                               ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Student\nprofile.',
-                      style: GoogleFonts.playfairDisplay(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.primaryDark,
-                        height: 1.15,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Header Top Bar ────────────────────────────────────────────────────────
+  Widget _buildHeader(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.shieldCheck,
+                        size: 14,
+                        color: Color(0xFFD97706),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Manage education info, location details & security credentials',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
+                      const SizedBox(width: 4),
+                      Text(
+                        'STUDENT PROFILE',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFD97706),
+                          letterSpacing: 1.0,
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Student\nprofile.',
+                    style: GoogleFonts.inter(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111827),
+                      height: 1.15,
                     ),
-                    const SizedBox(height: 24),
-
-                    // Redesigned Scholar Profile Hero Card
-                    AppCard(
-                      padding: const EdgeInsets.all(22),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Top Row: Avatar with Photo Upload Trigger + Status Badge
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Stack(
-                                children: [
-                                  GestureDetector(
-                                    onTap: _showPhotoOptionsModal,
-                                    child: Container(
-                                      width: 84,
-                                      height: 84,
-                                      decoration: BoxDecoration(
-                                        gradient: AppColors.signatureGradient,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 3),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: AppColors.primaryDark.withAlpha(35),
-                                            blurRadius: 14,
-                                            offset: const Offset(0, 5),
-                                          ),
-                                        ],
-                                      ),
-                                      child: _isUploadingPhoto
-                                          ? const Center(
-                                              child: SizedBox(
-                                                width: 28,
-                                                height: 28,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 2.5,
-                                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                                ),
-                                              ),
-                                            )
-                                          : _buildAvatarImage(),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: GestureDetector(
-                                      onTap: _showPhotoOptionsModal,
-                                      child: Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primary,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(color: Colors.white, width: 2),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withAlpha(40),
-                                              blurRadius: 4,
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(
-                                          LucideIcons.camera,
-                                          size: 14,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (_isProfileComplete && _faceVerificationStatus == 'verified')
-                                      const VerifiedBadge(label: 'Verified Scholar')
-                                    else
-                                      const StatusChip(label: 'Incomplete Profile', type: StatusType.pending),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Tap photo to change profile picture',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11,
-                                        color: AppColors.textMuted,
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          const Divider(height: 1, color: AppColors.rule),
-                          const SizedBox(height: 16),
-
-                          // Prominent Scholar Full Name (Uncut, multiline support)
-                          Text(
-                            _fullName,
-                            style: GoogleFonts.playfairDisplay(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.primaryDark,
-                              height: 1.25,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Academic Summary & GPA Info
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.background,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.rule, width: 0.8),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(LucideIcons.graduationCap, size: 16, color: AppColors.primary),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        _academicDetails,
-                                        style: GoogleFonts.inter(
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppColors.textPrimary,
-                                          height: 1.35,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-
-                          GestureDetector(
-                            onTap: () async {
-                              final updated = await Navigator.pushNamed(context, AppRouter.profileEdit);
-                              if (updated == true) {
-                                _loadProfileData();
-                              }
-                            },
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: AppColors.primary),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(LucideIcons.pencil, size: 14, color: AppColors.primary),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Edit Profile & Information',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Manage education info, location details & security credentials',
+                    style: GoogleFonts.inter(
+                      fontSize: 12.5,
+                      color: const Color(0xFF6B7280),
+                      height: 1.35,
                     ),
-                    const SizedBox(height: 16),
-
-                    // ── Face Verification Banner ────────────────────────────
-                    _buildFaceVerificationCard(),
-                    const SizedBox(height: 24),
-
-                    // Menu Sections
-                    const SectionHeading(title: 'Account Settings'),
-                    const SizedBox(height: 12),
-                    AppCard(
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          _buildProfileItem(
-                            icon: LucideIcons.userCheck,
-                            title: 'Personal & Academic Information',
-                            subtitle: 'Education level, location & details',
-                            onTap: () async {
-                              final updated = await Navigator.pushNamed(
-                                  context, AppRouter.profileEdit);
-                              if (updated == true) {
-                                _loadProfileData();
-                              }
-                            },
-                          ),
-                          const Divider(height: 1, color: AppColors.rule),
-                          _buildProfileItem(
-                            icon: LucideIcons.shieldCheck,
-                            title: 'Security Credentials',
-                            subtitle: 'Change email address & account password',
-                            onTap: () async {
-                              final updated = await Navigator.pushNamed(
-                                  context, AppRouter.profileEdit);
-                              if (updated == true) {
-                                _loadProfileData();
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    CustomButton(
-                      text: 'Log Out',
-                      isOutlined: true,
-                      onPressed: _handleLogout,
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
+            Image.asset(
+              'assets/books-hats-icon.png',
+              width: 85,
+              height: 75,
+              fit: BoxFit.contain,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -920,20 +943,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
-                color: AppColors.primary.withAlpha(18),
+                color: const Color(0xFFF0FDF4),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: AppColors.primary, size: 20),
+              child: Icon(icon, color: const Color(0xFF16A34A), size: 18),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -943,7 +967,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: const Color(0xFF111827),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -951,7 +975,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     subtitle,
                     style: GoogleFonts.inter(
                       fontSize: 11,
-                      color: AppColors.textSecondary,
+                      color: const Color(0xFF6B7280),
                     ),
                   ),
                 ],
@@ -960,7 +984,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const Icon(
               LucideIcons.chevronRight,
               size: 16,
-              color: AppColors.textMuted,
+              color: Color(0xFF9CA3AF),
             ),
           ],
         ),

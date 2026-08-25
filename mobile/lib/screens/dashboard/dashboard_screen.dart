@@ -3,13 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
-import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final ValueChanged<int>? onSelectTab;
+  const DashboardScreen({super.key, this.onSelectTab});
 
   @override
   State<DashboardScreen> createState() => DashboardScreenState();
@@ -21,16 +20,16 @@ class DashboardScreenState extends State<DashboardScreen> {
       _loadDashboardData();
     }
   }
-  int _activeFilterIndex = 0;
-  final List<String> _filters = [
-    'All',
-    'STEM',
-    'Arts & Humanities',
-    'LGU-Funded',
-    'Private/NGO'
-  ];
 
-  String _scholarName = 'SCHOLAR';
+  void _navigateToTab(int tabIndex, String fallbackRoute) {
+    if (widget.onSelectTab != null) {
+      widget.onSelectTab!(tabIndex);
+    } else {
+      Navigator.pushNamed(context, fallbackRoute);
+    }
+  }
+
+  String _scholarName = 'Mark Steven';
   Map<String, dynamic>? _scholarProfile;
   List<dynamic> _allPrograms = [];
   List<dynamic> _qualifiedPrograms = [];
@@ -193,7 +192,6 @@ class DashboardScreenState extends State<DashboardScreen> {
             final program = r['program'] as Map<String, dynamic>?;
             final programId = program?['id']?.toString();
 
-            // DO NOT show alert if scholar has ALREADY submitted requirements for this renewal cycle!
             if (cycleId != null && submittedCycleIds.contains(cycleId)) {
               continue;
             }
@@ -221,11 +219,10 @@ class DashboardScreenState extends State<DashboardScreen> {
           _scholarProfile = scholarData;
           _isProfileComplete = EligibilityHelper.isProfileComplete(scholarData);
           _scholarName = (scholarData != null && scholarData['first_name'] != null)
-              ? (scholarData['first_name'] as String).toUpperCase()
-              : 'SCHOLAR';
+              ? (scholarData['first_name'] as String)
+              : 'Mark Steven';
           _unreadNotifCount = notifRes.length;
 
-          // Strictly filter out closed programs (no open cycle or past deadline)
           final openPrograms = programsData
               .where((p) => EligibilityHelper.isProgramOpen(p as Map<String, dynamic>?))
               .toList();
@@ -256,111 +253,170 @@ class DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    String scholarDisplayName = _scholarName;
+    if (_scholarProfile != null) {
+      final fname = _scholarProfile!['first_name']?.toString() ?? '';
+      final lname = _scholarProfile!['last_name']?.toString() ?? '';
+      if (fname.isNotEmpty) {
+        final formattedFname = fname.split(' ').map((s) => s.isNotEmpty ? '${s[0].toUpperCase()}${s.substring(1).toLowerCase()}' : '').join(' ');
+        final formattedLname = lname.isNotEmpty ? lname.split(' ').map((s) => s.isNotEmpty ? '${s[0].toUpperCase()}${s.substring(1).toLowerCase()}' : '').join(' ') : '';
+        scholarDisplayName = '$formattedFname $formattedLname'.trim();
+      }
+    }
+
     return Scaffold(
-      backgroundColor: AppColors.background, // Clean light cream white
+      backgroundColor: const Color(0xFFFAFCFA),
       body: Column(
         children: [
           SafeArea(
             bottom: false,
             child: Container(
-              color: AppColors.background,
+              color: const Color(0xFFFAFCFA),
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: _buildTopHeader(context),
+              child: _buildTopHeader(context, scholarDisplayName),
             ),
           ),
 
           // Scrollable Content Body
           Expanded(
             child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 2. Headlines
-                  _buildHeadlines(),
-                  const SizedBox(height: 16),
+                  // 1. Hero Banner Card ("Your future starts here.")
+                  _buildHeroBanner(context),
+                  const SizedBox(height: 24),
 
-                  // 📢 Top-priority Semestral Renewal Alerts on Home Page
+                  // 📢 Top-priority Semestral Renewal Alerts if present
                   if (_openRenewalAlerts.isNotEmpty) ...[
                     for (final alert in _openRenewalAlerts) ...[
                       _buildRenewalHomeBanner(context, alert),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
                     ],
                   ],
 
-                  // 3. Stat Cards Row (3 horizontal cards)
-                  _buildStatCardsRow(),
-                  const SizedBox(height: 20),
+                  // 2. Quick Actions Stack Grid (2x2)
+                  Text(
+                    'Quick Actions',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildQuickActionsGrid(context),
+                  const SizedBox(height: 24),
 
-                  // 4. Search Bar
-                  _buildSearchBar(),
-                  const SizedBox(height: 16),
+                  // 3. Recommended For You Section
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Recommended for you',
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF111827),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.pushNamed(
+                            context, AppRouter.scholarships),
+                        child: Text(
+                          'See all',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF1E3D2F),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildRecommendedCard(context),
+                  const SizedBox(height: 24),
 
-                  // 5. Scrollable Filter Chips
-                  _buildFilterChipsRow(),
-                  const SizedBox(height: 20),
-
-              // 6. Urgent Alert Card with Sawtooth / Stamp Bottom Edge
-              _buildUrgentBanner(context),
-              const SizedBox(height: 24),
-
-              // 7. 2x2 Quick Actions Stack
-              const SectionHeading(
-                title: 'Quick Actions',
+                  // 4. Recent Activity Section
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Recent Activity',
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF111827),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.pushNamed(
+                            context, AppRouter.applicationTracker),
+                        child: Text(
+                          'View all',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF1E3D2F),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildRecentActivity(context),
+                ],
               ),
-              const SizedBox(height: 14),
-              _buildQuickActionsGrid(context),
-              const SizedBox(height: 28),
-
-              // 8. Recommended For You Section
-              SectionHeading(
-                title: 'Recommended for you',
-                actionLabel: 'See all',
-                onAction: () =>
-                    Navigator.pushNamed(context, AppRouter.scholarshipDetail),
-              ),
-              const SizedBox(height: 14),
-              _buildRecommendedCard(context),
-              const SizedBox(height: 20),
-
-              // 9. Recent Activity
-              const SectionHeading(
-                title: 'Recent Activity',
-                actionLabel: 'View all',
-              ),
-              const SizedBox(height: 14),
-              _buildRecentActivity(context),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
-    ],
-  ),
-);
+    );
   }
 
   // ─── 1. Top Header Row ──────────────────────────────────────────────────────
-  Widget _buildTopHeader(BuildContext context) {
+  Widget _buildTopHeader(BuildContext context, String displayName) {
+    final badgeCount = _unreadNotifCount > 0 ? _unreadNotifCount : 2;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Row(
           children: [
-            const Icon(
-              Icons.diamond_rounded,
-              size: 14,
-              color: AppColors.amber,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              'MAGANDANG UMAGA, $_scholarName',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: AppColors.amberDeep,
-                letterSpacing: 1.2,
+            Container(
+              padding: const EdgeInsets.all(2),
+              child: const Icon(
+                LucideIcons.flame,
+                size: 22,
+                color: Color(0xFFE55B2B),
               ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Good morning,',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: const Color(0xFF6B7280),
+                  ),
+                ),
+                Text(
+                  displayName,
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF111827),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -376,56 +432,47 @@ class DashboardScreenState extends State<DashboardScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.rule, width: 0.8),
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primaryDark.withAlpha(10),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
                 child: const Center(
                   child: Icon(
                     LucideIcons.bell,
-                    color: AppColors.amber,
+                    color: Color(0xFF111827),
                     size: 20,
                   ),
                 ),
               ),
-              if (_unreadNotifCount > 0)
-                Positioned(
-                  top: -4,
-                  right: -4,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                    decoration: BoxDecoration(
-                      color: AppColors.error,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.background, width: 1.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.error.withAlpha(50),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                    child: Center(
-                      child: Text(
-                        _unreadNotifCount > 9 ? '9+' : '$_unreadNotifCount',
-                        style: GoogleFonts.inter(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                        ),
+              Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                  child: Center(
+                    child: Text(
+                      '$badgeCount',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
                       ),
                     ),
                   ),
                 ),
+              ),
             ],
           ),
         ),
@@ -433,37 +480,99 @@ class DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 2. Headlines ───────────────────────────────────────────────────────────
-  Widget _buildHeadlines() {
-    final count = _qualifiedPrograms.length;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Find your next\nscholarship.',
-          style: GoogleFonts.playfairDisplay(
-            fontSize: 34,
-            fontWeight: FontWeight.w900,
-            color: AppColors.primaryDark,
-            height: 1.15,
-          ),
+  // ─── 2. Hero Banner Card ────────────────────────────────────────────────────
+  Widget _buildHeroBanner(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E3D2F), Color(0xFF162E23)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        const SizedBox(height: 6),
-        Text(
-          _isProfileComplete
-              ? '$count opportunity(ies) matched to your profile'
-              : 'Complete your profile to find matching opportunities',
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w400,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1E3D2F).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Your future\nstarts here.',
+                  style: GoogleFonts.inter(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Find and apply for scholarships that support your goals.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: () => _navigateToTab(1, AppRouter.scholarships),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Browse Scholarships',
+                          style: GoogleFonts.inter(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1E3D2F),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(
+                          LucideIcons.arrowRight,
+                          size: 14,
+                          color: Color(0xFF1E3D2F),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 120,
+            height: 110,
+            child: Image.asset(
+              'assets/books-hats-icon.png',
+              fit: BoxFit.contain,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  // ─── 2.5. Semestral Renewal Banner on Home ──────────────────────────────────
+  // ─── 3. Semestral Renewal Banner ────────────────────────────────────────────
   Widget _buildRenewalHomeBanner(BuildContext context, Map<String, dynamic> alert) {
     final program = alert['program'] as Map<String, dynamic>?;
     final renewalCycle = alert['renewal_cycle'] as Map<String, dynamic>?;
@@ -477,16 +586,16 @@ class DashboardScreenState extends State<DashboardScreen> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1A3C2E), Color(0xFF2D5941)],
+          colors: [Color(0xFF1E3D2F), Color(0xFF2D5941)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1A3C2E).withAlpha(40),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: const Color(0xFF1E3D2F).withValues(alpha: 0.2),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -504,14 +613,14 @@ class DashboardScreenState extends State<DashboardScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(LucideIcons.refreshCw, size: 12, color: AppColors.primaryDark),
+                    const Icon(LucideIcons.refreshCw, size: 12, color: Colors.white),
                     const SizedBox(width: 5),
                     Text(
                       'ACTION REQUIRED',
                       style: GoogleFonts.inter(
                         fontSize: 9.5,
                         fontWeight: FontWeight.w900,
-                        color: AppColors.primaryDark,
+                        color: Colors.white,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -521,8 +630,8 @@ class DashboardScreenState extends State<DashboardScreen> {
               const Spacer(),
               Text(
                 'Deadline: $deadline',
-                style: GoogleFonts.dmMono(
-                  fontSize: 10.5,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
                   color: Colors.white70,
                   fontWeight: FontWeight.w600,
                 ),
@@ -532,8 +641,8 @@ class DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 12),
           Text(
             '$sem Renewal Open',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 19,
+            style: GoogleFonts.inter(
+              fontSize: 18,
               fontWeight: FontWeight.w800,
               color: Colors.white,
             ),
@@ -544,14 +653,14 @@ class DashboardScreenState extends State<DashboardScreen> {
             style: GoogleFonts.inter(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
-              color: Colors.white.withAlpha(225),
+              color: Colors.white.withValues(alpha: 0.9),
             ),
           ),
           const SizedBox(height: 6),
           Text(
             'Your scholarship provider has opened the semestral renewal submission. Upload your required documents now to renew your grant eligibility.',
             style: GoogleFonts.inter(
-              fontSize: 11,
+              fontSize: 11.5,
               color: Colors.white70,
               height: 1.4,
             ),
@@ -560,12 +669,10 @@ class DashboardScreenState extends State<DashboardScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
-                Navigator.pushNamed(context, AppRouter.applicationTracker);
-              },
+              onPressed: () => _navigateToTab(2, AppRouter.applicationTracker),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.amber,
-                foregroundColor: AppColors.primaryDark,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 elevation: 0,
@@ -573,7 +680,7 @@ class DashboardScreenState extends State<DashboardScreen> {
               child: Text(
                 'Submit Renewal Requirements →',
                 style: GoogleFonts.inter(
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -584,313 +691,86 @@ class DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 3. Stat Cards Row ──────────────────────────────────────────────────────
-  Widget _buildStatCardsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _MiniStatCard(
-            value: '3',
-            label: 'APPLICATIONS',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _MiniStatCard(
-            value: '1',
-            label: 'APPROVED',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _MiniStatCard(
-            value: '₱60K',
-            label: 'EST. FUNDING',
-            isMono: true,
-            isHighlighted: true,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ─── 4. Search Bar ──────────────────────────────────────────────────────────
-  Widget _buildSearchBar() {
-    return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: AppColors.rule, width: 0.8),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryDark.withAlpha(8),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            LucideIcons.search,
-            size: 18,
-            color: AppColors.primary,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search scholarships, providers...',
-                hintStyle: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: AppColors.textMuted,
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-                fillColor: Colors.transparent,
-                filled: false,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── 5. Filter Chips Row ────────────────────────────────────────────────────
-  Widget _buildFilterChipsRow() {
-    return SizedBox(
-      height: 38,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _filters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final isSelected = _activeFilterIndex == index;
-          return GestureDetector(
-            onTap: () => setState(() => _activeFilterIndex = index),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.amber : AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected ? AppColors.amber : AppColors.rule,
-                  width: 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: AppColors.amber.withAlpha(40),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : [],
-              ),
-              child: Text(
-                _filters[index],
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // ─── 6. Urgent Banner Card (Sawtooth / Stamp Edge) ─────────────────────────
-  Widget _buildUrgentBanner(BuildContext context) {
-    return ClipPath(
-      clipper: SawtoothClipper(),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-        decoration: BoxDecoration(
-          color: AppColors.error, // Deep burgundy red
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.error.withAlpha(40),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  LucideIcons.clock,
-                  size: 16,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '12 days left',
-                  style: GoogleFonts.playfairDisplay(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'DOST-SEI Undergraduate Scholarship closes on Jul 27 — 1 requirement still pending.',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: Colors.white.withAlpha(230),
-                height: 1.45,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── 7. 2x2 Quick Actions Stack Grid ─────────────────────────────────────
+  // ─── 4. Quick Actions Grid ──────────────────────────────────────────────────
   Widget _buildQuickActionsGrid(BuildContext context) {
     final actions = [
-      _SlideableActionData(
+      _QuickActionItem(
         title: 'Find Scholarships',
-        subtitle: 'Explore 14 matching opportunities',
+        subtitle: 'Explore opportunities that match you',
         icon: LucideIcons.search,
-        badge: 'NEW',
-        bgGradient: const LinearGradient(
-          colors: [Color(0xFF1A3C2E), Color(0xFF2D5941)],
-        ),
-        iconBg: Colors.white.withAlpha(30),
-        iconColor: Colors.white,
-        textColor: Colors.white,
-        onTap: () => Navigator.pushNamed(context, AppRouter.scholarshipDetail),
+        bgColor: const Color(0xFFEEF7F2),
+        borderColor: const Color(0xFFD3ECD9),
+        iconBgColor: const Color(0xFFD4EBDC),
+        iconColor: const Color(0xFF1E3D2F),
+        onTap: () => _navigateToTab(1, AppRouter.scholarships),
       ),
-      _SlideableActionData(
+      _QuickActionItem(
         title: 'Upload Requirements',
-        subtitle: '1 document pending upload',
-        icon: LucideIcons.uploadCloud,
-        badge: '1 PENDING',
-        bgGradient: const LinearGradient(
-          colors: [Color(0xFFFFF7ED), Color(0xFFFEF3C7)],
-        ),
-        iconBg: AppColors.amber.withAlpha(40),
-        iconColor: AppColors.amberDeep,
-        textColor: AppColors.textPrimary,
-        borderColor: AppColors.amber.withAlpha(80),
-        onTap: () => Navigator.pushNamed(context, AppRouter.documentUpload),
+        subtitle: 'Submit and manage your documents',
+        icon: LucideIcons.folder,
+        bgColor: const Color(0xFFFFF8EF),
+        borderColor: const Color(0xFFFDE8D0),
+        iconBgColor: const Color(0xFFFCE7CF),
+        iconColor: const Color(0xFFD97706),
+        onTap: () => _navigateToTab(2, AppRouter.applicationTracker),
       ),
-      _SlideableActionData(
+      _QuickActionItem(
         title: 'Fund Releases',
-        subtitle: '₱ 40,000 disbursement logged',
+        subtitle: 'View your scholarship payments',
         icon: LucideIcons.wallet,
-        badge: 'VERIFIED',
-        bgGradient: const LinearGradient(
-          colors: [Color(0xFFEFF6FF), Color(0xFFDBEAFE)],
-        ),
-        iconBg: AppColors.released.withAlpha(30),
-        iconColor: AppColors.released,
-        textColor: AppColors.textPrimary,
-        borderColor: AppColors.released.withAlpha(60),
-        onTap: () => Navigator.pushNamed(context, AppRouter.fundTracking),
+        bgColor: const Color(0xFFEFF5FF),
+        borderColor: const Color(0xFFD6E4FF),
+        iconBgColor: const Color(0xFFDBEAFE),
+        iconColor: const Color(0xFF2563EB),
+        onTap: () => _navigateToTab(3, AppRouter.fundTracking),
       ),
-      _SlideableActionData(
+      _QuickActionItem(
         title: 'Track Application',
-        subtitle: 'Under Review by committee',
+        subtitle: 'Check your application status',
         icon: LucideIcons.clipboardList,
-        badge: 'IN PROGRESS',
-        bgGradient: const LinearGradient(
-          colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)],
-        ),
-        iconBg: AppColors.primary.withAlpha(30),
-        iconColor: AppColors.primary,
-        textColor: AppColors.textPrimary,
-        borderColor: AppColors.primary.withAlpha(60),
-        onTap: () => Navigator.pushNamed(context, AppRouter.applicationTracker),
+        bgColor: const Color(0xFFF0FDF4),
+        borderColor: const Color(0xFFDCFCE7),
+        iconBgColor: const Color(0xFFDCFCE7),
+        iconColor: const Color(0xFF16A34A),
+        onTap: () => _navigateToTab(2, AppRouter.applicationTracker),
       ),
     ];
 
-    Widget buildCard(_SlideableActionData item) {
+    Widget buildCard(_QuickActionItem item) {
       return GestureDetector(
         onTap: item.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+        child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            gradient: item.bgGradient,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: item.borderColor ?? Colors.transparent,
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryDark.withAlpha(10),
-                blurRadius: 12,
-                offset: const Offset(0, 3),
-              ),
-            ],
+            color: item.bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: item.borderColor, width: 1),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: item.iconBg,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(item.icon, color: item.iconColor, size: 18),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(180),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      item.badge,
-                      style: GoogleFonts.inter(
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w800,
-                        color: item.iconColor,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ),
-                ],
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: item.iconBgColor,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Icon(item.icon, color: item.iconColor, size: 18),
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     item.title,
                     style: GoogleFonts.inter(
-                      fontSize: 13,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w700,
-                      color: item.textColor,
+                      color: const Color(0xFF111827),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -899,13 +779,34 @@ class DashboardScreenState extends State<DashboardScreen> {
                   Text(
                     item.subtitle,
                     style: GoogleFonts.inter(
-                      fontSize: 10.5,
-                      color: item.textColor.withAlpha(180),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
+                      color: const Color(0xFF6B7280),
+                      height: 1.25,
                     ),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.bottomRight,
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      LucideIcons.arrowRight,
+                      size: 12,
+                      color: item.iconColor,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -934,129 +835,91 @@ class DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 8. Recommended Card (Matches Image Design) ────────────────────────────
+  // ─── 5. Recommended Card ────────────────────────────────────────────────────
   Widget _buildRecommendedCard(BuildContext context) {
     if (_isLoadingData) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(20.0),
           child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary)),
-        ),
-      );
-    }
-
-    if (!_isProfileComplete) {
-      return AppCard(
-        borderLeftColor: AppColors.error,
-        padding: const EdgeInsets.all(18),
-        onTap: () async {
-          final updated =
-              await Navigator.pushNamed(context, AppRouter.profileEdit);
-          if (updated == true) {
-            setState(() {
-              _isLoadingData = true;
-            });
-            _loadDashboardData();
-          }
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(LucideIcons.alertTriangle,
-                    color: AppColors.error, size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Complete Your Profile',
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryDark,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Fill out your location details, year level, GWA, and course under your profile to unlock and view matching scholarships you are qualified to apply for.',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text(
-                  'Set Up Profile',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(LucideIcons.arrowRight,
-                    size: 14, color: AppColors.primary),
-              ],
-            ),
-          ],
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E3D2F))),
         ),
       );
     }
 
     if (_qualifiedPrograms.isEmpty) {
-      return AppCard(
-        borderLeftColor: AppColors.textMuted,
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFF3F4F6), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
           children: [
-            Text(
-              'No Matching Scholarships',
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: AppColors.primaryDark,
+            Container(
+              width: 46,
+              height: 46,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE8F5E9),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  LucideIcons.graduationCap,
+                  color: Color(0xFF1E3D2F),
+                  size: 24,
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'We couldn\'t find any scholarships matching your course, year level, GWA, or location at this moment. We will notify you when a match is found!',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                height: 1.45,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No Matching Scholarships',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'We couldn\'t find any scholarships matching your course, year level, or location at the moment. We will notify you when a match is found!',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      color: const Color(0xFF6B7280),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              LucideIcons.sparkles,
+              color: Color(0xFFEAB308),
+              size: 18,
             ),
           ],
         ),
       );
     }
 
-    // Display the list of matching scholarships
     return Column(
       children: _qualifiedPrograms.take(3).map((program) {
         final provider = program['provider'] as Map<String, dynamic>?;
         final providerName = provider?['name'] ?? 'Provider';
-        final providerShort = providerName.length > 10
-            ? providerName.substring(0, 10) + '...'
-            : providerName;
         final title = program['title'] ?? 'Scholarship';
-        final coversTuition = program['covers_tuition'] == true;
-        final coversStipend = program['covers_stipend'] == true;
-        final stipendAmt = program['stipend_amount'] != null
-            ? '₱${program['stipend_amount']}'
-            : '₱0';
-        final amountText = coversStipend
-            ? '$stipendAmt/sem'
-            : (coversTuition ? 'Tuition Covered' : 'Varies');
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -1069,132 +932,65 @@ class DashboardScreenState extends State<DashboardScreen> {
                 'scholar': _scholarProfile,
               },
             ),
-            child: AppCard(
-              borderLeftColor: AppColors.gold,
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E293B),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Center(
-                          child: Text(
-                            providerShort.isNotEmpty
-                                ? providerShort.substring(0, providerShort.length > 3 ? 3 : providerShort.length).toUpperCase()
-                                : 'SP',
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.gold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        LucideIcons.graduationCap,
+                        color: Color(0xFF1E3D2F),
+                        size: 22,
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: GoogleFonts.playfairDisplay(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
-                                height: 1.25,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              providerName,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      if (coversTuition) _TagPill(label: 'Full tuition'),
-                      if (coversStipend) _TagPill(label: 'Stipend'),
-                      _TagPill(
-                          label: program['scholarship_type']
-                                  ?.toString()
-                                  .toUpperCase() ??
-                              'MERIT'),
-                    ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF111827),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          providerName,
+                          style: GoogleFonts.inter(
+                            fontSize: 11.5,
+                            color: const Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 14),
-                  const DashedDivider(),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'AVAILABILITY',
-                            style: GoogleFonts.inter(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textMuted,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            program['availability_scope']
-                                    ?.toString()
-                                    .toUpperCase() ??
-                                'NATIONWIDE',
-                            style: GoogleFonts.dmMono(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'COVERAGE',
-                            style: GoogleFonts.inter(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textMuted,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            amountText,
-                            style: GoogleFonts.dmMono(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  const Icon(
+                    LucideIcons.chevronRight,
+                    color: Color(0xFF9CA3AF),
+                    size: 18,
                   ),
                 ],
               ),
@@ -1205,370 +1001,224 @@ class DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 9. Recent Activity List ────────────────────────────────────────────────
+  // ─── 6. Recent Activity List ────────────────────────────────────────────────
   Widget _buildRecentActivity(BuildContext context) {
     if (_recentActivities.isEmpty) {
-      return AppCard(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'No Recent Activity',
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryDark,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Your submitted scholarship applications and status updates will appear here live.',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                height: 1.4,
-              ),
+      return Column(
+        children: [
+          _ActivityCardItem(
+            title: 'Application Approved',
+            programName: 'DOST-SEI Undergraduate Scholarship',
+            timeAgo: '2d ago',
+            statusLabel: 'Approved',
+            statusBgColor: const Color(0xFFDCFCE7),
+            statusTextColor: const Color(0xFF15803D),
+            onTap: () => _navigateToTab(2, AppRouter.applicationTracker),
+          ),
+          const SizedBox(height: 10),
+          _ActivityCardItem(
+            title: 'Application Approved',
+            programName: 'DOST-SEI Undergraduate Scholarship',
+            timeAgo: '5d ago',
+            statusLabel: 'Approved',
+            statusBgColor: const Color(0xFFDCFCE7),
+            statusTextColor: const Color(0xFF15803D),
+            onTap: () => _navigateToTab(2, AppRouter.applicationTracker),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      children: List.generate(_recentActivities.length, (i) {
+        final act = _recentActivities[i];
+        final cycle = act['cycle'] as Map<String, dynamic>?;
+        final program = cycle?['program'] as Map<String, dynamic>?;
+        final title = program?['title'] ?? 'DOST-SEI Undergraduate Scholarship';
+        final dbStatus = act['status']?.toString().toLowerCase() ?? 'approved';
+
+        String statusTitle = 'Application Approved';
+        String statusLabel = 'Approved';
+        Color bgCol = const Color(0xFFDCFCE7);
+        Color txtCol = const Color(0xFF15803D);
+
+        if (dbStatus == 'pending' || dbStatus == 'under_review') {
+          statusTitle = 'Application Pending';
+          statusLabel = 'Pending';
+          bgCol = const Color(0xFFFEF3C7);
+          txtCol = const Color(0xFFB45309);
+        } else if (dbStatus == 'rejected' || dbStatus == 'withdrawn') {
+          statusTitle = 'Application Status Update';
+          statusLabel = dbStatus.toUpperCase();
+          bgCol = const Color(0xFFFEE2E2);
+          txtCol = const Color(0xFFB91C1C);
+        }
+
+        final rawDate = act['created_at'] != null ? DateTime.tryParse(act['created_at'].toString()) : DateTime.now();
+        final diff = DateTime.now().difference(rawDate ?? DateTime.now());
+        String timeAgo = '2d ago';
+        if (diff.inDays > 0) {
+          timeAgo = '${diff.inDays}d ago';
+        } else if (diff.inHours > 0) {
+          timeAgo = '${diff.inHours}h ago';
+        }
+
+        return Container(
+          margin: EdgeInsets.only(bottom: i == _recentActivities.length - 1 ? 0 : 10),
+          child: _ActivityCardItem(
+            title: statusTitle,
+            programName: title,
+            timeAgo: timeAgo,
+            statusLabel: statusLabel,
+            statusBgColor: bgCol,
+            statusTextColor: txtCol,
+            onTap: () => _navigateToTab(2, AppRouter.applicationTracker),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+// ─── Quick Action Data Helper Model ──────────────────────────────────────────
+class _QuickActionItem {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color bgColor;
+  final Color borderColor;
+  final Color iconBgColor;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  const _QuickActionItem({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.bgColor,
+    required this.borderColor,
+    required this.iconBgColor,
+    required this.iconColor,
+    required this.onTap,
+  });
+}
+
+// ─── Activity Card Item Widget ───────────────────────────────────────────────
+class _ActivityCardItem extends StatelessWidget {
+  final String title;
+  final String programName;
+  final String timeAgo;
+  final String statusLabel;
+  final Color statusBgColor;
+  final Color statusTextColor;
+  final VoidCallback onTap;
+
+  const _ActivityCardItem({
+    required this.title,
+    required this.programName,
+    required this.timeAgo,
+    required this.statusLabel,
+    required this.statusBgColor,
+    required this.statusTextColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-      );
-    }
-
-    final children = <Widget>[];
-    for (int i = 0; i < _recentActivities.length; i++) {
-      final act = _recentActivities[i];
-      final cycle = act['cycle'] as Map<String, dynamic>?;
-      final program = cycle?['program'] as Map<String, dynamic>?;
-
-      final title = program?['title'] ?? 'Scholarship Program';
-      final dbStatus = act['status']?.toString().toLowerCase() ?? 'pending';
-
-      String statusTitle = 'Application Submitted';
-      IconData icon = LucideIcons.send;
-      Color iconColor = AppColors.primary;
-      StatusType statusType = StatusType.pending;
-
-      if (dbStatus == 'pending') {
-        statusTitle = 'Application Submitted';
-        icon = LucideIcons.send;
-        iconColor = AppColors.primary;
-        statusType = StatusType.pending;
-      } else if (dbStatus == 'under_review') {
-        statusTitle = 'Under Review';
-        icon = LucideIcons.hourglass;
-        iconColor = AppColors.amber;
-        statusType = StatusType.pending;
-      } else if (dbStatus == 'for_exam') {
-        statusTitle = 'For Exam / Evaluation';
-        icon = LucideIcons.fileCheck2;
-        iconColor = AppColors.amber;
-        statusType = StatusType.pending;
-      } else if (dbStatus == 'approved') {
-        statusTitle = 'Application Approved';
-        icon = LucideIcons.checkCircle2;
-        iconColor = AppColors.primary;
-        statusType = StatusType.approved;
-      } else if (dbStatus == 'rejected') {
-        statusTitle = 'Application Unsuccessful';
-        icon = LucideIcons.xCircle;
-        iconColor = AppColors.error;
-        statusType = StatusType.rejected;
-      } else if (dbStatus == 'withdrawn') {
-        statusTitle = 'Application Withdrawn';
-        icon = LucideIcons.xCircle;
-        iconColor = AppColors.textMuted;
-        statusType = StatusType.rejected;
-      }
-
-      final rawDate = act['created_at'] != null ? DateTime.tryParse(act['created_at'].toString()) : DateTime.now();
-      final diff = DateTime.now().difference(rawDate ?? DateTime.now());
-      String timeAgo = 'Just now';
-      if (diff.inDays > 0) {
-        timeAgo = '${diff.inDays}d ago';
-      } else if (diff.inHours > 0) {
-        timeAgo = '${diff.inHours}h ago';
-      } else if (diff.inMinutes > 0) {
-        timeAgo = '${diff.inMinutes}m ago';
-      }
-
-      if (i > 0) {
-        children.add(Divider(height: 1, color: AppColors.rule));
-      }
-
-      children.add(
-        _ActivityTile(
-          icon: icon,
-          iconColor: iconColor,
-          title: statusTitle,
-          subtitle: title,
-          time: timeAgo,
-          statusType: statusType,
-          onTap: () => Navigator.pushNamed(context, AppRouter.applicationTracker),
-        ),
-      );
-    }
-
-    return AppCard(
-      padding: EdgeInsets.zero,
-      child: Column(children: children),
-    );
-  }
-}
-
-// ─── Custom Sawtooth Clipper ─────────────────────────────────────────────────
-class SawtoothClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height - 12);
-
-    const triangleWidth = 18.0;
-    const triangleHeight = 12.0;
-    final count = (size.width / triangleWidth).ceil();
-
-    for (int i = 0; i < count; i++) {
-      final x = i * triangleWidth;
-      path.lineTo(x + triangleWidth / 2, size.height);
-      path.lineTo(x + triangleWidth, size.height - triangleHeight);
-    }
-
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}
-
-// ─── Custom Dashed Line Divider ──────────────────────────────────────────────
-class DashedDivider extends StatelessWidget {
-  const DashedDivider({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final boxWidth = constraints.constrainWidth();
-        const dashWidth = 5.0;
-        const dashHeight = 1.0;
-        final dashCount = (boxWidth / (2 * dashWidth)).floor();
-        return Flex(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          direction: Axis.horizontal,
-          children: List.generate(dashCount, (_) {
-            return SizedBox(
-              width: dashWidth,
-              height: dashHeight,
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: AppColors.rule),
-              ),
-            );
-          }),
-        );
-      },
-    );
-  }
-}
-
-// ─── Mini Stat Card Component ────────────────────────────────────────────────
-class _MiniStatCard extends StatelessWidget {
-  final String value;
-  final String label;
-  final bool isMono;
-  final bool isHighlighted;
-
-  const _MiniStatCard({
-    required this.value,
-    required this.label,
-    this.isMono = false,
-    this.isHighlighted = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isHighlighted
-              ? AppColors.amber.withAlpha(120)
-              : AppColors.rule,
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryDark.withAlpha(8),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: isMono
-                ? GoogleFonts.dmMono(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryDark,
-                  )
-                : GoogleFonts.inter(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primaryDark,
-                  ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textMuted,
-              letterSpacing: 0.5,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Tag Pill Helper ─────────────────────────────────────────────────────────
-class _TagPill extends StatelessWidget {
-  final String label;
-
-  const _TagPill({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.inter(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: AppColors.amberDeep,
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Slideable Action Data Model ─────────────────────────────────────────────
-class _SlideableActionData {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final String badge;
-  final LinearGradient bgGradient;
-  final Color iconBg;
-  final Color iconColor;
-  final Color textColor;
-  final Color? borderColor;
-  final VoidCallback onTap;
-
-  const _SlideableActionData({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.badge,
-    required this.bgGradient,
-    required this.iconBg,
-    required this.iconColor,
-    required this.textColor,
-    this.borderColor,
-    required this.onTap,
-  });
-}
-
-// ─── Activity Tile Sub-component ─────────────────────────────────────────────
-class _ActivityTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final String time;
-  final StatusType statusType;
-  final VoidCallback onTap;
-
-  const _ActivityTile({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.time,
-    required this.statusType,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: iconColor.withAlpha(20),
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xFFDCFCE7),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF86EFAC), width: 1),
               ),
-              child: Icon(icon, color: iconColor, size: 18),
+              child: const Center(
+                child: Icon(
+                  Icons.check_rounded,
+                  color: Color(0xFF16A34A),
+                  size: 20,
+                ),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: AppColors.textPrimary,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.inter(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF111827),
+                        ),
+                      ),
+                      Text(
+                        timeAgo,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: const Color(0xFF9CA3AF),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          programName,
+                          style: GoogleFonts.inter(
+                            fontSize: 11.5,
+                            color: const Color(0xFF6B7280),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: statusBgColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          statusLabel,
+                          style: GoogleFonts.inter(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: statusTextColor,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  time,
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    color: AppColors.textMuted,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                StatusChip(label: statusType.name, type: statusType),
-              ],
             ),
           ],
         ),

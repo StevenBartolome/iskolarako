@@ -75,6 +75,7 @@ flutter:
 
   assets:
     - assets/logo/
+    - assets/books-hats-icon.png
     - env
 
 

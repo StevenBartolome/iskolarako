@@ -7,6 +7,7 @@ import '../screens/applications/application_form_screen.dart';
 import '../screens/applications/application_tracker_screen.dart';
 import '../screens/applications/document_upload_screen.dart';
 import '../screens/scholarships/scholarship_detail_screen.dart';
+import '../screens/scholarships/scholarship_list_screen.dart';
 import '../screens/funds/fund_tracking_screen.dart';
 import '../screens/notifications/notification_screen.dart';
 import '../screens/notifications/notification_detail_screen.dart';
@@ -23,6 +24,7 @@ class AppRouter {
   static const String home = '/';
   static const String applicationForm = '/application_form';
 
+  static const String scholarships = '/scholarships';
   static const String scholarshipDetail = '/scholarship_detail';
   static const String applicationTracker = '/application_tracker';
   static const String documentUpload = '/document_upload';
@@ -47,6 +49,9 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const RegisterScreen(), settings: settings);
       case home:
         return MaterialPageRoute(builder: (_) => const MainLayout(), settings: settings);
+      case scholarships:
+        return MaterialPageRoute(
+            builder: (_) => const ScholarshipListScreen(), settings: settings);
       case scholarshipDetail:
         return MaterialPageRoute(
             builder: (_) => const ScholarshipDetailScreen(), settings: settings);

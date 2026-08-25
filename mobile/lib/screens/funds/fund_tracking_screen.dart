@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:iskoako/constants/app_colors.dart';
-import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/widgets/blockchain_verified_badge.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,7 +12,8 @@ class FundTrackingScreen extends StatefulWidget {
 }
 
 class _FundTrackingScreenState extends State<FundTrackingScreen> {
-  int? _expandedIndex = 0;
+  int? _expandedProgramIndex = 0; // First program expanded by default
+  String _selectedProgramFilter = 'All'; // 'All' or specific program title
   bool _isLoading = true;
   List<Map<String, dynamic>> _releasesData = [];
   RealtimeChannel? _realtimeChannel;
@@ -58,7 +57,6 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
       return;
     }
 
-    // Resolve both user.id and scholar.id for the logged in scholar
     final List<String> targetScholarIds = [user.id];
     try {
       final scholarRow = await Supabase.instance.client
@@ -78,7 +76,6 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
     }
 
     try {
-      // PostgREST query to join scholar, scholarship_programs and provider filtered by current scholar ID
       final response = await Supabase.instance.client
           .from('fund_releases')
           .select('''
@@ -121,13 +118,40 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
 
   double get _totalDisbursedAmount {
     double total = 0.0;
-    for (final item in _releasesData) {
+    for (final item in _filteredReleases) {
       final amt = item['amount'];
       if (amt != null) {
         total += (amt is num) ? amt.toDouble() : (double.tryParse(amt.toString()) ?? 0.0);
       }
     }
     return total;
+  }
+
+  List<Map<String, dynamic>> get _filteredReleases {
+    if (_selectedProgramFilter == 'All') {
+      return _releasesData;
+    }
+    return _releasesData.where((r) => _getScholarshipTitle(r) == _selectedProgramFilter).toList();
+  }
+
+  Map<String, List<Map<String, dynamic>>> get _groupedByProgram {
+    final Map<String, List<Map<String, dynamic>>> groups = {};
+    for (final rel in _filteredReleases) {
+      final progTitle = _getScholarshipTitle(rel);
+      if (!groups.containsKey(progTitle)) {
+        groups[progTitle] = [];
+      }
+      groups[progTitle]!.add(rel);
+    }
+    return groups;
+  }
+
+  List<String> get _allProgramTitles {
+    final Set<String> titles = {};
+    for (final r in _releasesData) {
+      titles.add(_getScholarshipTitle(r));
+    }
+    return titles.toList();
   }
 
   String _formatAmount(dynamic amount) {
@@ -183,113 +207,86 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final programGroups = _groupedByProgram;
+    final programNames = programGroups.keys.toList();
+
     return Scaffold(
+      backgroundColor: const Color(0xFFFAFCFA),
       body: Column(
         children: [
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.diamond_rounded,
-                            size: 14,
-                            color: AppColors.amber,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'DISBURSED FUNDS',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.amberDeep,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (Navigator.canPop(context))
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppColors.rule, width: 0.8),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primaryDark.withAlpha(10),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                LucideIcons.chevronLeft,
-                                color: AppColors.primary,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Disbursed\nfunds.',
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.primaryDark,
-                      height: 1.15,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Blockchain-logged transfers & PayMongo receipts',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _buildHeader(context),
           Expanded(
             child: _isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
+                    child: CircularProgressIndicator(color: Color(0xFF1E3D2F)),
                   )
                 : RefreshIndicator(
                     onRefresh: _fetchFundReleases,
-                    color: AppColors.primary,
+                    color: const Color(0xFF1E3D2F),
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 8),
                           _buildHeroAmountCard(),
                           const SizedBox(height: 16),
+
+                          if (_allProgramTitles.length > 1) ...[
+                            _buildProgramFilterChips(),
+                            const SizedBox(height: 16),
+                          ],
+
                           if (_releasesData.isNotEmpty) ...[
-                            _buildTransactionDetails(),
+                            // Header Title for Program Cards
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'PROGRAM DISBURSEMENTS',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF1E3D2F),
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDCFCE7),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${programNames.length} Program${programNames.length > 1 ? 's' : ''}',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF15803D),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Per-Program Cards
+                            ...List.generate(programNames.length, (progIdx) {
+                              final programTitle = programNames[progIdx];
+                              final releasesList = programGroups[programTitle] ?? [];
+                              final isExpanded = _expandedProgramIndex == progIdx;
+
+                              return _buildProgramReleaseCard(
+                                programIndex: progIdx,
+                                programTitle: programTitle,
+                                releases: releasesList,
+                                isExpanded: isExpanded,
+                              );
+                            }),
+
                             const SizedBox(height: 16),
-                            _buildBlockchainRecord(context),
-                            const SizedBox(height: 20),
-                            _buildLedger(),
-                            const SizedBox(height: 16),
-                            _buildScholarsDisbursements(),
+                            _buildBlockchainVerificationSection(),
                           ] else
                             _buildEmptyState(),
                         ],
@@ -302,93 +299,121 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.rule),
-      ),
-      child: Column(
-        children: [
-          const Icon(LucideIcons.inbox, size: 48, color: AppColors.textMuted),
-          const SizedBox(height: 16),
-          Text(
-            'No Fund Disbursements Yet',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primaryDark,
+  // ─── 1. Header ──────────────────────────────────────────────────────────────
+  Widget _buildHeader(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.shieldCheck,
+                        size: 14,
+                        color: Color(0xFFD97706),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'DISBURSED FUNDS',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFD97706),
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Disbursed\nfunds.',
+                    style: GoogleFonts.inter(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111827),
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Blockchain-logged transfers & PayMongo receipts',
+                    style: GoogleFonts.inter(
+                      fontSize: 12.5,
+                      color: const Color(0xFF6B7280),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'When providers release scholarship funds, the transaction details and immutable blockchain records will appear here.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-              height: 1.5,
+            Image.asset(
+              'assets/books-hats-icon.png',
+              width: 85,
+              height: 75,
+              fit: BoxFit.contain,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  // ─── 2. Hero Card ──────────────────────────────────────────────────────────
   Widget _buildHeroAmountCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.primaryDark, AppColors.primaryLight],
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E3D2F), Color(0xFF162E23)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withAlpha(60),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: const Color(0xFF1E3D2F).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
         children: [
-          // Stamp ring
           Container(
-            width: 64,
-            height: 64,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                  color: Colors.white.withAlpha(50), width: 2.5),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 2),
             ),
             child: Center(
               child: Container(
-                width: 46,
-                height: 46,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(18),
+                  color: Colors.white.withValues(alpha: 0.15),
                 ),
-                child: const Icon(LucideIcons.wallet,
-                    color: Colors.white, size: 24),
+                child: const Icon(LucideIcons.wallet, color: Colors.white, size: 22),
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Text(
-            'Total Amount Disbursed',
+            'TOTAL AMOUNT DISBURSED',
             style: GoogleFonts.inter(
-              color: Colors.white.withAlpha(160),
-              fontSize: 11,
-              letterSpacing: 1.5,
-              fontWeight: FontWeight.w500,
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 10.5,
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 6),
@@ -398,9 +423,9 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
               _formatAmount(_totalDisbursedAmount),
               style: GoogleFonts.dmMono(
                 color: Colors.white,
-                fontSize: 34,
-                fontWeight: FontWeight.w500,
-                letterSpacing: -1,
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
               ),
             ),
           ),
@@ -408,26 +433,50 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
           Text(
             'Total Stipends & Grants Released',
             style: GoogleFonts.inter(
-              color: Colors.white.withAlpha(130),
-              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 11.5,
             ),
           ),
-          const SizedBox(height: 16),
-          // FittedBox prevents 22px right overflow bug
+          const SizedBox(height: 14),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const _HeroBadge(
-                  icon: LucideIcons.checkCircle2,
-                  label: 'PayMongo Transfer',
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, size: 13, color: Color(0xFF4ADE80)),
+                      const SizedBox(width: 5),
+                      Text(
+                        'PayMongo Direct Route',
+                        style: GoogleFonts.inter(fontSize: 10.5, color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 8),
-                const _HeroBadge(
-                  icon: LucideIcons.shieldCheck,
-                  label: 'Blockchain Logged',
-                  isGold: true,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.shieldCheck, size: 13, color: Color(0xFFF59E0B)),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Blockchain Immutable',
+                        style: GoogleFonts.inter(fontSize: 10.5, color: const Color(0xFFF59E0B), fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -437,509 +486,409 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
     );
   }
 
-  Widget _buildTransactionDetails() {
-    final latest = _releasesData.firstWhere(
-      (r) => r['blockchain_tx_hash'] != null && r['blockchain_tx_hash'].toString().isNotEmpty,
-      orElse: () => _releasesData.first,
+  // ─── 3. Filter Chips ────────────────────────────────────────────────────────
+  Widget _buildProgramFilterChips() {
+    final filters = ['All', ..._allProgramTitles];
+
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: filters.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final active = _selectedProgramFilter == filters[i];
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedProgramFilter = filters[i];
+                _expandedProgramIndex = 0;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: active ? const Color(0xFF1E3D2F) : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: active ? const Color(0xFF1E3D2F) : const Color(0xFFE5E7EB),
+                  width: 1,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  filters[i],
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    color: active ? Colors.white : const Color(0xFF374151),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
+  }
 
-    final providerName = _getProviderName(latest);
-    final scholarName = _getScholarName(latest);
-    final amountStr = _formatAmount(latest['amount']);
-    final dateStr = _formatDate(latest['created_at']);
-    final paymongoId = latest['paymongo_payment_id']?.toString() ?? 'Pending';
-    final paymongoStatus = latest['paymongo_status']?.toString() ?? 'processed';
+  // ─── 4. Per-Program Release Card ───────────────────────────────────────────
+  Widget _buildProgramReleaseCard({
+    required int programIndex,
+    required String programTitle,
+    required List<Map<String, dynamic>> releases,
+    required bool isExpanded,
+  }) {
+    double programTotal = 0.0;
+    for (final r in releases) {
+      final amt = r['amount'];
+      if (amt != null) {
+        programTotal += (amt is num) ? amt.toDouble() : (double.tryParse(amt.toString()) ?? 0.0);
+      }
+    }
 
-    return AppCard(
+    final firstRelease = releases.first;
+    final providerName = _getProviderName(firstRelease);
+    String providerShort = providerName.split(' ').first;
+    if (providerShort.length > 10) providerShort = providerShort.substring(0, 10);
+    if (providerShort.isEmpty) providerShort = 'DOST';
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isExpanded ? const Color(0xFF1E3D2F) : const Color(0xFFE5E7EB),
+          width: isExpanded ? 1.2 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isExpanded
+                ? const Color(0xFF1E3D2F).withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.03),
+            blurRadius: isExpanded ? 12 : 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Latest Transfer Details',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primaryDark,
+          // Program Header Tap Target
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _expandedProgramIndex = isExpanded ? null : programIndex;
+              });
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          providerShort.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF374151),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _formatAmount(programTotal),
+                              style: GoogleFonts.dmMono(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF15803D),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                            size: 18,
+                            color: const Color(0xFF9CA3AF),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    programTitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$providerName · ${releases.length} Disbursement Release${releases.length > 1 ? 's' : ''}',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      color: const Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 14),
-          _TxRow(label: 'From', value: providerName),
-          _TxRow(label: 'To', value: scholarName),
-          _TxRow(
-              label: 'Amount',
-              value: amountStr,
-              valueColor: AppColors.primary,
-              isMono: true),
-          _TxRow(label: 'Date & Time', value: dateStr),
-          _TxRow(
-              label: 'Payment via', value: 'PayMongo · $paymongoStatus'),
-          _TxRow(
-              label: 'Reference No.',
-              value: paymongoId,
-              isMono: true),
+
+          // Smooth Collapsible Content (Prevents character text squeezing)
+          ClipRect(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: isExpanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'TRANSACTION HISTORY (${releases.length})',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF1E3D2F),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: releases.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                                itemBuilder: (ctx, rIdx) {
+                                  final rel = releases[rIdx];
+                                  final amountStr = _formatAmount(rel['amount']);
+                                  final dateStr = _formatDate(rel['created_at']);
+                                  final fundType = (rel['fund_type'] ?? 'STIPEND').toString().toUpperCase();
+                                  final status = (rel['status'] ?? 'released').toString().toLowerCase();
+                                  final paymongoId = rel['paymongo_payment_id']?.toString() ?? 'PayMongo Verified';
+                                  final txHash = rel['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
+
+                                  final isFailed = status == 'failed';
+                                  final isRefunded = status == 'refunded';
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: isFailed ? const Color(0xFFFDF2F2) : const Color(0xFFFAFCFA),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: isFailed ? const Color(0xFFFEE2E2) : const Color(0xFFE5E7EB),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              width: 34,
+                                              height: 34,
+                                              decoration: BoxDecoration(
+                                                color: isFailed
+                                                    ? const Color(0xFFFEE2E2)
+                                                    : const Color(0xFFDCFCE7),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Center(
+                                                child: Icon(
+                                                  isFailed ? LucideIcons.alertTriangle : LucideIcons.wallet,
+                                                  size: 16,
+                                                  color: isFailed ? const Color(0xFFB91C1C) : const Color(0xFF16A34A),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '$fundType Release',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: const Color(0xFF111827),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    dateStr,
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 10.5,
+                                                      color: const Color(0xFF6B7280),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  amountStr,
+                                                  style: GoogleFonts.dmMono(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: isFailed ? const Color(0xFFB91C1C) : const Color(0xFF1E3D2F),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: isFailed
+                                                        ? const Color(0xFFFEE2E2)
+                                                        : (isRefunded ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7)),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Text(
+                                                    isFailed ? 'Failed' : (isRefunded ? 'Refunded' : 'Released'),
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 9.5,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: isFailed
+                                                          ? const Color(0xFFB91C1C)
+                                                          : (isRefunded ? const Color(0xFFB45309) : const Color(0xFF15803D)),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          'Ref: $paymongoId',
+                                          style: GoogleFonts.dmMono(
+                                            fontSize: 9.5,
+                                            color: const Color(0xFF9CA3AF),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        BlockchainVerifiedBadge(
+                                          txHash: txHash,
+                                          compact: true,
+                                          dbAmount: double.tryParse(rel['amount']?.toString() ?? '0') ?? 0.0,
+                                          dbScholarId: rel['scholar_id']?.toString() ?? '',
+                                          dbScholarName: _getScholarName(rel),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox(width: double.infinity, height: 0),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBlockchainRecord(BuildContext context) {
+  // ─── 5. Blockchain Verification Footer ─────────────────────────────────────
+  Widget _buildBlockchainVerificationSection() {
     final latest = _releasesData.firstWhere(
       (r) => r['blockchain_tx_hash'] != null && r['blockchain_tx_hash'].toString().isNotEmpty,
       orElse: () => _releasesData.first,
     );
     final txHash = latest['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
-
     final double dbAmount = double.tryParse(latest['amount']?.toString() ?? '0') ?? 0.0;
     final String dbScholarId = latest['scholar_id']?.toString() ?? '';
     final String dbScholarName = _getScholarName(latest);
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: BlockchainVerifiedBadge(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'LATEST BLOCKCHAIN VERIFICATION',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF1E3D2F),
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 10),
+        BlockchainVerifiedBadge(
           txHash: txHash,
           compact: false,
           dbAmount: dbAmount,
           dbScholarId: dbScholarId,
           dbScholarName: dbScholarName,
         ),
-      ),
-    );
-  }
-
-  Widget _buildLedger() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionHeading(title: 'Transaction Ledger'),
-        const SizedBox(height: 12),
-        AppCard(
-          padding: EdgeInsets.zero,
-          child: ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _releasesData.length,
-            separatorBuilder: (_, __) =>
-                Divider(height: 1, color: AppColors.rule),
-            itemBuilder: (_, i) {
-              final release = _releasesData[i];
-              final title = _getScholarshipTitle(release);
-              final date = _formatDate(release['created_at']);
-              final amount = _formatAmount(release['amount']);
-              return _LedgerTile(
-                title: title,
-                date: date,
-                amount: '+$amount',
-                isRecent: i == 0,
-              );
-            },
-          ),
-        ),
       ],
     );
   }
 
-  Widget _buildScholarsDisbursements() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 24),
-        const SectionHeading(title: 'Disbursements by Provider'),
-        const SizedBox(height: 12),
-        ...List.generate(_releasesData.length, (index) {
-          final isExpanded = _expandedIndex == index;
-          final rel = _releasesData[index];
-
-          final providerName = _getProviderName(rel);
-          final scholarshipName = _getScholarshipTitle(rel);
-          final amountStr = _formatAmount(rel['amount']);
-          final dateStr = _formatDate(rel['created_at']);
-          final txHash = rel['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
-          final fundType = rel['fund_type']?.toString().toUpperCase() ?? 'STIPEND';
-
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isExpanded ? AppColors.primary : AppColors.rule,
-                width: isExpanded ? 1.2 : 0.8,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: isExpanded
-                      ? AppColors.primary.withAlpha(12)
-                      : Colors.black.withAlpha(5),
-                  blurRadius: isExpanded ? 12 : 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _expandedIndex = isExpanded ? null : index;
-                    });
-                  },
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: isExpanded
-                                ? AppColors.primary.withAlpha(20)
-                                : AppColors.primary.withAlpha(15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              LucideIcons.graduationCap,
-                              color: AppColors.primary,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                providerName,
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primaryDark,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                scholarshipName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                dateStr,
-                                style: GoogleFonts.inter(
-                                  fontSize: 9,
-                                  color: AppColors.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Row(
-                                children: [
-                                  Text(
-                                    amountStr,
-                                    style: GoogleFonts.dmMono(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    isExpanded
-                                        ? LucideIcons.chevronUp
-                                        : LucideIcons.chevronDown,
-                                    size: 16,
-                                    color: AppColors.textMuted,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            StatusChip(
-                              label: rel['status'] == 'failed'
-                                  ? 'Failed / Bounced'
-                                  : rel['status'] == 'refunded'
-                                  ? 'Refunded'
-                                  : 'Released',
-                              type: rel['status'] == 'failed'
-                                  ? StatusType.rejected
-                                  : rel['status'] == 'refunded'
-                                  ? StatusType.pending
-                                  : StatusType.released,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                AnimatedCrossFade(
-                  firstChild: const SizedBox.shrink(),
-                  secondChild: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Divider(height: 16, thickness: 0.8),
-                        if (rel['status'] == 'failed') ...[
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.errorBg,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.error.withAlpha(76)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(LucideIcons.alertTriangle, size: 16, color: AppColors.error),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Bank Transfer Bounced: ${rel['failure_reason'] ?? 'Invalid bank account details.'}',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.error,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 4),
-                        Text(
-                          'FUNDS BREAKDOWN',
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '$fundType Grant Support',
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              Text(
-                                amountStr,
-                                style: GoogleFonts.dmMono(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Divider(height: 1, color: AppColors.rule),
-                        const SizedBox(height: 10),
-                        BlockchainVerifiedBadge(
-                          txHash: txHash,
-                          compact: true,
-                          dbAmount: double.tryParse(rel['amount']?.toString() ?? '0') ?? 0.0,
-                          dbScholarId: rel['scholar_id']?.toString() ?? '',
-                          dbScholarName: _getScholarName(rel),
-                        ),
-                      ],
-                    ),
-                  ),
-                  crossFadeState: isExpanded
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  duration: const Duration(milliseconds: 300),
-                ),
-              ],
-            ),
-          );
-        }),
-      ],
-    );
-  }
-}
-
-class _HeroBadge extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isGold;
-
-  const _HeroBadge({
-    required this.icon,
-    required this.label,
-    this.isGold = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildEmptyState() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(18),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withAlpha(35)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
         children: [
-          Icon(icon,
-              size: 12,
-              color: isGold ? AppColors.gold : Colors.white.withAlpha(200)),
-          const SizedBox(width: 4),
+          const Icon(LucideIcons.inbox, size: 48, color: Color(0xFF9CA3AF)),
+          const SizedBox(height: 16),
           Text(
-            label,
+            'No Fund Disbursements Yet',
             style: GoogleFonts.inter(
-              fontSize: 10,
-              color: isGold ? AppColors.gold : Colors.white.withAlpha(200),
-              fontWeight: FontWeight.w600,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF111827),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TxRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? valueColor;
-  final bool isMono;
-
-  const _TxRow({
-    required this.label,
-    required this.value,
-    this.valueColor,
-    this.isMono = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
+          const SizedBox(height: 8),
           Text(
-            label,
+            'When providers release scholarship funds, the transaction details and immutable blockchain records will appear here per program.',
+            textAlign: TextAlign.center,
             style: GoogleFonts.inter(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500),
-          ),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              overflow: TextOverflow.ellipsis,
-              style: isMono
-                  ? GoogleFonts.dmMono(
-                      fontSize: 11,
-                      color: valueColor ?? AppColors.textPrimary,
-                      fontWeight: FontWeight.w500,
-                    )
-                  : GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: valueColor ?? AppColors.textPrimary,
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LedgerTile extends StatelessWidget {
-  final String title;
-  final String date;
-  final String amount;
-  final bool isRecent;
-
-  const _LedgerTile({
-    required this.title,
-    required this.date,
-    required this.amount,
-    required this.isRecent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: isRecent
-                  ? AppColors.successBg
-                  : AppColors.releasedBg,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              LucideIcons.wallet,
-              size: 18,
-              color: isRecent ? AppColors.primary : AppColors.released,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 2),
-                Text(date,
-                    style: GoogleFonts.inter(
-                        fontSize: 10, color: AppColors.textSecondary)),
-                const SizedBox(height: 4),
-                const VerifiedBadge(),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            amount,
-            style: GoogleFonts.dmMono(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.primary,
+              fontSize: 12.5,
+              color: const Color(0xFF6B7280),
+              height: 1.45,
             ),
           ),
         ],
