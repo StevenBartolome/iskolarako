@@ -97,14 +97,23 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
     final coversAllowance = program?['covers_allowance'] == true;
 
     final stipendAmt = program?['stipend_amount'] != null ? '₱${program?['stipend_amount']}' : '₱0';
-    final amountText = coversStipend ? stipendAmt : (coversTuition ? 'Tuition Covered' : 'Grant Assistance');
-    final periodText = coversStipend ? 'per semester' : 'benefit';
+    final amountText = calculateGrantValueSummary(program);
+    final fundingFreq = program?['funding_frequency']?.toString();
+    final periodText = fundingFreq != null && fundingFreq.isNotEmpty ? fundingFreq.toLowerCase() : 'total benefit';
     final slotsStr = program?['total_slots']?.toString() ?? 'Unlimited';
 
     final benefitsList = <String>[];
-    if (coversTuition) benefitsList.add('Full tuition and miscellaneous academic fees coverage');
+    if (coversTuition) {
+      final tuitionType = program?['tuition_coverage_type']?.toString();
+      final tuitionMax = double.tryParse(program?['tuition_max_amount']?.toString() ?? '');
+      if (tuitionType == 'fixed_cap' && tuitionMax != null && tuitionMax > 0) {
+        benefitsList.add('Tuition subsidy cap up to ${_formatCurrency(tuitionMax)}');
+      } else {
+        benefitsList.add('Full tuition and miscellaneous academic fees coverage');
+      }
+    }
     if (coversStipend) {
-      benefitsList.add('$stipendAmt monthly living & subsistence stipend');
+      benefitsList.add('$stipendAmt stipend / allowance support');
     }
     if (coversAllowance) {
       final allowance = program?['allowance_amount'] != null ? '₱${program?['allowance_amount']}' : '₱0';
@@ -911,4 +920,61 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
       ),
     );
   }
+}
+
+String _formatCurrency(num amount) {
+  final str = amount.toStringAsFixed(0);
+  final reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+  return '₱${str.replaceAllMapped(reg, (Match m) => '${m[1]},')}';
+}
+
+String calculateGrantValueSummary(Map<String, dynamic>? program) {
+  if (program == null) return 'Grant Assistance';
+
+  double totalMonetaryGrant = 0.0;
+
+  // 1. Base program grant amount
+  final amountVal = double.tryParse(program['amount']?.toString() ?? '') ??
+      double.tryParse(program['grant_amount']?.toString() ?? '') ?? 0.0;
+  totalMonetaryGrant += amountVal;
+
+  // 2. Stipend / Allowance amount
+  if (program['covers_stipend'] == true && program['stipend_amount'] != null) {
+    totalMonetaryGrant += double.tryParse(program['stipend_amount'].toString()) ?? 0.0;
+  }
+
+  // 3. Book / Device Allowance amount
+  if (program['covers_allowance'] == true && program['allowance_amount'] != null) {
+    totalMonetaryGrant += double.tryParse(program['allowance_amount'].toString()) ?? 0.0;
+  }
+
+  // 4. Fixed Cap Tuition Subsidy
+  final coversTuition = program['covers_tuition'] == true || program['coverstuition'] == true;
+  final tuitionType = program['tuition_coverage_type']?.toString();
+  final tuitionMax = double.tryParse(program['tuition_max_amount']?.toString() ?? '');
+  if (coversTuition && tuitionType == 'fixed_cap' && tuitionMax != null) {
+    totalMonetaryGrant += tuitionMax;
+  }
+
+  // 5. Custom Benefits List
+  if (program['custom_benefits'] != null && program['custom_benefits'] is List) {
+    for (final b in (program['custom_benefits'] as List)) {
+      if (b is Map && b['amount'] != null) {
+        totalMonetaryGrant += double.tryParse(b['amount'].toString()) ?? 0.0;
+      }
+    }
+  }
+
+  if (totalMonetaryGrant > 0) {
+    return _formatCurrency(totalMonetaryGrant);
+  }
+
+  if (coversTuition) {
+    if (tuitionType == 'fixed_cap' && tuitionMax != null && tuitionMax > 0) {
+      return _formatCurrency(tuitionMax);
+    }
+    return 'Full Tuition Covered';
+  }
+
+  return 'Grant Assistance';
 }

@@ -746,7 +746,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                   </div>
 
                   <div className="bg-white p-2.5 rounded-xl border border-[#D9D2C5]/60">
-                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🍱 Monthly Stipend</span>
+                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🍱 Stipend / Allowance</span>
                     <span className="font-bold text-[#1A3C2E] block mt-0.5">
                       ₱{programBenefitBreakdown.stipendAmt.toLocaleString()}
                     </span>

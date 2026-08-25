@@ -3,6 +3,7 @@ import type { ProviderOrg, ProviderDocumentItem, AdminTab } from '../types';
 import { supabase } from '@/services/supabaseClient';
 import {
   verifyDocumentAuthenticity,
+  getScoreAssessment,
   type ApplicantVerificationContext,
 } from '@/services/aiExtractionService';
 
@@ -496,22 +497,29 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                           </span>
                                         )}
                                         {/* AI Status Badge */}
-                                        {aiRes ? (
-                                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 ${
-                                            aiRes.verificationStatus === 'verified'
-                                              ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30'
-                                              : aiRes.tamperingDetected
-                                              ? 'bg-red-100 text-red-800 border border-red-300'
-                                              : 'bg-amber-100 text-amber-900 border border-amber-300'
-                                          }`}>
-                                            <span>
-                                              {aiRes.verificationStatus === 'verified' ? '🟢 ✓ AI Verified' : aiRes.tamperingDetected ? '🔴 Tampering Alert' : '🟡 ⚠️ AI Flagged'}
+                                        {aiRes ? (() => {
+                                          const assessment = getScoreAssessment(aiRes.confidenceScore);
+                                          return (
+                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 border ${
+                                              aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD'
+                                                ? 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30'
+                                                : aiRes.tamperingDetected || assessment.quality === 'BAD'
+                                                ? 'bg-red-100 text-red-800 border-red-300'
+                                                : 'bg-amber-100 text-amber-900 border-amber-300'
+                                            }`}>
+                                              <span>
+                                                {aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD'
+                                                  ? '🟢 ✓ AI Verified'
+                                                  : aiRes.tamperingDetected || assessment.quality === 'BAD'
+                                                  ? '🔴 Tampering Alert'
+                                                  : '🟡 ⚠️ AI Flagged'}
+                                              </span>
+                                              <span className="font-semibold">
+                                                ({assessment.scorePercent}% match • {assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'})
+                                              </span>
                                             </span>
-                                            <span className="opacity-70 font-normal">
-                                              ({Math.round((aiRes.confidenceScore || 0.9) * 100)}% match)
-                                            </span>
-                                          </span>
-                                        ) : submittedDoc?.isAiScanning ? (
+                                          );
+                                        })() : submittedDoc?.isAiScanning ? (
                                           <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
                                             ⏳ AI Scanning...
                                           </span>
@@ -597,8 +605,47 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                   </div>
 
                                   {/* Expandable Forensic Breakdown */}
-                                  {isExpanded && aiRes && (
-                                    <div className="mt-1 p-3.5 bg-[#FFFFFF] rounded-2xl border border-[#D9D2C5] space-y-3 animate-fade-in">
+                                  {isExpanded && aiRes && (() => {
+                                    const assessment = getScoreAssessment(aiRes.confidenceScore);
+                                    return (
+                                      <div className="mt-1 p-3.5 bg-[#FFFFFF] rounded-2xl border border-[#D9D2C5] space-y-3 animate-fade-in text-xs">
+                                        {/* Assessment Header Bar */}
+                                        <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2 flex-wrap gap-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
+                                              🔬 Forensic Analysis Report
+                                            </span>
+                                            <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
+                                              Model: <strong>{aiRes.aiModelUsed || 'Gemini 2.5 Flash'}</strong> ({aiRes.provider || 'DeepMind'})
+                                            </span>
+                                          </div>
+                                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${assessment.badgeStyle}`}>
+                                            Score: {assessment.scorePercent}% • {assessment.label}
+                                          </span>
+                                        </div>
+
+                                        {/* Dynamic Quality & Remark Explanation Card */}
+                                        <div className={`p-2.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+                                          assessment.quality === 'GOOD'
+                                            ? 'bg-[#EBF5EE]/60 border-[#2D5941]/30 text-[#1A3C2E]'
+                                            : assessment.quality === 'CAUTION'
+                                            ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#8C4A00]'
+                                            : 'bg-red-50 border-red-200 text-red-900'
+                                        }`}>
+                                          <span className="text-sm shrink-0">
+                                            {assessment.quality === 'GOOD' ? '🟢' : assessment.quality === 'CAUTION' ? '🟡' : '🔴'}
+                                          </span>
+                                          <div className="space-y-0.5">
+                                            <span className="font-bold block text-xs">
+                                              Match Rating: {assessment.scorePercent}% — {assessment.textRemark}
+                                            </span>
+                                            <p className="text-[11px] leading-relaxed opacity-90 font-normal">
+                                              {assessment.quality === 'GOOD' && 'Document matches declared profile credentials with verified official seals and zero visual tampering detected.'}
+                                              {assessment.quality === 'CAUTION' && 'Document is readable but contains minor data variance or unverified seal. Manual administrator check recommended.'}
+                                              {assessment.quality === 'BAD' && 'High mismatch or potential visual alteration detected. Document flagged for security risk.'}
+                                            </p>
+                                          </div>
+                                        </div>
                                       {/* Side-by-Side Comparison */}
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                         {/* Left: Declared Org Profile */}
@@ -694,8 +741,9 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                         <span className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-0.5">Forensic Summary:</span>
                                         <p className="text-xs text-[#1C1C1E]">{aiRes.summary}</p>
                                       </div>
-                                    </div>
-                                  )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               );
                             })}

@@ -544,10 +544,7 @@ class _ScholarshipCard extends StatelessWidget {
     final provider = program['provider'] as Map<String, dynamic>?;
     final providerName = provider?['name'] ?? 'Provider';
     final title = program['title'] ?? 'Scholarship Program';
-    final coversTuition = program['covers_tuition'] == true;
-    final coversStipend = program['covers_stipend'] == true;
-    final stipendAmt = program['stipend_amount'] != null ? '₱${program['stipend_amount']}' : '₱0';
-    final amountText = coversStipend ? stipendAmt : (coversTuition ? 'Tuition Covered' : 'Varies');
+    final amountText = calculateGrantValueSummary(program);
 
     return GestureDetector(
       onTap: () => Navigator.pushNamed(
@@ -626,4 +623,61 @@ class _ScholarshipCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatCurrency(num amount) {
+  final str = amount.toStringAsFixed(0);
+  final reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+  return '₱${str.replaceAllMapped(reg, (Match m) => '${m[1]},')}';
+}
+
+String calculateGrantValueSummary(Map<String, dynamic>? program) {
+  if (program == null) return 'Grant Assistance';
+
+  double totalMonetaryGrant = 0.0;
+
+  // 1. Base program grant amount
+  final amountVal = double.tryParse(program['amount']?.toString() ?? '') ??
+      double.tryParse(program['grant_amount']?.toString() ?? '') ?? 0.0;
+  totalMonetaryGrant += amountVal;
+
+  // 2. Stipend / Allowance amount
+  if (program['covers_stipend'] == true && program['stipend_amount'] != null) {
+    totalMonetaryGrant += double.tryParse(program['stipend_amount'].toString()) ?? 0.0;
+  }
+
+  // 3. Book / Device Allowance amount
+  if (program['covers_allowance'] == true && program['allowance_amount'] != null) {
+    totalMonetaryGrant += double.tryParse(program['allowance_amount'].toString()) ?? 0.0;
+  }
+
+  // 4. Fixed Cap Tuition Subsidy
+  final coversTuition = program['covers_tuition'] == true || program['coverstuition'] == true;
+  final tuitionType = program['tuition_coverage_type']?.toString();
+  final tuitionMax = double.tryParse(program['tuition_max_amount']?.toString() ?? '');
+  if (coversTuition && tuitionType == 'fixed_cap' && tuitionMax != null) {
+    totalMonetaryGrant += tuitionMax;
+  }
+
+  // 5. Custom Benefits List
+  if (program['custom_benefits'] != null && program['custom_benefits'] is List) {
+    for (final b in (program['custom_benefits'] as List)) {
+      if (b is Map && b['amount'] != null) {
+        totalMonetaryGrant += double.tryParse(b['amount'].toString()) ?? 0.0;
+      }
+    }
+  }
+
+  if (totalMonetaryGrant > 0) {
+    return _formatCurrency(totalMonetaryGrant);
+  }
+
+  if (coversTuition) {
+    if (tuitionType == 'fixed_cap' && tuitionMax != null && tuitionMax > 0) {
+      return _formatCurrency(tuitionMax);
+    }
+    return 'Full Tuition Covered';
+  }
+
+  return 'Grant Assistance';
 }

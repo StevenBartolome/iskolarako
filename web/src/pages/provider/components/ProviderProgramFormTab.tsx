@@ -8,6 +8,16 @@ import {
   parseYearLevelsToNumbers,
   getYearLevelLabel,
 } from '../constants/academicCatalog';
+import {
+  getPSGCRegions,
+  getPSGCProvinces,
+  getPSGCCitiesMunicipalities,
+  getPSGCBarangays,
+  type PSGCRegion,
+  type PSGCProvince,
+  type PSGCCityMunicipality,
+  type PSGCBarangay,
+} from '@/services/psgcLocationService';
 
 interface ProviderProgramFormTabProps {
   programToEdit?: Program | null;
@@ -212,6 +222,179 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
     if (typeof s === 'string' && s) return s.split(',').map(s => s.trim()).filter(Boolean);
     return [];
   });
+
+  // PSGC Location API State
+  const [psgcRegions, setPsgcRegions] = useState<PSGCRegion[]>([]);
+  const [psgcProvinces, setPsgcProvinces] = useState<PSGCProvince[]>([]);
+  const [psgcCities, setPsgcCities] = useState<PSGCCityMunicipality[]>([]);
+  const [psgcBarangays, setPsgcBarangays] = useState<PSGCBarangay[]>([]);
+  const [loadingPsgc, setLoadingPsgc] = useState<boolean>(false);
+  const [psgcSearchTerm, setPsgcSearchTerm] = useState<string>('');
+
+  // Step Validation Error State
+  const [stepValidationError, setStepValidationError] = useState<string>('');
+
+  const validateStep = (stepNum: number): { valid: boolean; error: string } => {
+    if (stepNum === 1) {
+      if (!title.trim()) {
+        return { valid: false, error: '⚠️ Step 1 Required: Program Title cannot be empty.' };
+      }
+      if (!description.trim()) {
+        return { valid: false, error: '⚠️ Step 1 Required: Program Description & Overview cannot be empty.' };
+      }
+      if (!applicationStartDate) {
+        return { valid: false, error: '⚠️ Step 1 Required: Application Intake Start Date is required.' };
+      }
+      if (!applicationEndDate) {
+        return { valid: false, error: '⚠️ Step 1 Required: Application Closing Deadline is required.' };
+      }
+      if (new Date(applicationEndDate) < new Date(applicationStartDate)) {
+        return { valid: false, error: '⚠️ Step 1 Error: Application Closing Deadline cannot be earlier than Start Date.' };
+      }
+    }
+
+    if (stepNum === 2) {
+      if (!amount.trim() || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return { valid: false, error: '⚠️ Step 2 Required: Please enter a valid Grant Budget Allocation Amount (must be greater than ₱0).' };
+      }
+      if (coversTuition && tuitionCoverageType === 'fixed_cap' && (!tuitionMaxAmount.trim() || isNaN(Number(tuitionMaxAmount)) || Number(tuitionMaxAmount) <= 0)) {
+        return { valid: false, error: '⚠️ Step 2 Required: Please specify the Maximum Tuition Subsidy Cap Amount.' };
+      }
+      if (coversStipend && (!stipendAmount.toString().trim() || isNaN(Number(stipendAmount)) || Number(stipendAmount) <= 0)) {
+        return { valid: false, error: '⚠️ Step 2 Required: Please specify the Stipend / Allowance Amount.' };
+      }
+      if (coversAllowance && (!allowanceAmount.toString().trim() || isNaN(Number(allowanceAmount)) || Number(allowanceAmount) <= 0)) {
+        return { valid: false, error: '⚠️ Step 2 Required: Please specify the Book/Device Allowance Amount.' };
+      }
+    }
+
+    if (stepNum === 3) {
+      if (!gpaRequirement.toString().trim()) {
+        return { valid: false, error: '⚠️ Step 3 Required: Please enter the Minimum GWA / GPA Requirement (e.g. 85, 2.0, or N/A).' };
+      }
+      if (selectedYearLevels.length === 0) {
+        return { valid: false, error: '⚠️ Step 3 Required: Please select at least one eligible year level for applicants.' };
+      }
+      if (!isOpenToAllCourses && selectedCourses.length === 0 && (targetLevel === 'college' || targetLevel === 'incoming_college' || targetLevel === 'senior_high' || targetLevel === 'vocational' || targetLevel === 'graduate')) {
+        return { valid: false, error: '⚠️ Step 3 Required: Please select at least one target course/strand or toggle to "Open to All Degree Programs".' };
+      }
+    }
+
+    if (stepNum === 4) {
+      if (requirementsList.length === 0) {
+        return { valid: false, error: '⚠️ Step 4 Required: Please include at least one document requirement for applicant submission.' };
+      }
+    }
+
+    return { valid: true, error: '' };
+  };
+
+  const handleGoToStep = (targetStep: number) => {
+    if (targetStep < currentStep) {
+      setStepValidationError('');
+      setCurrentStep(targetStep);
+      return;
+    }
+
+    for (let s = 1; s < targetStep; s++) {
+      const check = validateStep(s);
+      if (!check.valid) {
+        setStepValidationError(check.error);
+        setCurrentStep(s);
+        return;
+      }
+    }
+
+    setStepValidationError('');
+    setCurrentStep(targetStep);
+  };
+
+  // Cascading Filter Selection State for PSGC Dropdowns
+  const [selectedPsgcRegionCode, setSelectedPsgcRegionCode] = useState<string>('');
+  const [selectedPsgcProvinceCode, setSelectedPsgcProvinceCode] = useState<string>('');
+  const [selectedPsgcCityCode, setSelectedPsgcCityCode] = useState<string>('');
+
+  // Fetch PSGC Regions & Initial Provinces on mount
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadInitialPsgcData() {
+      setLoadingPsgc(true);
+      try {
+        const [regions, provinces] = await Promise.all([
+          getPSGCRegions(),
+          getPSGCProvinces(),
+        ]);
+        if (isMounted) {
+          setPsgcRegions(regions);
+          setPsgcProvinces(provinces);
+        }
+      } catch (err) {
+        console.warn('Error fetching PSGC API location data:', err);
+      } finally {
+        if (isMounted) setLoadingPsgc(false);
+      }
+    }
+    loadInitialPsgcData();
+    return () => { isMounted = false; };
+  }, []);
+
+  // When selectedPsgcRegionCode changes, load filtered provinces
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadProvincesForRegion() {
+      if (!selectedPsgcRegionCode) {
+        const all = await getPSGCProvinces();
+        if (isMounted) setPsgcProvinces(all);
+        return;
+      }
+      try {
+        const filteredProvinces = await getPSGCProvinces(selectedPsgcRegionCode);
+        if (isMounted) setPsgcProvinces(filteredProvinces);
+      } catch (err) {
+        console.warn('Error loading PSGC provinces for region:', err);
+      }
+    }
+    loadProvincesForRegion();
+    return () => { isMounted = false; };
+  }, [selectedPsgcRegionCode]);
+
+  // When selectedPsgcProvinceCode changes, load cities/municipalities
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadCitiesForProvince() {
+      if (!selectedPsgcProvinceCode) {
+        setPsgcCities([]);
+        return;
+      }
+      try {
+        const cities = await getPSGCCitiesMunicipalities(selectedPsgcProvinceCode);
+        if (isMounted) setPsgcCities(cities);
+      } catch (err) {
+        console.warn('Error loading PSGC cities for province:', err);
+      }
+    }
+    loadCitiesForProvince();
+    return () => { isMounted = false; };
+  }, [selectedPsgcProvinceCode]);
+
+  // When selectedPsgcCityCode changes, load barangays
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadBarangaysForCity() {
+      if (!selectedPsgcCityCode) {
+        setPsgcBarangays([]);
+        return;
+      }
+      try {
+        const barangays = await getPSGCBarangays(selectedPsgcCityCode);
+        if (isMounted) setPsgcBarangays(barangays);
+      } catch (err) {
+        console.warn('Error loading PSGC barangays for city:', err);
+      }
+    }
+    loadBarangaysForCity();
+    return () => { isMounted = false; };
+  }, [selectedPsgcCityCode]);
 
   // Re-sync on programToEdit change so editing an existing program always pre-selects its saved values
   React.useEffect(() => {
@@ -457,6 +640,14 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
+    for (let s = 1; s <= 4; s++) {
+      const check = validateStep(s);
+      if (!check.valid) {
+        setStepValidationError(check.error);
+        setCurrentStep(s);
+        return;
+      }
+    }
     setIsSubmitting(true);
     try {
       // Compute final eligible courses
@@ -564,7 +755,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
             <button
               type="button"
               onClick={(e) => handleSubmitForm(e)}
-              disabled={isSubmitting || !title.trim()}
+              disabled={isSubmitting || !validateStep(1).valid || !validateStep(2).valid || !validateStep(3).valid || !validateStep(4).valid}
               className="px-6 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer shadow-md transition-all disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? (
@@ -590,7 +781,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               <button
                 key={step.num}
                 type="button"
-                onClick={() => setCurrentStep(step.num)}
+                onClick={() => handleGoToStep(step.num)}
                 className={`text-left p-3 rounded-2xl transition-all border-0 cursor-pointer flex flex-col gap-1 ${
                   isActive
                     ? 'bg-[#1A3C2E] text-white shadow-sm'
@@ -599,15 +790,34 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                     : 'bg-[#F9F5EF] text-[#6C6C70] hover:bg-[#EDE8DE]'
                 }`}
               >
-                <div className="flex items-center justify-between text-[11px] font-bold">
+                <div className="flex items-center justify-between text-xs font-extrabold">
                   <span>Step {step.num}</span>
                   {isCompleted && <span>✓</span>}
                 </div>
-                <span className="text-xs font-extrabold truncate">{step.name}</span>
+                <div className={`text-[11px] font-semibold truncate ${isActive ? 'text-white' : 'text-[#1C1C1E]'}`}>
+                  {step.name}
+                </div>
               </button>
             );
           })}
         </div>
+
+        {/* Validation Warning Alert Banner */}
+        {stepValidationError && (
+          <div className="p-3.5 rounded-2xl bg-red-50 border border-red-300 text-red-900 text-xs font-bold flex items-center justify-between gap-2 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <span className="text-base shrink-0">⚠️</span>
+              <span>{stepValidationError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStepValidationError('')}
+              className="text-red-700 hover:text-red-900 font-extrabold text-xs bg-transparent border-0 cursor-pointer px-1"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Form Wizard Body */}
@@ -840,7 +1050,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                     className="w-4 h-4 text-[#1A3C2E] rounded cursor-pointer"
                   />
                   <div>
-                    <span className="block text-xs font-bold text-[#1C1C1E]">Monthly Stipend</span>
+                    <span className="block text-xs font-bold text-[#1C1C1E]">Stipend / Allowance</span>
                     <span className="text-[10px] text-[#6C6C70]">Living & daily allowance</span>
                   </div>
                 </label>
@@ -863,7 +1073,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                   {coversStipend && (
                     <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] mb-1">Stipend Amount (₱/mo)</label>
+                      <label className="block text-xs font-bold text-[#1C1C1E] mb-1">Stipend / Allowance (₱)</label>
                       <input
                         type="number"
                         placeholder="e.g. 7000"
@@ -1154,9 +1364,21 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               </div>
 
               {selectedYearLevels.length === 0 && (
-                <p className="text-[11px] font-bold text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-200 mt-2">
-                  ⚠️ Please select at least one eligible year level for applicants.
-                </p>
+                <div className="p-3.5 rounded-2xl bg-red-50 border border-red-300 text-red-900 text-xs font-bold space-y-2 mt-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base shrink-0">⚠️</span>
+                      <span>Selection Required: You must select at least one eligible year level to proceed to the next page.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSelectAllYearLevels}
+                      className="px-3 py-1 bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold rounded-xl border-0 cursor-pointer shadow-xs"
+                    >
+                      ✓ Select All Year Levels
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -1699,8 +1921,16 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               {/* 2. REGIONAL */}
               {availabilityScope === 'regional' && (
                 <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#1A3C2E] uppercase">Select Eligible Regions ({availableRegions.length} selected):</span>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-[#1A3C2E] uppercase block">
+                        Select Eligible Regions ({availableRegions.length} selected):
+                      </span>
+                      <span className="text-[10px] text-[#2D5941] font-semibold flex items-center gap-1 mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        {loadingPsgc ? '⏳ Fetching PSGC API Location Data...' : 'PSGC API Live Location Service'}
+                      </span>
+                    </div>
                     {availableRegions.length > 0 && (
                       <button
                         type="button"
@@ -1711,31 +1941,49 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                       </button>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
-                    {PH_REGIONS.map((r) => {
-                      const isChecked = availableRegions.includes(r.code) || availableRegions.includes(r.label);
-                      return (
-                        <button
-                          key={r.code}
-                          type="button"
-                          onClick={() => {
-                            if (isChecked) {
-                              setAvailableRegions(prev => prev.filter(x => x !== r.code && x !== r.label));
-                            } else {
-                              setAvailableRegions(prev => [...prev, r.code]);
-                            }
-                          }}
-                          className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all border cursor-pointer flex items-center justify-between ${
-                            isChecked
-                              ? 'bg-[#1A3C2E] text-white border-[#1A3C2E]'
-                              : 'bg-[#F9F5EF] text-[#1C1C1E] border-[#D9D2C5] hover:bg-[#EDE8DE]'
-                          }`}
-                        >
-                          <span className="truncate">{r.label}</span>
-                          <span className="text-[10px] font-bold ml-1">{isChecked ? '✓' : '+'}</span>
-                        </button>
-                      );
-                    })}
+
+                  {/* PSGC Region Search Input */}
+                  <input
+                    type="text"
+                    placeholder="Search PSGC region name or code (e.g. CALABARZON, NCR, Region III)..."
+                    value={psgcSearchTerm}
+                    onChange={(e) => setPsgcSearchTerm(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-[#F9F5EF] focus:outline-none focus:bg-white"
+                  />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
+                    {(psgcRegions.length > 0 ? psgcRegions : FALLBACK_REGIONS_LIST)
+                      .filter(r => 
+                        !psgcSearchTerm || 
+                        r.name.toLowerCase().includes(psgcSearchTerm.toLowerCase()) || 
+                        (r.regionName && r.regionName.toLowerCase().includes(psgcSearchTerm.toLowerCase())) ||
+                        r.code.includes(psgcSearchTerm)
+                      )
+                      .map((r) => {
+                        const regionIdentifier = r.name;
+                        const isChecked = availableRegions.includes(r.code) || availableRegions.includes(r.name) || availableRegions.includes(r.regionName);
+                        return (
+                          <button
+                            key={r.code}
+                            type="button"
+                            onClick={() => {
+                              if (isChecked) {
+                                setAvailableRegions(prev => prev.filter(x => x !== r.code && x !== r.name && x !== r.regionName));
+                              } else {
+                                setAvailableRegions(prev => [...prev, regionIdentifier]);
+                              }
+                            }}
+                            className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all border cursor-pointer flex items-center justify-between ${
+                              isChecked
+                                ? 'bg-[#1A3C2E] text-white border-[#1A3C2E]'
+                                : 'bg-[#F9F5EF] text-[#1C1C1E] border-[#D9D2C5] hover:bg-[#EDE8DE]'
+                            }`}
+                          >
+                            <span className="truncate">{r.name}</span>
+                            <span className="text-[10px] font-bold ml-1 shrink-0">{isChecked ? '✓' : '+'}</span>
+                          </button>
+                        );
+                      })}
                   </div>
                 </div>
               )}
@@ -1743,39 +1991,219 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               {/* 3. PROVINCIAL */}
               {availabilityScope === 'provincial' && (
                 <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
-                  <span className="text-xs font-bold text-[#1A3C2E] uppercase">Eligible Provinces:</span>
-                  <TagInput
-                    tags={availableProvinces}
-                    placeholder="Type province name (e.g. Laguna, Cebu, Cavite) & press Enter..."
-                    onAdd={(tag) => setAvailableProvinces(prev => [...prev, tag])}
-                    onRemove={(index) => setAvailableProvinces(prev => prev.filter((_, i) => i !== index))}
-                  />
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-[#1A3C2E] uppercase">
+                      Select Eligible Provinces (PSGC API):
+                    </span>
+                    <span className="text-[10px] text-[#2D5941] font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      PSGC API Live Data
+                    </span>
+                  </div>
+
+                  {/* PSGC Province Quick Add Dropdown */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">Filter Region (Optional):</label>
+                      <select
+                        value={selectedPsgcRegionCode}
+                        onChange={(e) => setSelectedPsgcRegionCode(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-[#F9F5EF] focus:outline-none"
+                      >
+                        <option value="">All Administrative Regions</option>
+                        {psgcRegions.map(r => (
+                          <option key={r.code} value={r.code}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">Add PSGC Province:</label>
+                      <select
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val && !availableProvinces.includes(val)) {
+                            setAvailableProvinces(prev => [...prev, val]);
+                          }
+                          e.target.value = '';
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white focus:outline-none font-semibold text-[#1A3C2E]"
+                      >
+                        <option value="">-- Choose Province from PSGC API --</option>
+                        {psgcProvinces.map(p => (
+                          <option key={p.code} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-[#D9D2C5]/60">
+                    <span className="text-[11px] font-bold text-[#6C6C70] block mb-1">Selected Target Provinces ({availableProvinces.length}):</span>
+                    <TagInput
+                      tags={availableProvinces}
+                      placeholder="Type province name (e.g. Laguna, Cebu, Cavite) & press Enter..."
+                      onAdd={(tag) => setAvailableProvinces(prev => [...prev, tag])}
+                      onRemove={(index) => setAvailableProvinces(prev => prev.filter((_, i) => i !== index))}
+                    />
+                  </div>
                 </div>
               )}
 
               {/* 4. MUNICIPALITY */}
               {availabilityScope === 'municipality' && (
                 <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
-                  <span className="text-xs font-bold text-[#1A3C2E] uppercase">Eligible Cities / Municipalities:</span>
-                  <TagInput
-                    tags={availableMunicipalities}
-                    placeholder="Type city/municipality (e.g. Quezon City, Calamba, Davao City) & press Enter..."
-                    onAdd={(tag) => setAvailableMunicipalities(prev => [...prev, tag])}
-                    onRemove={(index) => setAvailableMunicipalities(prev => prev.filter((_, i) => i !== index))}
-                  />
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-[#1A3C2E] uppercase">
+                      Select Eligible Cities & Municipalities (PSGC API):
+                    </span>
+                    <span className="text-[10px] text-[#2D5941] font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      PSGC API Live Data
+                    </span>
+                  </div>
+
+                  {/* Cascading PSGC Selector: Region -> Province -> City */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">1. Select Province:</label>
+                      <select
+                        value={selectedPsgcProvinceCode}
+                        onChange={(e) => {
+                          setSelectedPsgcProvinceCode(e.target.value);
+                          setSelectedPsgcCityCode('');
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-[#F9F5EF] focus:outline-none"
+                      >
+                        <option value="">-- Choose Province --</option>
+                        {psgcProvinces.map(p => (
+                          <option key={p.code} value={p.code}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">2. Add City / Municipality:</label>
+                      <select
+                        disabled={!selectedPsgcProvinceCode || psgcCities.length === 0}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val && !availableMunicipalities.includes(val)) {
+                            setAvailableMunicipalities(prev => [...prev, val]);
+                          }
+                          e.target.value = '';
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white focus:outline-none font-semibold text-[#1A3C2E] disabled:opacity-50"
+                      >
+                        <option value="">
+                          {!selectedPsgcProvinceCode 
+                            ? '-- Select Province First --' 
+                            : psgcCities.length === 0 
+                            ? 'Loading Cities...' 
+                            : '-- Choose City/Municipality --'}
+                        </option>
+                        {psgcCities.map(c => (
+                          <option key={c.code} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-[#D9D2C5]/60">
+                    <span className="text-[11px] font-bold text-[#6C6C70] block mb-1">Selected Target Cities/Municipalities ({availableMunicipalities.length}):</span>
+                    <TagInput
+                      tags={availableMunicipalities}
+                      placeholder="Type city/municipality (e.g. Quezon City, Calamba, Davao City) & press Enter..."
+                      onAdd={(tag) => setAvailableMunicipalities(prev => [...prev, tag])}
+                      onRemove={(index) => setAvailableMunicipalities(prev => prev.filter((_, i) => i !== index))}
+                    />
+                  </div>
                 </div>
               )}
 
               {/* 5. BARANGAY */}
               {availabilityScope === 'barangay' && (
                 <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] space-y-3">
-                  <span className="text-xs font-bold text-[#1A3C2E] uppercase">Eligible Barangays:</span>
-                  <TagInput
-                    tags={availableBarangays}
-                    placeholder="Type barangay name (e.g. Barangay Batasan Hills, Barangay 171) & press Enter..."
-                    onAdd={(tag) => setAvailableBarangays(prev => [...prev, tag])}
-                    onRemove={(index) => setAvailableBarangays(prev => prev.filter((_, i) => i !== index))}
-                  />
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-[#1A3C2E] uppercase">
+                      Select Eligible Barangays (PSGC API):
+                    </span>
+                    <span className="text-[10px] text-[#2D5941] font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      PSGC API Live Data
+                    </span>
+                  </div>
+
+                  {/* Cascading PSGC Selector: Province -> City -> Barangay */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">1. Province:</label>
+                      <select
+                        value={selectedPsgcProvinceCode}
+                        onChange={(e) => {
+                          setSelectedPsgcProvinceCode(e.target.value);
+                          setSelectedPsgcCityCode('');
+                          setPsgcBarangays([]);
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-[#F9F5EF] focus:outline-none"
+                      >
+                        <option value="">-- Province --</option>
+                        {psgcProvinces.map(p => (
+                          <option key={p.code} value={p.code}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">2. City/Municipality:</label>
+                      <select
+                        value={selectedPsgcCityCode}
+                        disabled={!selectedPsgcProvinceCode}
+                        onChange={(e) => setSelectedPsgcCityCode(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-[#F9F5EF] focus:outline-none disabled:opacity-50"
+                      >
+                        <option value="">-- City/Town --</option>
+                        {psgcCities.map(c => (
+                          <option key={c.code} value={c.code}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">3. Add Barangay:</label>
+                      <select
+                        disabled={!selectedPsgcCityCode || psgcBarangays.length === 0}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val && !availableBarangays.includes(val)) {
+                            setAvailableBarangays(prev => [...prev, val]);
+                          }
+                          e.target.value = '';
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-white focus:outline-none font-semibold text-[#1A3C2E] disabled:opacity-50"
+                      >
+                        <option value="">
+                          {!selectedPsgcCityCode
+                            ? '-- Select City First --'
+                            : psgcBarangays.length === 0
+                            ? 'Loading Barangays...'
+                            : '-- Choose Barangay --'}
+                        </option>
+                        {psgcBarangays.map(b => (
+                          <option key={b.code} value={b.name}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-[#D9D2C5]/60">
+                    <span className="text-[11px] font-bold text-[#6C6C70] block mb-1">Selected Target Barangays ({availableBarangays.length}):</span>
+                    <TagInput
+                      tags={availableBarangays}
+                      placeholder="Type barangay name (e.g. Barangay Batasan Hills, Barangay 171) & press Enter..."
+                      onAdd={(tag) => setAvailableBarangays(prev => [...prev, tag])}
+                      onRemove={(index) => setAvailableBarangays(prev => prev.filter((_, i) => i !== index))}
+                    />
+                  </div>
                 </div>
               )}
 
@@ -1949,6 +2377,33 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 </div>
               </div>
 
+              {/* Coverage & Benefits Review */}
+              <div className="pt-3 border-t border-[#D9D2C5]/50">
+                <span className="text-[#6C6C70] block uppercase font-bold text-[10px] mb-1.5">Included Benefits & Coverage</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {coversTuition && (
+                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333]">
+                      🏛️ {tuitionCoverageType === 'fixed_cap' && Number(tuitionMaxAmount) > 0 ? `Tuition Subsidy Cap ₱${Number(tuitionMaxAmount).toLocaleString()}` : 'Full Tuition Covered'}
+                    </span>
+                  )}
+                  {coversStipend && (
+                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333]">
+                      🍱 Stipend / Allowance ₱{Number(stipendAmount).toLocaleString()}
+                    </span>
+                  )}
+                  {coversAllowance && (
+                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333]">
+                      📚 Book / Device ₱{Number(allowanceAmount).toLocaleString()}
+                    </span>
+                  )}
+                  {customBenefitsList.map((cb, i) => (
+                    <span key={i} className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333]">
+                      🎁 {cb.title}: ₱{Number(cb.amount).toLocaleString()} ({cb.frequency})
+                    </span>
+                  ))}
+                </div>
+              </div>
+
               {isFreshmanTarget && (
                 <div className="p-3.5 rounded-2xl bg-[#E6F4EA] text-[#137333] font-bold">
                   ✓ Configured for Incoming College Freshmen. Applicants will be requested to provide High School, Target College, and Option Course choices.
@@ -1977,7 +2432,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           {currentStep > 1 ? (
             <button
               type="button"
-              onClick={() => setCurrentStep(currentStep - 1)}
+              onClick={() => handleGoToStep(currentStep - 1)}
               className="px-5 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-xs font-bold border-0 cursor-pointer"
             >
               ← Back to Step {currentStep - 1}
@@ -1989,16 +2444,26 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           {currentStep < 5 ? (
             <button
               type="button"
-              onClick={() => setCurrentStep(currentStep + 1)}
-              className="px-6 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer shadow-sm"
+              onClick={() => handleGoToStep(currentStep + 1)}
+              disabled={!validateStep(currentStep).valid}
+              className={`px-6 py-2.5 rounded-xl text-xs font-bold border-0 cursor-pointer shadow-sm transition-all flex items-center gap-2 ${
+                !validateStep(currentStep).valid
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60'
+                  : 'bg-[#1A3C2E] hover:bg-[#2D5941] text-white'
+              }`}
+              title={
+                !validateStep(currentStep).valid
+                  ? validateStep(currentStep).error
+                  : undefined
+              }
             >
-              Next: Step {currentStep + 1} →
+              <span>Next: Step {currentStep + 1} →</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={(e) => handleSubmitForm(e)}
-              disabled={isSubmitting || !title.trim()}
+              disabled={isSubmitting || !validateStep(1).valid || !validateStep(2).valid || !validateStep(3).valid || !validateStep(4).valid}
               className="px-8 py-3 rounded-2xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-sm font-extrabold border-0 cursor-pointer shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? (
@@ -2019,24 +2484,26 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   );
 };
 
-const PH_REGIONS = [
-  { code: 'NCR', label: 'NCR - National Capital Region' },
-  { code: 'CAR', label: 'CAR - Cordillera Administrative Region' },
-  { code: 'Region I', label: 'Region I - Ilocos Region' },
-  { code: 'Region II', label: 'Region II - Cagayan Valley' },
-  { code: 'Region III', label: 'Region III - Central Luzon' },
-  { code: 'Region IV-A', label: 'Region IV-A - CALABARZON' },
-  { code: 'Region IV-B', label: 'Region IV-B - MIMAROPA' },
-  { code: 'Region V', label: 'Region V - Bicol Region' },
-  { code: 'Region VI', label: 'Region VI - Western Visayas' },
-  { code: 'Region VII', label: 'Region VII - Central Visayas' },
-  { code: 'Region VIII', label: 'Region VIII - Eastern Visayas' },
-  { code: 'Region IX', label: 'Region IX - Zamboanga Peninsula' },
-  { code: 'Region X', label: 'Region X - Northern Mindanao' },
-  { code: 'Region XI', label: 'Region XI - Davao Region' },
-  { code: 'Region XII', label: 'Region XII - SOCCSKSARGEN' },
-  { code: 'Region XIII', label: 'Region XIII - Caraga' },
-  { code: 'BARMM', label: 'BARMM - Bangsamoro Autonomous Region' },
+
+
+const FALLBACK_REGIONS_LIST: PSGCRegion[] = [
+  { code: '1300000000', name: 'NCR - National Capital Region', regionName: 'NCR' },
+  { code: '140000000', name: 'CAR - Cordillera Administrative Region', regionName: 'CAR' },
+  { code: '010000000', name: 'Region I - Ilocos Region', regionName: 'Ilocos Region' },
+  { code: '020000000', name: 'Region II - Cagayan Valley', regionName: 'Cagayan Valley' },
+  { code: '030000000', name: 'Region III - Central Luzon', regionName: 'Central Luzon' },
+  { code: '040000000', name: 'Region IV-A - CALABARZON', regionName: 'CALABARZON' },
+  { code: '170000000', name: 'MIMAROPA Region', regionName: 'MIMAROPA' },
+  { code: '050000000', name: 'Region V - Bicol Region', regionName: 'Bicol Region' },
+  { code: '060000000', name: 'Region VI - Western Visayas', regionName: 'Western Visayas' },
+  { code: '070000000', name: 'Region VII - Central Visayas', regionName: 'Central Visayas' },
+  { code: '080000000', name: 'Region VIII - Eastern Visayas', regionName: 'Eastern Visayas' },
+  { code: '090000000', name: 'Region IX - Zamboanga Peninsula', regionName: 'Zamboanga Peninsula' },
+  { code: '100000000', name: 'Region X - Northern Mindanao', regionName: 'Northern Mindanao' },
+  { code: '110000000', name: 'Region XI - Davao Region', regionName: 'Davao Region' },
+  { code: '120000000', name: 'Region XII - SOCCSKSARGEN', regionName: 'SOCCSKSARGEN' },
+  { code: '130000000', name: 'Region XIII - Caraga', regionName: 'Caraga' },
+  { code: '150000000', name: 'BARMM - Bangsamoro Autonomous Region', regionName: 'BARMM' },
 ];
 
 const TagInput: React.FC<{

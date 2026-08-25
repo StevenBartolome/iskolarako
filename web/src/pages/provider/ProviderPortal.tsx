@@ -3085,7 +3085,13 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               <div>
                 <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Benefits</h4>
                 <div className="flex flex-wrap gap-2">
-                  {selectedProgram.coverstuition && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Full Tuition</span>}
+                  {selectedProgram.coverstuition && (
+                    <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">
+                      {selectedProgram.tuitionCoverageType === 'fixed_cap' && Number(selectedProgram.tuitionMaxAmount) > 0
+                        ? `Tuition Cap ₱${Number(selectedProgram.tuitionMaxAmount).toLocaleString()}`
+                        : 'Full Tuition'}
+                    </span>
+                  )}
                   {selectedProgram.coversStipend && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Stipend ₱{Number(selectedProgram.stipendAmount).toLocaleString()}/mo</span>}
                   {selectedProgram.coversAllowance && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Allowance ₱{Number(selectedProgram.allowanceAmount).toLocaleString()}</span>}
                   {selectedProgram.otherBenefits?.map((b: any, i: number) => <span key={i} className="bg-[#EDE8DE] text-[#6C6C70] text-xs font-semibold px-3 py-1 rounded-full">{b}</span>)}

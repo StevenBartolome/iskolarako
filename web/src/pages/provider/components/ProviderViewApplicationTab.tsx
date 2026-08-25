@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { ApplicationDetail, SubmittedDocItem, ApplicantStatus } from './ReviewApplicationModal';
 import {
   verifyDocumentAuthenticity,
+  getScoreAssessment,
   type DocVerificationResult,
   type ApplicantVerificationContext,
 } from '@/services/aiExtractionService';
@@ -58,6 +59,15 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
     'Certificate of Good Moral Character (Updated)',
     'Proof of Intended College Admission / Entrance Exam Results',
   ];
+
+  const getFlagString = (flag: any): string => {
+    if (!flag) return '';
+    if (typeof flag === 'string') return flag.trim();
+    if (typeof flag === 'object') {
+      return flag.description || flag.flag || flag.reason || flag.message || flag.issue || JSON.stringify(flag);
+    }
+    return String(flag);
+  };
 
   const evaluateAndAdjustStatus = (docs: SubmittedDocItem[]) => {
     const scannableDocs = docs.filter(d => d.document_url || d.url);
@@ -970,21 +980,24 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                 }`}>
                                   {docStatus === 'Verified' ? '✓ Approved' : docStatus === 'Flagged' ? '🚩 Flagged' : '⏳ Pending'}
                                 </span>
-                                {aiRes && (
-                                  <span
-                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all ${
-                                      aiRes.verificationStatus === 'verified'
-                                        ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
-                                        : aiRes.verificationStatus === 'rejected'
-                                        ? 'bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
-                                        : 'bg-[#FFF8EE] text-[#C97B2E] border border-[#C97B2E]/40 hover:bg-[#C97B2E] hover:text-white'
-                                    }`}
-                                    onClick={() => toggleExpandDoc(idx)}
-                                    title="Click to toggle AI breakdown"
-                                  >
-                                    ⚡ AI Verified ({Math.round(aiRes.confidenceScore * 100)}%)
-                                  </span>
-                                )}
+                                {aiRes && (() => {
+                                  const assessment = getScoreAssessment(aiRes.confidenceScore);
+                                  return (
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all ${
+                                        aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD'
+                                          ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
+                                          : aiRes.verificationStatus === 'rejected' || assessment.quality === 'BAD'
+                                          ? 'bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
+                                          : 'bg-[#FFF8EE] text-[#C97B2E] border border-[#C97B2E]/40 hover:bg-[#C97B2E] hover:text-white'
+                                      }`}
+                                      onClick={() => toggleExpandDoc(idx)}
+                                      title="Click to toggle AI breakdown"
+                                    >
+                                      ⚡ {assessment.scorePercent}% Match ({assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'})
+                                    </span>
+                                  );
+                                })()}
                                 {doc.is_additional && (
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
                                     Requested Requirement
@@ -1088,23 +1101,162 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                           </div>
                         </div>
 
-                        {/* AI Analysis Drawer */}
-                        {isExpanded && doc.aiVerification && (
-                          <div className="mt-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="font-bold text-slate-800">Authenticity Score</span>
-                              <span className="font-mono font-bold text-slate-900">{doc.aiVerification.confidenceScore}%</span>
-                            </div>
-                            {doc.aiVerification.summary && (
-                              <div className="pt-2 border-t border-slate-200">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Extracted OCR Summary</span>
-                                <p className="text-[11px] text-slate-700 font-mono bg-white p-2 rounded border border-slate-200 leading-relaxed max-h-28 overflow-y-auto">
-                                  {doc.aiVerification.summary}
-                                </p>
+                        {/* Expandable Forensic Analysis Report */}
+                        {isExpanded && aiRes && (() => {
+                          const assessment = getScoreAssessment(aiRes.confidenceScore);
+                          return (
+                            <div className="mt-3 p-3.5 bg-[#FFFFFF] rounded-2xl border border-[#D9D2C5] space-y-3 animate-fade-in text-xs">
+                              {/* Header bar */}
+                              <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2 flex-wrap gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
+                                    🔬 Forensic Analysis Report
+                                  </span>
+                                  <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
+                                    Model: <strong>{aiRes.aiModelUsed || 'Gemini 2.5 Flash'}</strong> ({aiRes.provider || 'DeepMind'})
+                                  </span>
+                                </div>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${assessment.badgeStyle}`}>
+                                  Score: {assessment.scorePercent}% • {assessment.label}
+                                </span>
                               </div>
-                            )}
-                          </div>
-                        )}
+
+                              {/* Quality & Score Remarks Box */}
+                              <div className={`p-2.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+                                assessment.quality === 'GOOD'
+                                  ? 'bg-[#EBF5EE]/60 border-[#2D5941]/30 text-[#1A3C2E]'
+                                  : assessment.quality === 'CAUTION'
+                                  ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#8C4A00]'
+                                  : 'bg-red-50 border-red-200 text-red-900'
+                              }`}>
+                                <span className="text-sm shrink-0">
+                                  {assessment.quality === 'GOOD' ? '🟢' : assessment.quality === 'CAUTION' ? '🟡' : '🔴'}
+                                </span>
+                                <div className="space-y-0.5">
+                                  <span className="font-bold block text-xs">
+                                    Match Rating: {assessment.scorePercent}% — {assessment.textRemark}
+                                  </span>
+                                  <p className="text-[11px] leading-relaxed opacity-90 font-normal">
+                                    {assessment.quality === 'GOOD' && 'Document matches declared profile credentials with verified official seals and zero visual tampering detected.'}
+                                    {assessment.quality === 'CAUTION' && 'Document is readable but contains minor data variance or unverified seal. Manual administrator check recommended.'}
+                                    {assessment.quality === 'BAD' && 'High mismatch or potential visual alteration detected. Document flagged for security risk.'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Side-by-Side Comparison Grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {/* Left: Declared Profile */}
+                                <div className="bg-[#F9F5EF]/50 p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1.5">
+                                  <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
+                                    👤 Declared Applicant Profile
+                                  </span>
+                                  <div className="space-y-1 text-xs">
+                                    <div className="flex justify-between">
+                                      <span className="text-[#6C6C70]">Applicant Name:</span>
+                                      <strong className="text-[#1C1C1E]">{application?.name || 'N/A'}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-[#6C6C70]">School / Institution:</span>
+                                      <strong className="text-[#1C1C1E]">{application?.school || 'N/A'}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-[#6C6C70]">Course:</span>
+                                      <strong className="text-[#1C1C1E]">{application?.course || 'N/A'}</strong>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-[#6C6C70]">Declared GWA:</span>
+                                      <strong className="text-[#2D5941]">{application?.grade || (application as any)?.gpa || 'N/A'}</strong>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right: AI Extracted Document Data */}
+                                <div className="bg-white p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1.5">
+                                  <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
+                                    📄 AI Extracted Legal Data
+                                  </span>
+                                  <div className="space-y-1 text-xs">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-[#6C6C70]">Name on Document:</span>
+                                      <div className="flex items-center gap-1">
+                                        <strong className="text-[#1C1C1E]">{aiRes.extractedName || 'Not detected'}</strong>
+                                        {aiRes.crossCheckResults?.nameMatch ? (
+                                          <span className="text-[10px] text-[#2D5941]" title="Entity matches registration">✓</span>
+                                        ) : (
+                                          <span className="text-[10px] text-[#B34040]" title="Entity mismatch">⚠️</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-[#6C6C70]">School on Doc:</span>
+                                      <div className="flex items-center gap-1">
+                                        <strong className="text-[#1C1C1E]">{aiRes.extractedSchool || 'Not detected'}</strong>
+                                        {aiRes.crossCheckResults?.schoolMatch ? (
+                                          <span className="text-[10px] text-[#2D5941]">✓</span>
+                                        ) : (
+                                          <span className="text-[10px] text-[#B34040]">⚠️</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-[#6C6C70]">Identified Doc Type:</span>
+                                      <strong className="text-[#1C1C1E]">{aiRes.extractedDocType || doc.name}</strong>
+                                    </div>
+                                    {aiRes.extractedGwa && (
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-[#6C6C70]">Extracted GWA:</span>
+                                        <strong className="text-[#2D5941] font-mono">{aiRes.extractedGwa}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Security Signals Checklist */}
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                                <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
+                                  <span>{aiRes.hasOfficialSealOrSignature ? '🟢' : '🟡'}</span>
+                                  <span className="text-[#1C1C1E]">
+                                    {aiRes.hasOfficialSealOrSignature ? 'Official Seal / Signature Detected' : 'Seal / Signature Unclear'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
+                                  <span>{aiRes.tamperingDetected ? '🔴' : '🟢'}</span>
+                                  <span className="text-[#1C1C1E]">
+                                    {aiRes.tamperingDetected ? 'Visual Alteration Detected' : 'No Digital Tampering'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60 col-span-2 sm:col-span-1">
+                                  <span>🔒</span>
+                                  <span className="text-[#6C6C70] truncate font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
+                                    Hash: {aiRes.sha256Hash ? aiRes.sha256Hash.slice(0, 10) + '...' : 'N/A'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Flagged Issues & Warnings */}
+                              {aiRes.flags && aiRes.flags.length > 0 && (
+                                <div className="p-2.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
+                                  <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider block">
+                                    ⚠️ Compliance Anomalies & Warnings:
+                                  </span>
+                                  <ul className="list-disc list-inside text-xs text-[#B34040] space-y-0.5 font-medium">
+                                    {aiRes.flags.map((flag: any, fIdx: number) => (
+                                      <li key={fIdx}>{getFlagString(flag)}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Forensic Summary */}
+                              <div className="p-2.5 bg-white rounded-xl border border-[#D9D2C5]/60 text-xs text-[#1C1C1E]">
+                                <span className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-0.5">Forensic Summary:</span>
+                                <p className="text-xs text-[#1C1C1E]">{aiRes.summary}</p>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })

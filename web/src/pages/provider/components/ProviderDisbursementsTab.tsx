@@ -1299,7 +1299,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                       </div>
 
                       <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
-                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🍱 Monthly Stipend</span>
+                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🍱 Stipend / Allowance</span>
                         <span className="font-bold text-[#1A3C2E] block mt-0.5">
                           ₱{currentSelectedApplicant.benefitSummary.stipendAmt.toLocaleString()}
                         </span>

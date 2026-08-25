@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { ApplicantStatus } from '../types';
 import {
   verifyDocumentAuthenticity,
+  getScoreAssessment,
   type DocVerificationResult,
   type ApplicantVerificationContext,
 } from '@/services/aiExtractionService';
@@ -1055,40 +1056,30 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                               </span>
 
                               {/* AI Verification Badge */}
-                              {aiRes ? (
-                                <span
-                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all ${
-                                    aiRes.verificationStatus === 'verified'
-                                      ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
-                                      : aiRes.verificationStatus === 'rejected'
-                                      ? 'bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
-                                      : aiRes.verificationStatus === 'manual_review_required'
-                                      ? 'bg-gray-100 text-[#6C6C70] border border-gray-300'
-                                      : 'bg-[#FFF8EE] text-[#C97B2E] border border-[#C97B2E]/40 hover:bg-[#C97B2E] hover:text-white'
-                                  }`}
-                                  onClick={() => toggleExpandDoc(idx)}
-                                  title="Click to toggle AI forensic breakdown"
-                                >
-                                  {aiRes.verificationStatus === 'verified' ? (
-                                    <>
-                                      <span>⚡ AI Verified</span>
-                                      <span>({Math.round(aiRes.confidenceScore * 100)}%)</span>
-                                    </>
-                                  ) : aiRes.verificationStatus === 'rejected' ? (
-                                    <>
-                                      <span>⚠️ AI Rejected</span>
-                                    </>
-                                  ) : aiRes.verificationStatus === 'manual_review_required' ? (
-                                    <>
-                                      <span>⚠️ AI Offline (Manual)</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span>⚠️ AI Flagged ({aiRes.flags.length} issue{aiRes.flags.length === 1 ? '' : 's'})</span>
-                                    </>
-                                  )}
-                                </span>
-                              ) : doc.isAiScanning ? (
+                              {aiRes ? (() => {
+                                  const assessment = getScoreAssessment(aiRes.confidenceScore);
+                                  return (
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-all ${
+                                        aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD'
+                                          ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
+                                          : aiRes.verificationStatus === 'rejected' || assessment.quality === 'BAD'
+                                          ? 'bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
+                                          : 'bg-[#FFF8EE] text-[#C97B2E] border border-[#C97B2E]/40 hover:bg-[#C97B2E] hover:text-white'
+                                      }`}
+                                      onClick={() => toggleExpandDoc(idx)}
+                                      title="Click to toggle AI forensic breakdown"
+                                    >
+                                      <span>
+                                        {aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD'
+                                          ? `🟢 ⚡ AI Verified (${assessment.scorePercent}% Match • Good)`
+                                          : aiRes.tamperingDetected || assessment.quality === 'BAD'
+                                          ? `🔴 ⚠️ Security Risk (${assessment.scorePercent}% Match • High Risk)`
+                                          : `🟡 ⚠️ AI Flagged (${assessment.scorePercent}% Match • Needs Review)`}
+                                      </span>
+                                    </span>
+                                  );
+                                })() : doc.isAiScanning ? (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
                                   ⏳ AI Scanning...
                                 </span>
@@ -1207,26 +1198,52 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                       </div>
 
                       {/* Expandable AI Forensic Discrepancy & Verification Report */}
-                      {isExpanded && aiRes && (
-                        <div className="bg-[#F9F5EF] p-4 rounded-2xl border border-[#D9D2C5] space-y-3 animate-fade-in text-xs">
-                          <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
-                                🔬 Forensic Analysis Report
-                              </span>
-                              <span className="text-[10px] text-[#6C6C70] bg-white px-2 py-0.5 rounded-md border border-[#D9D2C5]">
-                                Model: <strong>{aiRes.aiModelUsed}</strong> ({aiRes.provider})
+                      {isExpanded && aiRes && (() => {
+                        const assessment = getScoreAssessment(aiRes.confidenceScore);
+                        return (
+                          <div className="bg-[#FFFFFF] p-3.5 rounded-2xl border border-[#D9D2C5] space-y-3 animate-fade-in text-xs">
+                            {/* Header bar */}
+                            <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2 flex-wrap gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
+                                  🔬 Forensic Analysis Report
+                                </span>
+                                <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
+                                  Model: <strong>{aiRes.aiModelUsed || 'Gemini 2.5 Flash'}</strong> ({aiRes.provider || 'DeepMind'})
+                                </span>
+                              </div>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${assessment.badgeStyle}`}>
+                                Score: {assessment.scorePercent}% • {assessment.label}
                               </span>
                             </div>
-                            <span className="text-[10px] font-bold text-[#2D5941]">
-                              Confidence: {Math.round(aiRes.confidenceScore * 100)}%
-                            </span>
-                          </div>
+
+                            {/* Dynamic Quality & Score Remarks Box */}
+                            <div className={`p-2.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+                              assessment.quality === 'GOOD'
+                                ? 'bg-[#EBF5EE]/60 border-[#2D5941]/30 text-[#1A3C2E]'
+                                : assessment.quality === 'CAUTION'
+                                ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#8C4A00]'
+                                : 'bg-red-50 border-red-200 text-red-900'
+                            }`}>
+                              <span className="text-sm shrink-0">
+                                {assessment.quality === 'GOOD' ? '🟢' : assessment.quality === 'CAUTION' ? '🟡' : '🔴'}
+                              </span>
+                              <div className="space-y-0.5">
+                                <span className="font-bold block text-xs">
+                                  Match Rating: {assessment.scorePercent}% — {assessment.textRemark}
+                                </span>
+                                <p className="text-[11px] leading-relaxed opacity-90 font-normal">
+                                  {assessment.quality === 'GOOD' && 'Document matches declared profile credentials with verified official seals and zero visual tampering detected.'}
+                                  {assessment.quality === 'CAUTION' && 'Document is readable but contains minor data variance or unverified seal. Manual administrator check recommended.'}
+                                  {assessment.quality === 'BAD' && 'High mismatch or potential visual alteration detected. Document flagged for security risk.'}
+                                </p>
+                              </div>
+                            </div>
 
                           {/* Side-by-Side Discrepancy Grid */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             {/* Left: Declared Profile */}
-                            <div className="bg-white p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1.5">
+                            <div className="bg-[#F9F5EF]/50 p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1.5">
                               <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
                                 👤 Declared Applicant Profile
                               </span>
@@ -1257,10 +1274,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                               </span>
                               <div className="space-y-1 text-xs">
                                 <div className="flex justify-between items-center">
-                                  <span className="text-[#6C6C70]">Document Name:</span>
+                                  <span className="text-[#6C6C70]">Name on Document:</span>
                                   <div className="flex items-center gap-1">
                                     <strong className="text-[#1C1C1E]">{aiRes.extractedName || 'Not detected'}</strong>
-                                    {aiRes.crossCheckResults.nameMatch ? (
+                                    {aiRes.crossCheckResults?.nameMatch ? (
                                       <span className="text-[10px] text-[#2D5941]" title="Name matches profile">✓</span>
                                     ) : (
                                       <span className="text-[10px] text-[#B34040]" title="Name mismatch detected">⚠️</span>
@@ -1271,7 +1288,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   <span className="text-[#6C6C70]">School on Doc:</span>
                                   <div className="flex items-center gap-1">
                                     <strong className="text-[#1C1C1E]">{aiRes.extractedSchool || 'Not detected'}</strong>
-                                    {aiRes.crossCheckResults.schoolMatch ? (
+                                    {aiRes.crossCheckResults?.schoolMatch ? (
                                       <span className="text-[10px] text-[#2D5941]">✓</span>
                                     ) : (
                                       <span className="text-[10px] text-[#B34040]">⚠️</span>
@@ -1285,7 +1302,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                 {aiRes.extractedGwa && (
                                   <div className="flex justify-between items-center">
                                     <span className="text-[#6C6C70]">Extracted GWA:</span>
-                                    <strong className="text-[#2D5941]">{aiRes.extractedGwa}</strong>
+                                    <strong className="text-[#2D5941] font-mono">{aiRes.extractedGwa}</strong>
                                   </div>
                                 )}
                               </div>
@@ -1293,11 +1310,11 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                           </div>
 
                           {/* Security Signals Checklist */}
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
                             <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
                               <span>{aiRes.hasOfficialSealOrSignature ? '🟢' : '🟡'}</span>
                               <span className="text-[#1C1C1E]">
-                                {aiRes.hasOfficialSealOrSignature ? 'Seal / Signature Detected' : 'Seal / Signature Unclear'}
+                                {aiRes.hasOfficialSealOrSignature ? 'Official Seal / Signature Detected' : 'Seal / Signature Unclear'}
                               </span>
                             </div>
                             <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
@@ -1309,16 +1326,16 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60 col-span-2 sm:col-span-1">
                               <span>🔒</span>
                               <span className="text-[#6C6C70] truncate font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
-                                Hash: {aiRes.sha256Hash?.slice(0, 10)}...
+                                Hash: {aiRes.sha256Hash ? aiRes.sha256Hash.slice(0, 10) + '...' : 'N/A'}
                               </span>
                             </div>
                           </div>
 
                           {/* Flags and Warnings list */}
-                          {aiRes.flags.length > 0 && (
-                            <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
+                          {aiRes.flags && aiRes.flags.length > 0 && (
+                            <div className="p-2.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
                               <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider block">
-                                ⚠️ Anomalies & Warnings Flagged:
+                                ⚠️ Compliance Anomalies & Warnings:
                               </span>
                               <ul className="list-disc list-inside text-xs text-[#B34040] space-y-0.5 font-medium">
                                 {aiRes.flags.map((flag, fIdx) => (
@@ -1333,7 +1350,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             <span className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-0.5">Forensic Summary:</span>
                             <p className="text-xs text-[#1C1C1E]">{aiRes.summary}</p>
                           </div>
-
+                          
                           {/* Quick action buttons for this report */}
                           <div className="flex justify-end gap-2 pt-1 border-t border-[#D9D2C5]/60">
                             <button
@@ -1359,7 +1376,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             </button>
                           </div>
                         </div>
-                      )}
+                      )
+                    })()}
 
                       {/* Inline remark / issue feedback when Flagged */}
                       {docStatus === 'Flagged' && (

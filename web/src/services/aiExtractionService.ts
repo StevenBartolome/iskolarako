@@ -752,6 +752,16 @@ export async function verifyDocumentAuthenticity({
     finalStatus = 'flagged';
   }
 
+  const crossCheckResults = {
+    nameMatch,
+    schoolMatch,
+    gwaMatch: rawResult.extracted_gwa ? true : null,
+    sealPresent: !!rawResult.has_official_seal_or_signature,
+    tamperingFound: !!rawResult.tampering_detected,
+  };
+
+  const calculatedScore = calculateDynamicConfidenceScore(rawResult, crossCheckResults, flags);
+
   return {
     isAuthenticLayout: !!rawResult.is_authentic_layout,
     tamperingDetected: !!rawResult.tampering_detected,
@@ -763,21 +773,111 @@ export async function verifyDocumentAuthenticity({
     extractedIncome: rawResult.extracted_income || '',
     extractedDocType: rawResult.extracted_doc_type || documentName,
     verificationStatus: finalStatus,
-    confidenceScore: typeof rawResult.confidence_score === 'number' ? rawResult.confidence_score : 0.9,
+    confidenceScore: calculatedScore,
     flags,
     summary: rawResult.summary || 'Document analyzed by AI Forensic Verification Engine.',
     aiModelUsed: modelName,
     provider: providerName,
     sha256Hash,
-    crossCheckResults: {
-      nameMatch,
-      schoolMatch,
-      gwaMatch: rawResult.extracted_gwa ? true : null,
-      sealPresent: !!rawResult.has_official_seal_or_signature,
-      tamperingFound: !!rawResult.tampering_detected,
-    },
+    crossCheckResults,
     rawResponse: rawResult,
   };
+}
+
+export function calculateDynamicConfidenceScore(
+  rawResult: any,
+  crossCheckResults: { nameMatch: boolean; schoolMatch: boolean; sealPresent: boolean; tamperingFound: boolean },
+  flags: string[]
+): number {
+  let score = 92;
+
+  if (rawResult.is_authentic_layout === false) {
+    score -= 18;
+  }
+
+  // Name match check
+  if (crossCheckResults.nameMatch === false) {
+    score -= 28;
+  } else if (crossCheckResults.nameMatch === true) {
+    score += 5;
+  }
+
+  // School / Issuing Agency match check
+  if (crossCheckResults.schoolMatch === false) {
+    score -= 18;
+  } else if (crossCheckResults.schoolMatch === true) {
+    score += 3;
+  }
+
+  // Official Seal / Stamp / Signature check
+  if (!crossCheckResults.sealPresent) {
+    score -= 12;
+  } else {
+    score += 3;
+  }
+
+  // Digital Tampering
+  if (crossCheckResults.tamperingFound) {
+    score -= 38;
+  }
+
+  // Penalty per flag (8 pts each, up to 25 pts)
+  if (flags && flags.length > 0) {
+    score -= Math.min(25, flags.length * 8);
+  }
+
+  // If rawResult.confidence_score is non-standard (e.g. 0.87, 0.72, etc.) blend it
+  if (typeof rawResult.confidence_score === 'number' && rawResult.confidence_score !== 0.9 && rawResult.confidence_score !== 0.95) {
+    const rawPct = rawResult.confidence_score <= 1 ? rawResult.confidence_score * 100 : rawResult.confidence_score;
+    score = Math.round((score + rawPct) / 2);
+  }
+
+  const finalScore = Math.max(15, Math.min(100, score));
+  return Number((finalScore / 100).toFixed(2));
+}
+
+export function getScoreAssessment(score: number): {
+  scorePercent: number;
+  label: string;
+  quality: 'GOOD' | 'CAUTION' | 'BAD';
+  badgeStyle: string;
+  textRemark: string;
+} {
+  const percent = score <= 1 ? Math.round(score * 100) : Math.round(score);
+
+  if (percent >= 90) {
+    return {
+      scorePercent: percent,
+      label: 'Excellent Match',
+      quality: 'GOOD',
+      badgeStyle: 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30',
+      textRemark: 'High Confidence & Verified Authentic (Good)',
+    };
+  } else if (percent >= 75) {
+    return {
+      scorePercent: percent,
+      label: 'Good Match',
+      quality: 'GOOD',
+      badgeStyle: 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30',
+      textRemark: 'Valid Document with Minor Notes (Good)',
+    };
+  } else if (percent >= 60) {
+    return {
+      scorePercent: percent,
+      label: 'Moderate Match',
+      quality: 'CAUTION',
+      badgeStyle: 'bg-[#FFF8EE] text-[#C97B2E] border-[#C97B2E]/30',
+      textRemark: 'Requires Manual Administrator Review (Caution)',
+    };
+  } else {
+    return {
+      scorePercent: percent,
+      label: 'Low Match / High Risk',
+      quality: 'BAD',
+      badgeStyle: 'bg-red-50 text-[#B34040] border-[#B34040]/30',
+      textRemark: 'Critical Security Mismatch / Potential Forgery (High Risk - Bad)',
+    };
+  }
 }
 
 // -------------------------------------------------------------
@@ -1176,8 +1276,14 @@ export async function generateCustomLetterWithAi(
   const groqKey = import.meta.env.VITE_GROQ_API_KEY;
 
   const gwa = params.programDetails?.maintainingGwa || '1.75';
-  const stipend = params.programDetails?.stipendAmount ? `₱${Number(params.programDetails.stipendAmount).toLocaleString()} / month` : 'Prescribed Grant Amount';
-  const tuition = params.programDetails?.coversTuition ? 'Full Tuition & Institutional Fees' : 'Standard Grant Coverage';
+  const stipend = params.programDetails?.stipendAmount ? `₱${Number(params.programDetails.stipendAmount).toLocaleString()}` : 'Prescribed Grant Amount';
+  const progDetails = params.programDetails as any;
+  const tMax = progDetails?.tuitionMaxAmount || progDetails?.tuition_max_amount;
+  const tType = progDetails?.tuitionCoverageType || progDetails?.tuition_coverage_type;
+  const coversT = progDetails?.coversTuition || progDetails?.coverstuition || progDetails?.covers_tuition;
+  const tuition = coversT
+    ? (tType === 'fixed_cap' && Number(tMax) > 0 ? `Tuition Subsidy Cap up to ₱${Number(tMax).toLocaleString()}` : 'Full Tuition & Institutional Fees')
+    : 'Standard Grant Coverage';
 
   const systemInstruction = `You are an elite academic scholarship administration and legal drafting AI for the Philippine scholarship platform "IskoAko".
 Your task is to draft a comprehensive, official scholarship letter tailored precisely to the Provider's instructions.
@@ -1187,7 +1293,7 @@ Context:
 - Scholarship Program: "${params.programTitle}"
 - Base Category: "${params.templateType}"
 - Minimum GWA: ${gwa}
-- Monthly Stipend: ${stipend}
+- Stipend / Allowance: ${stipend}
 - Tuition Coverage: ${tuition}
 
 Provider's Specific Prompt & Custom Requirements:
@@ -1649,7 +1755,7 @@ Analysis & Conversion Rules:
    - Course / Degree: {{course}}
    - Year Level: {{year_level}}
    - GWA / Maintaining Grade: {{gwa}}
-   - Monthly Stipend / Grant: {{stipend_amount}}
+   - Stipend / Allowance / Grant: {{stipend_amount}}
    - Cycle / Intake: {{cycle_name}}
    - Application ID / Reference Number: {{application_id}}
    - Date: {{date}}

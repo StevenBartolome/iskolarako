@@ -11,6 +11,8 @@ interface AdminProgramDetails {
   course_eligibility: string[];
   budget_total: number | null;
   covers_tuition: boolean;
+  tuition_coverage_type?: string;
+  tuition_max_amount?: number | null;
   covers_stipend: boolean;
   stipend_amount: number | null;
   covers_allowance: boolean;
@@ -92,7 +94,13 @@ export const AdminProgramDetailsModal: React.FC<AdminProgramDetailsModalProps> =
             <div className="grid grid-cols-2 gap-3 text-[11px]">
               <div className={`p-2 rounded ${program.covers_tuition ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-500'}`}>
                 <span className="font-bold">{program.covers_tuition ? '✓' : '✗'} Tuition</span>
-                {program.covers_tuition && <span className="ml-2">Full coverage</span>}
+                {program.covers_tuition && (
+                  <span className="ml-2">
+                    {program.tuition_coverage_type === 'fixed_cap' && Number(program.tuition_max_amount) > 0
+                      ? `Cap ₱${Number(program.tuition_max_amount).toLocaleString()}`
+                      : 'Full coverage'}
+                  </span>
+                )}
               </div>
               <div className={`p-2 rounded ${program.covers_stipend ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-500'}`}>
                 <span className="font-bold">{program.covers_stipend ? '✓' : '✗'} Stipend</span>
