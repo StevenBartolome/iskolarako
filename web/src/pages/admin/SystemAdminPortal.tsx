@@ -388,6 +388,21 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   useEffect(() => {
     if (activeTab === 'notifications') {
       fetchBroadcastsHistory();
+
+      const channel = supabase
+        .channel('admin-notifications-realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications' },
+          () => {
+            fetchBroadcastsHistory();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [activeTab]);
 

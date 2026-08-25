@@ -29,8 +29,15 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
     setLoading(true);
     try {
       const data = await fetchUserNotifications(userId);
-      setNotifications(data);
-      const unread = data.filter((n: any) => !n.is_read).length;
+      // For provider accounts, ONLY get notifications sent by the Admin targeted for Providers or Both
+      const adminNotifications = data.filter((n: any) => {
+        const meta = n.metadata || {};
+        if (meta.is_admin_broadcast) return false;
+        if (meta.target_audience === 'Students') return false;
+        return meta.sender_type === 'admin' || meta.target_audience === 'Providers' || meta.target_audience === 'Both';
+      });
+      setNotifications(adminNotifications);
+      const unread = adminNotifications.filter((n: any) => !n.is_read).length;
       onUnreadCountChange?.(unread);
     } catch (err) {
       console.error('Error loading provider notifications:', err);
@@ -94,7 +101,7 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
     if (activeFilter === 'unread') return !n.is_read;
     if (activeFilter === 'admin') {
       const meta = n.metadata || {};
-      return meta.sender_type === 'admin' || n.type === 'announcement';
+      return meta.sender_type === 'admin';
     }
     if (activeFilter === 'system') {
       return n.type === 'info' || n.type === 'warning';

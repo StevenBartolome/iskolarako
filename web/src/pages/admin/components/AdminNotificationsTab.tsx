@@ -285,7 +285,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                         type="button"
                         onClick={() => {
                           if (window.confirm(`Delete broadcast "${bc.title}"?`)) {
-                            onDeleteBroadcast(bc.id);
+                            onDeleteBroadcast(bc.broadcastId || bc.id);
                           }
                         }}
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-red-600 hover:text-red-800 font-bold px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border-0 cursor-pointer shrink-0"

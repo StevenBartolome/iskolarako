@@ -285,32 +285,53 @@ export const sendAdminAnnouncement = async (params: AdminAnnouncementParams): Pr
 
   try {
     const broadcastId = `admin-bc-${Date.now()}`;
-    let targetUserIds: string[] = [];
+    const userIdsSet = new Set<string>();
 
-    // Query target users based on selection
-    if (target === 'Students') {
-      const { data, error } = await supabase
+    if (target === 'Students' || target === 'Both') {
+      // 1. Fetch scholar user IDs from scholar table
+      const { data: scholarTableData, error: scholarErr } = await supabase
+        .from('scholar')
+        .select('user_id');
+      if (scholarErr) console.warn('[Admin Announcement Scholar Table Note]:', scholarErr.message);
+      scholarTableData?.forEach((s: any) => {
+        if (s.user_id) userIdsSet.add(s.user_id);
+      });
+
+      // 2. Fetch scholar user IDs from users table with role 'scholar'
+      const { data: usersScholarData, error: usersScholarErr } = await supabase
         .from('users')
         .select('id')
         .eq('role', 'scholar');
-      if (!error && data) targetUserIds = data.map(u => u.id);
-    } else if (target === 'Providers') {
-      const { data, error } = await supabase
+      if (usersScholarErr) console.warn('[Admin Announcement Users Scholar Note]:', usersScholarErr.message);
+      usersScholarData?.forEach((u: any) => {
+        if (u.id) userIdsSet.add(u.id);
+      });
+    }
+
+    if (target === 'Providers' || target === 'Both') {
+      // 1. Fetch provider user IDs from users table
+      const { data: usersProviderData, error: providerErr } = await supabase
         .from('users')
         .select('id')
         .in('role', ['provider', 'provider-member']);
-      if (!error && data) targetUserIds = data.map(u => u.id);
-    } else {
-      // Both
-      const { data, error } = await supabase
+      if (providerErr) console.warn('[Admin Announcement Provider Users Note]:', providerErr.message);
+      usersProviderData?.forEach((u: any) => {
+        if (u.id) userIdsSet.add(u.id);
+      });
+
+      // 2. Fetch users with non-null provider_id
+      const { data: providerIdUsers } = await supabase
         .from('users')
         .select('id')
-        .in('role', ['scholar', 'provider', 'provider-member', 'admin']);
-      if (!error && data) targetUserIds = data.map(u => u.id);
+        .not('provider_id', 'is', null);
+      providerIdUsers?.forEach((u: any) => {
+        if (u.id) userIdsSet.add(u.id);
+      });
     }
 
     // Filter out duplicates and invalid IDs
-    const uniqueUserIds = Array.from(new Set(targetUserIds.filter(Boolean)));
+    const uniqueUserIds = Array.from(userIdsSet).filter(Boolean);
+    console.log(`[sendAdminAnnouncement]: Target "${target}" resolved ${uniqueUserIds.length} target recipient user IDs.`);
 
     // Prepare notification rows for all target users
     const nowIso = new Date().toISOString();
@@ -360,6 +381,29 @@ export const sendAdminAnnouncement = async (params: AdminAnnouncementParams): Pr
         if (insErr) {
           console.error('[Admin Announcement Insert Chunk Error]:', insErr);
           return { success: false, count: 0, error: insErr.message || 'Permission denied on notifications table' };
+        }
+      }
+
+      // Trigger Real-Time Push Notifications to targeted recipients
+      if (uniqueUserIds.length > 0) {
+        try {
+          supabase.functions.invoke('send-push-notification', {
+            body: {
+              userIds: uniqueUserIds,
+              title: `📢 ${title}`,
+              body: message,
+              type: 'announcement',
+              data: {
+                senderName: adminName,
+                senderType: 'admin',
+                targetAudience: target,
+              },
+            },
+          }).then((res) => {
+            console.log(`[FCM Admin Push Result]:`, res.data || res.error || res);
+          });
+        } catch (pushErr) {
+          console.warn('[FCM Admin Push Trigger Note]:', pushErr);
         }
       }
     }
@@ -807,11 +851,21 @@ export const markAllNotificationsAsRead = async (userId: string) => {
 
 export const deleteNotification = async (notificationId: string) => {
   try {
-    const { error } = await supabase
+    // 1. Delete rows matching metadata->>broadcast_id (for broadcast group deletions)
+    const { error: metaErr } = await supabase
+      .from('notifications')
+      .delete()
+      .filter('metadata->>broadcast_id', 'eq', notificationId);
+
+    // 2. Also delete rows matching primary id
+    const { error: idErr } = await supabase
       .from('notifications')
       .delete()
       .eq('id', notificationId);
-    if (error) throw error;
+
+    if (metaErr && idErr) {
+      console.warn('[Delete Notification Warn]:', metaErr.message || idErr.message);
+    }
     return true;
   } catch (err) {
     console.error('[Delete Notification Error]:', err);

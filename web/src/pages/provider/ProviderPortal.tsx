@@ -632,6 +632,21 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   useEffect(() => {
     if (providerDetails?.id) {
       fetchBroadcasts();
+
+      const channel = supabase
+        .channel(`provider-announcements-realtime-${providerDetails.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications' },
+          () => {
+            fetchBroadcasts();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [providerDetails?.id, currentUserId]);
 
