@@ -176,7 +176,7 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
 
           {/* Multiple Category Addition Form */}
           {showAddCategoryForm && (
-            <form onSubmit={handleSaveMultipleCategories} className="p-4 bg-[#F9F5EF] border border-[#D9D2C5] rounded-xl space-y-3 mt-2">
+            <form onSubmit={handleSaveMultipleCategories} className="p-4 bg-[#FFFFFF] border border-[#D9D2C5] rounded-xl space-y-3 mt-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-[#1A3C2E] uppercase">Add New Categories</span>
                 <span className="text-[10px] text-[#6C6C70]">Separate multiple with commas or add fields</span>
@@ -246,7 +246,7 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
         {/* Maintenance toggle */}
         <div className="space-y-4 text-left">
           <h4 className="text-xs font-bold text-[#1C1C1E] uppercase">System State</h4>
-          <div className="flex items-center justify-between p-4 rounded-xl border border-[#D9D2C5] bg-[#F9F5EF]/20">
+          <div className="flex items-center justify-between p-4 rounded-xl border border-[#D9D2C5] bg-[#FFFFFF]/20">
             <div>
               <span className="text-xs font-bold text-[#1C1C1E] block">Maintenance Mode</span>
               <span className="text-[10px] text-[#6C6C70]">Suspends applications for students temporarily.</span>
@@ -277,7 +277,7 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
         </div>
 
         {/* Provider Type Selector */}
-        <div className="flex bg-[#F9F5EF] p-1 rounded-xl border border-solid border-[#D9D2C5] max-w-md">
+        <div className="flex bg-[#FFFFFF] p-1 rounded-xl border border-solid border-[#D9D2C5] max-w-md">
           <button
             type="button"
             onClick={() => setSelectedProviderType('public')}
@@ -324,7 +324,7 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
                 {reqItems.map((item, idx) => (
-                  <div key={idx} className="p-3.5 bg-[#F9F5EF]/30 border border-[#D9D2C5] rounded-xl hover:border-[#2D5941] transition-all">
+                  <div key={idx} className="p-3.5 bg-[#FFFFFF]/30 border border-[#D9D2C5] rounded-xl hover:border-[#2D5941] transition-all">
                     {editingReqIndex === idx ? (
                       /* Inline Editing Mode for Requirement */
                       <div className="space-y-3">
@@ -419,7 +419,7 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
           </div>
 
           {/* Add New Requirement form */}
-          <div className="bg-[#F9F5EF]/10 p-4 border border-[#D9D2C5] rounded-xl space-y-3 h-fit">
+          <div className="bg-[#FFFFFF]/10 p-4 border border-[#D9D2C5] rounded-xl space-y-3 h-fit">
             <span className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Add Document Requirement</span>
             <form onSubmit={handleAddRequirement} className="space-y-3">
               {/* Provider Type Multi-Select Checkboxes */}

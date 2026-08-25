@@ -272,7 +272,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
           className={`px-4 py-2 rounded-2xl text-xs font-bold cursor-pointer border-0 transition-all ${
             activeReportSubTab === 'escalations'
               ? 'bg-[#1A3C2E] text-white shadow-xs'
-              : 'bg-[#F9F5EF] text-[#6C6C70] hover:text-[#1A3C2E]'
+              : 'bg-[#FFFFFF] text-[#6C6C70] hover:text-[#1A3C2E]'
           }`}
         >
           Escalations & Complaints ({reports.length})
@@ -283,7 +283,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
           className={`px-4 py-2 rounded-2xl text-xs font-bold cursor-pointer border-0 transition-all ${
             activeReportSubTab === 'insights'
               ? 'bg-[#1A3C2E] text-white shadow-xs'
-              : 'bg-[#F9F5EF] text-[#6C6C70] hover:text-[#1A3C2E]'
+              : 'bg-[#FFFFFF] text-[#6C6C70] hover:text-[#1A3C2E]'
           }`}
         >
           System-Wide Ecosystem Insights
@@ -311,13 +311,13 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
                   placeholder="Search complaints..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-xs rounded-xl bg-[#F9F5EF] border border-[#D9D2C5] text-[#1A3C2E] outline-none focus:border-[#1A3C2E] w-48"
+                  className="pl-8 pr-3 py-1.5 text-xs rounded-xl bg-[#FFFFFF] border border-[#D9D2C5] text-[#1A3C2E] outline-none focus:border-[#1A3C2E] w-48"
                 />
                 <span className="absolute left-2.5 top-2 text-xs text-[#8E8E93]">🔍</span>
               </div>
 
               {/* Status Filter Buttons */}
-              <div className="flex items-center p-1 bg-[#F9F5EF] rounded-xl border border-[#D9D2C5]/60">
+              <div className="flex items-center p-1 bg-[#FFFFFF] rounded-xl border border-[#D9D2C5]/60">
                 {(['All', 'Under Investigation', 'Resolved'] as const).map(status => (
                   <button
                     key={status}
@@ -336,14 +336,14 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
 
           <div className="space-y-4">
             {filteredReports.length === 0 ? (
-              <div className="text-center py-12 bg-[#F9F5EF]/50 rounded-2xl border border-dashed border-[#D9D2C5]">
+              <div className="text-center py-12 bg-[#FFFFFF]/50 rounded-2xl border border-dashed border-[#D9D2C5]">
                 <span className="text-3xl block mb-2">🎉</span>
                 <h4 className="text-sm font-bold text-[#1A3C2E]">No Reports in this Queue</h4>
                 <p className="text-xs text-[#8E8E93] mt-1">All complaints have been resolved or no matching records found.</p>
               </div>
             ) : (
               filteredReports.map(rep => (
-                <div key={rep.id} className="p-5 border border-[#D9D2C5]/70 rounded-2xl bg-[#F9F5EF]/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-[#1A3C2E]/40 transition-colors">
+                <div key={rep.id} className="p-5 border border-[#D9D2C5]/70 rounded-2xl bg-[#FFFFFF]/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-[#1A3C2E]/40 transition-colors">
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono font-bold text-[#1A3C2E]">REPORT #{rep.id}</span>
@@ -408,7 +408,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
               {Object.entries(providerTypeStats).map(([type, count]) => {
                 const pct = providers.length > 0 ? ((count / providers.length) * 100).toFixed(0) : '0';
                 return (
-                  <div key={type} className="p-3.5 rounded-2xl bg-[#F9F5EF] border border-[#D9D2C5]/60">
+                  <div key={type} className="p-3.5 rounded-2xl bg-[#FFFFFF] border border-[#D9D2C5]/60">
                     <div className="flex justify-between text-xs font-bold mb-1.5">
                       <span className="text-[#1A3C2E]">{type}</span>
                       <span className="font-mono text-[#2D5941]">{count} ({pct}%)</span>
@@ -438,7 +438,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
               {Object.entries(scholarshipTypeStats).map(([cat, count]) => {
                 const pct = scholarships.length > 0 ? ((count / scholarships.length) * 100).toFixed(0) : '0';
                 return (
-                  <div key={cat} className="p-3.5 rounded-2xl bg-[#F9F5EF] border border-[#D9D2C5]/60">
+                  <div key={cat} className="p-3.5 rounded-2xl bg-[#FFFFFF] border border-[#D9D2C5]/60">
                     <div className="flex justify-between text-xs font-bold mb-1.5">
                       <span className="text-[#1A3C2E]">{cat}</span>
                       <span className="font-mono text-[#C97B2E]">{count} ({pct}%)</span>

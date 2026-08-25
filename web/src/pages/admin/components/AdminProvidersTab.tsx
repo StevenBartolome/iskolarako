@@ -318,7 +318,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                   className={`p-4 rounded-2xl border transition-all cursor-pointer flex justify-between items-center ${
                     selectedProvider?.id === prov.id
                       ? 'border-[#2D5941] bg-[#EBF5EE]/40 shadow-xs'
-                      : 'border-[#D9D2C5] bg-white hover:bg-[#F9F5EF]/50'
+                      : 'border-[#D9D2C5] bg-white hover:bg-[#FFFFFF]/50'
                   }`}
                 >
                   <div className="space-y-1">
@@ -351,7 +351,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
           </div>
 
           {/* Organization Verification & Detail Pane (7 Cols) */}
-          <div className="lg:col-span-7 bg-[#F9F5EF]/50 border border-[#D9D2C5] rounded-3xl p-6">
+          <div className="lg:col-span-7 bg-[#FFFFFF]/50 border border-[#D9D2C5] rounded-3xl p-6">
             {selectedProvider ? (
               <div className="space-y-5">
                 {/* Header */}
@@ -560,7 +560,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                           className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border ${
                                             isExpanded
                                               ? 'bg-[#1A3C2E] text-white border-[#1A3C2E]'
-                                              : 'bg-white text-[#1A3C2E] border-[#D9D2C5] hover:bg-[#F9F5EF]'
+                                              : 'bg-white text-[#1A3C2E] border-[#D9D2C5] hover:bg-[#FFFFFF]'
                                           }`}
                                         >
                                           <span>{isExpanded ? '▲ Hide Report' : '▼ AI Forensic'}</span>
@@ -598,7 +598,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
 
                                   {/* Expandable Forensic Breakdown */}
                                   {isExpanded && aiRes && (
-                                    <div className="mt-1 p-3.5 bg-[#F9F5EF] rounded-2xl border border-[#D9D2C5] space-y-3 animate-fade-in">
+                                    <div className="mt-1 p-3.5 bg-[#FFFFFF] rounded-2xl border border-[#D9D2C5] space-y-3 animate-fade-in">
                                       {/* Side-by-Side Comparison */}
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                         {/* Left: Declared Org Profile */}

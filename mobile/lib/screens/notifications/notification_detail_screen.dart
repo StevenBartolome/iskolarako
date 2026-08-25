@@ -132,9 +132,8 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
           children: [
             // Top Navigation Bar
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
@@ -142,29 +141,71 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.rule, width: 0.8),
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(8),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: const Center(
                         child: Icon(
-                          LucideIcons.chevronLeft,
-                          color: AppColors.primaryDark,
-                          size: 22,
+                          LucideIcons.arrowLeft,
+                          color: Color(0xFF1E3D2F),
+                          size: 20,
                         ),
                       ),
                     ),
                   ),
-                  Text(
-                    'NOTICE DETAILS',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.amberDeep,
-                      letterSpacing: 1.2,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.diamond_rounded,
+                              size: 13,
+                              color: AppColors.amber,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'NOTICE DETAILS',
+                              style: GoogleFonts.inter(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.amberDeep,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Broadcast & Alerts',
+                          style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF1E3D2F),
+                            height: 1.15,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 40),
+                  const SizedBox(width: 8),
+                  Image.asset(
+                    'assets/images/books-hats-icon.png',
+                    width: 68,
+                    height: 60,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                  ),
                 ],
               ),
             ),

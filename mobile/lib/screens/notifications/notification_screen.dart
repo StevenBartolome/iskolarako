@@ -64,6 +64,7 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
+  static final Set<String> _readItemIds = {};
   String _selectedTab = 'All';
   bool _isLoading = true;
   List<NotificationItem> _notifications = [];
@@ -265,15 +266,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
                      d['verification_status']?.toString().toLowerCase() == 'rejected'));
 
                 if (hasFlagged) {
+                  final itemId = 'flagged_${app['id']}';
                   loaded.add(
                     NotificationItem(
-                      id: 'flagged_${app['id']}',
+                      id: itemId,
                       icon: LucideIcons.alertTriangle,
                       iconVariant: IconVariant.amber,
                       title: 'Action Required: Document Issue Flagged ⚠️',
                       message: 'An issue was noted in your submitted requirement for $progTitle. Tap to view provider instructions and resubmit.',
                       time: timeStr,
-                      isUnread: true,
+                      isUnread: !_readItemIds.contains(itemId),
                       accentType: StatusType.pending,
                       actionLabel: 'Resubmit File →',
                       route: AppRouter.applicationTracker,
@@ -284,15 +286,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 }
 
                 if (status == 'for_exam') {
+                  final itemId = 'exam_${app['id']}';
                   loaded.add(
                     NotificationItem(
-                      id: 'exam_${app['id']}',
+                      id: itemId,
                       icon: LucideIcons.fileCheck,
                       iconVariant: IconVariant.green,
                       title: 'Examination Shortlist 🎉',
                       message: 'Congratulations! You passed the initial evaluation for $progTitle. You are now shortlisted for the Examination stage.',
                       time: timeStr,
-                      isUnread: true,
+                      isUnread: !_readItemIds.contains(itemId),
                       accentType: StatusType.approved,
                       actionLabel: 'View Details →',
                       route: AppRouter.applicationTracker,
@@ -301,15 +304,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     ),
                   );
                 } else if (status == 'approved') {
+                  final itemId = 'approved_${app['id']}';
                   loaded.add(
                     NotificationItem(
-                      id: 'approved_${app['id']}',
+                      id: itemId,
                       icon: LucideIcons.checkCircle2,
                       iconVariant: IconVariant.green,
                       title: 'Application Approved! 🎓',
                       message: 'Congratulations! Your scholarship application for $progTitle has been officially approved. Welcome to the scholarship program!',
                       time: timeStr,
-                      isUnread: true,
+                      isUnread: !_readItemIds.contains(itemId),
                       accentType: StatusType.approved,
                       actionLabel: 'View Status →',
                       route: AppRouter.applicationTracker,
@@ -318,9 +322,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     ),
                   );
                 } else if (status == 'rejected') {
+                  final itemId = 'rejected_${app['id']}';
                   loaded.add(
                     NotificationItem(
-                      id: 'rejected_${app['id']}',
+                      id: itemId,
                       icon: LucideIcons.xCircle,
                       iconVariant: IconVariant.red,
                       title: 'Application Status Update',
@@ -396,6 +401,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     setState(() {
       for (var n in _notifications) {
         n.isUnread = false;
+        _readItemIds.add(n.id);
       }
     });
 
@@ -427,6 +433,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Future<void> _handleNotificationTap(NotificationItem item) async {
     if (item.isUnread) {
+      _readItemIds.add(item.id);
       setState(() => item.isUnread = false);
       try {
         await Supabase.instance.client
@@ -506,28 +513,64 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(LucideIcons.bellOff, size: 48, color: AppColors.textMuted),
-            const SizedBox(height: 16),
+            Container(
+              width: 130,
+              height: 130,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF4F7EB),
+                shape: BoxShape.circle,
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Positioned(
+                    top: 24,
+                    right: 28,
+                    child: Icon(
+                      LucideIcons.leaf,
+                      size: 26,
+                      color: const Color(0xFF5BA778).withAlpha(180),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 24,
+                    left: 26,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      size: 24,
+                      color: const Color(0xFFEAB308).withAlpha(200),
+                    ),
+                  ),
+                  const Icon(
+                    LucideIcons.bellOff,
+                    size: 56,
+                    color: Color(0xFF1E3D2F),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             Text(
-              'No notifications in this category',
+              'No Notifications',
               style: GoogleFonts.inter(
                 fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryDark,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1E3D2F),
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'You are all caught up with your scholarship notices and broadcasts.',
+              'You are all caught up! You will receive updates here when official scholarship announcements or status changes are posted.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
-                fontSize: 12,
-                color: AppColors.textSecondary,
+                fontSize: 13,
+                color: const Color(0xFF6B7280),
+                height: 1.4,
               ),
             ),
           ],
@@ -537,6 +580,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Widget _buildHeader(BuildContext context, {required int unreadCount}) {
+    final canPop = Navigator.canPop(context);
     return SafeArea(
       bottom: false,
       child: Padding(
@@ -545,87 +589,148 @@ class _NotificationScreenState extends State<NotificationScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    if (Navigator.canPop(context)) ...[
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: const Icon(
-                          LucideIcons.chevronLeft,
-                          color: AppColors.primary,
-                          size: 24,
+                if (canPop) ...[
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(8),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          LucideIcons.arrowLeft,
+                          color: Color(0xFF1E3D2F),
+                          size: 20,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                    ],
-                    const Icon(
-                      Icons.diamond_rounded,
-                      size: 14,
-                      color: AppColors.amber,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'NOTIFICATION INBOX',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.amberDeep,
-                        letterSpacing: 1.2,
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.diamond_rounded,
+                            size: 13,
+                            color: AppColors.amber,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'NOTIFICATION INBOX',
+                            style: GoogleFonts.inter(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.amberDeep,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        'Alerts & announcements.',
+                        style: GoogleFonts.inter(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: const Color(0xFF1E3D2F),
+                          height: 1.15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Image.asset(
+                  'assets/images/books-hats-icon.png',
+                  width: 68,
+                  height: 60,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _selectedTab == 'All' ? 'All Notices' : '$_selectedTab Notices',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF6B7280),
+                  ),
                 ),
                 GestureDetector(
                   onTap: _markAllAsRead,
-                  child: Text(
-                    'Mark all read',
-                    style: GoogleFonts.inter(
-                      color: AppColors.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(LucideIcons.checkCheck, size: 14, color: Color(0xFF15803D)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Mark read',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFF15803D),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Alerts &\nannouncements.',
-              style: GoogleFonts.inter(
-                fontSize: 34,
-                fontWeight: FontWeight.w900,
-                color: AppColors.primaryDark,
-                height: 1.15,
-              ),
-            ),
-            const SizedBox(height: 14),
-            // Tab row with Announcements tab
+            const SizedBox(height: 12),
+            // Modern Filter Pill Tabs
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _TabItem(
+                  _PillTabItem(
                     label: 'All',
                     badge: unreadCount > 0 ? '$unreadCount' : null,
                     isActive: _selectedTab == 'All',
                     onTap: () => setState(() => _selectedTab = 'All'),
                   ),
-                  const SizedBox(width: 18),
-                  _TabItem(
+                  const SizedBox(width: 8),
+                  _PillTabItem(
                     label: 'Announcements',
                     isActive: _selectedTab == 'Announcements',
                     onTap: () => setState(() => _selectedTab = 'Announcements'),
                   ),
-                  const SizedBox(width: 18),
-                  _TabItem(
+                  const SizedBox(width: 8),
+                  _PillTabItem(
                     label: 'Updates',
                     isActive: _selectedTab == 'Updates',
                     onTap: () => setState(() => _selectedTab = 'Updates'),
                   ),
-                  const SizedBox(width: 18),
-                  _TabItem(
+                  const SizedBox(width: 8),
+                  _PillTabItem(
                     label: 'Reminders',
                     isActive: _selectedTab == 'Reminders',
                     onTap: () => setState(() => _selectedTab = 'Reminders'),
@@ -914,13 +1019,13 @@ class _NotifCard extends StatelessWidget {
 
 // ─── Tab item ────────────────────────────────────────────────────────────────
 
-class _TabItem extends StatelessWidget {
+class _PillTabItem extends StatelessWidget {
   final String label;
   final String? badge;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _TabItem({
+  const _PillTabItem({
     required this.label,
     this.badge,
     required this.isActive,
@@ -931,52 +1036,53 @@ class _TabItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                  color: isActive
-                      ? AppColors.primaryDark
-                      : AppColors.textMuted,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF1E3D2F) : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF1E3D2F).withAlpha(40),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : [],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12.5,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                color: isActive ? Colors.white : const Color(0xFF6B7280),
+              ),
+            ),
+            if (badge != null) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  badge!,
+                  style: GoogleFonts.inter(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF1E3D2F),
+                  ),
                 ),
               ),
-              if (badge != null) ...[
-                const SizedBox(width: 5),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: AppColors.gold,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    badge!,
-                    style: GoogleFonts.inter(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryDark,
-                    ),
-                  ),
-                ),
-              ],
             ],
-          ),
-          const SizedBox(height: 4),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: isActive ? 32 : 0,
-            height: 2.5,
-            decoration: BoxDecoration(
-              color: AppColors.gold,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

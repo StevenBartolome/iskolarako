@@ -105,28 +105,28 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
               <button
                 type="button"
                 onClick={() => applyTemplate('maintenance')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
                 ⚙️ Maintenance
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('deadline')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
                 ⏰ Deadline Notice
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('policy')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
                 📜 Provider Policy
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('welcome')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
                 🎉 Welcome A.Y.
               </button>
@@ -139,7 +139,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
               <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
                 Target Audience
               </label>
-              <div className="flex bg-[#F9F5EF] p-1 rounded-2xl border border-[#D9D2C5]/60">
+              <div className="flex bg-[#FFFFFF] p-1 rounded-2xl border border-[#D9D2C5]/60">
                 {[
                   { target: 'Both', label: '🌟 All Users' },
                   { target: 'Students', label: '👨‍🎓 Scholars Only' },
@@ -223,7 +223,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
               </div>
 
               {/* Filter Tabs */}
-              <div className="flex items-center gap-1 bg-[#F9F5EF] p-1 rounded-xl border border-[#D9D2C5]/60">
+              <div className="flex items-center gap-1 bg-[#FFFFFF] p-1 rounded-xl border border-[#D9D2C5]/60">
                 {['All', 'Both', 'Students', 'Providers'].map(filter => (
                   <button
                     key={filter}

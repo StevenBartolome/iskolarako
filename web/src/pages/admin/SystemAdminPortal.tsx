@@ -1485,10 +1485,10 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
 
 
   return (
-    <div className="h-screen bg-[#F9F5EF] flex font-sans overflow-hidden relative">
+    <div className="h-screen bg-white flex font-sans overflow-hidden relative">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#1A3C2E] text-[#F9F5EF] border border-[#2D5941] px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">
+        <div className="fixed bottom-6 right-6 z-50 bg-[#1A3C2E] text-white border border-[#2D5941] px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">
           <svg className="w-5 h-5 text-[#E8A838]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -1653,7 +1653,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-8 overflow-y-auto max-w-7xl mx-auto space-y-6">
+      <main className="flex-1 p-8 overflow-y-auto w-full space-y-6">
         
         {/* Module Header */}
         <div className="flex items-center justify-between">

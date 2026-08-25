@@ -29,15 +29,15 @@ export const HomePage: React.FC = () => {
       {/* Stats Section */}
       <section id="stats" className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="text-center bg-gradient-to-br from-white to-[#F9F5EF]">
+          <Card className="text-center bg-gradient-to-br from-white to-[#FFFFFF]">
             <h3 className="text-4xl font-bold text-[#1A3C2E] font-serif">₱2.5M+</h3>
             <p className="text-sm text-[#6C6C70] mt-1 font-medium">Disbursed Funds Tracked</p>
           </Card>
-          <Card className="text-center bg-gradient-to-br from-white to-[#F9F5EF]">
+          <Card className="text-center bg-gradient-to-br from-white to-[#FFFFFF]">
             <h3 className="text-4xl font-bold text-[#C97B2E] font-serif">1,200+</h3>
             <p className="text-sm text-[#6C6C70] mt-1 font-medium">Verified Scholars</p>
           </Card>
-          <Card className="text-center bg-gradient-to-br from-white to-[#F9F5EF]">
+          <Card className="text-center bg-gradient-to-br from-white to-[#FFFFFF]">
             <h3 className="text-4xl font-bold text-[#2D5941] font-serif">99.8%</h3>
             <p className="text-sm text-[#6C6C70] mt-1 font-medium">Verification Accuracy</p>
           </Card>

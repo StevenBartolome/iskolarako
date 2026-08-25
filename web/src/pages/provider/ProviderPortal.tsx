@@ -2275,7 +2275,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   if (isLoadingProvider) {
     return (
-      <div className="min-h-screen bg-[#F9F5EF] flex items-center justify-center font-sans">
+      <div className="min-h-screen bg-white flex items-center justify-center font-sans">
         <div className="flex flex-col items-center gap-3">
           <svg className="animate-spin h-10 w-10 text-[#2D5941]" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -2288,7 +2288,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   }
 
   return (
-    <div className="h-screen bg-[#F9F5EF] flex font-sans overflow-hidden relative">
+    <div className="h-screen bg-white flex font-sans overflow-hidden relative">
 
       {/* Toast Alert */}
       {toastMessage && (
@@ -2324,7 +2324,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 </select>
               </div>
 
-              <div className="bg-[#F9F5EF] p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2 text-xs">
+              <div className="bg-white p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2 text-xs">
                 <div className="flex justify-between font-medium">
                   <span className="text-[#6C6C70]">Pending Transactions:</span>
                   <span className="font-bold text-[#1C1C1E]">
@@ -2408,7 +2408,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 )}
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-[11px] bg-[#F9F5EF] p-2.5 rounded-xl border border-[#D9D2C5]/50 gap-1.5">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-[11px] bg-white p-2.5 rounded-xl border border-[#D9D2C5]/50 gap-1.5">
                 <span className="font-medium text-[#6C6C70]">
                   <strong>Coordinates:</strong> {examCoords.lat.toFixed(4)}° N, {examCoords.lng.toFixed(4)}° E
                 </span>
@@ -2439,7 +2439,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       )}
 
       <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 overflow-hidden ${isCollapsed ? 'w-20' : 'w-72'}`}>
-        <div className="p-4 overflow-y-auto overflow-x-hidden flex-1">
+        <div className="p-4 overflow-y-auto overflow-x-hidden flex-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {/* Sidebar Header */}
           <div className={`flex items-center justify-between mb-8 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
             <div className="flex items-center gap-3">
@@ -2582,7 +2582,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       </aside>
 
       {/* Main Content Area with Top Header */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#F9F5EF]">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
         {/* Top Header Bar */}
         <header className="bg-white border-b border-[#D9D2C5]/60 px-8 py-3.5 flex items-center justify-between shrink-0 shadow-xs z-10">
           <div className="flex items-center gap-3">
@@ -2610,7 +2610,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             <button
               type="button"
               onClick={() => setIsNotificationDrawerOpen(true)}
-              className="relative p-2.5 rounded-2xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer flex items-center justify-center group"
+              className="relative p-2.5 rounded-2xl bg-white hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer flex items-center justify-center group"
               title="Notifications & Admin Broadcasts"
             >
               <svg className="w-5 h-5 transition-transform group-hover:scale-110 text-[#1A3C2E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2640,7 +2640,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-10 max-w-7xl w-full mx-auto">
+        <main className="flex-1 overflow-y-auto p-8 w-full">
         {activeTab === 'dashboard' && (
           <ProviderDashboardTab
             programsList={programsList}
@@ -3047,7 +3047,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             <div className="p-7 space-y-6">
               {/* Status & Policy */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                <div className="bg-white rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Status</span>
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
                     selectedProgram.status === 'Active' || selectedProgram.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
@@ -3056,11 +3056,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                     'bg-[#FDF2F2] text-[#B34040]'
                   }`}>{selectedProgram.status}</span>
                 </div>
-                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                <div className="bg-white rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Renewal Policy</span>
                   <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.renewalPolicy}</span>
                 </div>
-                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                <div className="bg-white rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Funding</span>
                   <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.fundingFrequency}</span>
                 </div>
@@ -3096,7 +3096,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Document Requirements</h4>
                   <div className="space-y-2">
                     {selectedProgram.applicationRequirements?.map((req: any, i: number) => (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-[#D9D2C5]/50 bg-[#F9F5EF]/50 text-xs">
+                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-[#D9D2C5]/50 bg-white/50 text-xs">
                         <div className="flex-1">
                           <span className="font-bold text-[#1C1C1E]">{req.name}</span>
                           {req.description && <span className="text-[#6C6C70] ml-2">— {req.description}</span>}
@@ -3121,7 +3121,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 </div>
                 <div className="space-y-2">
                   {selectedProgram.cycles?.map((cyc: any) => (
-                    <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
+                    <div key={cyc.id} className="flex justify-between items-center bg-white px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
                       <div>
                         <span className="font-bold text-[#1C1C1E] block">{cyc.name}</span>
                         {cyc.semester && <span className="text-[10px] text-[#6C6C70] font-medium">{cyc.semester}</span>}
@@ -3209,7 +3209,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                       setProgramForCycleSelect(null);
                       setActiveTab('create-program');
                     }}
-                    className="w-full text-left p-4 rounded-2xl border-2 border-[#1A3C2E]/20 hover:border-[#1A3C2E] bg-[#F9F5EF] hover:bg-[#EBF5EE] transition-all cursor-pointer group"
+                    className="w-full text-left p-4 rounded-2xl border-2 border-[#1A3C2E]/20 hover:border-[#1A3C2E] bg-white hover:bg-[#EBF5EE] transition-all cursor-pointer group"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-extrabold text-[#1A3C2E] group-hover:text-[#15803D]">

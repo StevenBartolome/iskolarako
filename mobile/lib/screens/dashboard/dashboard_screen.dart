@@ -323,8 +323,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => Navigator.pushNamed(
-                            context, AppRouter.scholarships),
+                        onTap: () => _navigateToTab(1, AppRouter.scholarships),
                         child: Text(
                           'See all',
                           style: GoogleFonts.inter(
@@ -353,8 +352,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => Navigator.pushNamed(
-                            context, AppRouter.applicationTracker),
+                        onTap: () => _navigateToTab(2, AppRouter.applicationTracker),
                         child: Text(
                           'View all',
                           style: GoogleFonts.inter(
@@ -1005,28 +1003,57 @@ class DashboardScreenState extends State<DashboardScreen> {
   // ─── 6. Recent Activity List ────────────────────────────────────────────────
   Widget _buildRecentActivity(BuildContext context) {
     if (_recentActivities.isEmpty) {
-      return Column(
-        children: [
-          _ActivityCardItem(
-            title: 'Application Approved',
-            programName: 'DOST-SEI Undergraduate Scholarship',
-            timeAgo: '2d ago',
-            statusLabel: 'Approved',
-            statusBgColor: const Color(0xFFDCFCE7),
-            statusTextColor: const Color(0xFF15803D),
-            onTap: () => _navigateToTab(2, AppRouter.applicationTracker),
-          ),
-          const SizedBox(height: 10),
-          _ActivityCardItem(
-            title: 'Application Approved',
-            programName: 'DOST-SEI Undergraduate Scholarship',
-            timeAgo: '5d ago',
-            statusLabel: 'Approved',
-            statusBgColor: const Color(0xFFDCFCE7),
-            statusTextColor: const Color(0xFF15803D),
-            onTap: () => _navigateToTab(2, AppRouter.applicationTracker),
-          ),
-        ],
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(6),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF3F4F6),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                LucideIcons.activity,
+                color: Color(0xFF9CA3AF),
+                size: 20,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'No Recent Activity',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF111827),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Your submitted applications, document updates, and status changes will appear here in real time.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: const Color(0xFF6B7280),
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
       );
     }
 
@@ -1035,33 +1062,42 @@ class DashboardScreenState extends State<DashboardScreen> {
         final act = _recentActivities[i];
         final cycle = act['cycle'] as Map<String, dynamic>?;
         final program = cycle?['program'] as Map<String, dynamic>?;
-        final title = program?['title'] ?? 'DOST-SEI Undergraduate Scholarship';
-        final dbStatus = act['status']?.toString().toLowerCase() ?? 'approved';
+        final title = program?['title'] ?? 'Scholarship Application';
+        final dbStatus = act['status']?.toString().toLowerCase() ?? 'pending';
 
-        String statusTitle = 'Application Approved';
-        String statusLabel = 'Approved';
-        Color bgCol = const Color(0xFFDCFCE7);
-        Color txtCol = const Color(0xFF15803D);
+        String statusTitle = 'Application Submitted';
+        String statusLabel = 'Submitted';
+        Color bgCol = const Color(0xFFFEF3C7);
+        Color txtCol = const Color(0xFFB45309);
 
-        if (dbStatus == 'pending' || dbStatus == 'under_review') {
-          statusTitle = 'Application Pending';
-          statusLabel = 'Pending';
-          bgCol = const Color(0xFFFEF3C7);
-          txtCol = const Color(0xFFB45309);
+        if (dbStatus == 'approved') {
+          statusTitle = 'Application Approved! 🎓';
+          statusLabel = 'Approved';
+          bgCol = const Color(0xFFDCFCE7);
+          txtCol = const Color(0xFF15803D);
+        } else if (dbStatus == 'for_exam') {
+          statusTitle = 'Shortlisted for Examination';
+          statusLabel = 'For Exam';
+          bgCol = const Color(0xFFE0F2FE);
+          txtCol = const Color(0xFF0369A1);
         } else if (dbStatus == 'rejected' || dbStatus == 'withdrawn') {
-          statusTitle = 'Application Status Update';
-          statusLabel = dbStatus.toUpperCase();
+          statusTitle = 'Application Evaluated';
+          statusLabel = dbStatus == 'rejected' ? 'Rejected' : 'Withdrawn';
           bgCol = const Color(0xFFFEE2E2);
           txtCol = const Color(0xFFB91C1C);
         }
 
-        final rawDate = act['created_at'] != null ? DateTime.tryParse(act['created_at'].toString()) : DateTime.now();
+        final rawDate = act['updated_at'] != null
+            ? DateTime.tryParse(act['updated_at'].toString())
+            : (act['created_at'] != null ? DateTime.tryParse(act['created_at'].toString()) : DateTime.now());
         final diff = DateTime.now().difference(rawDate ?? DateTime.now());
-        String timeAgo = '2d ago';
+        String timeAgo = 'Just now';
         if (diff.inDays > 0) {
           timeAgo = '${diff.inDays}d ago';
         } else if (diff.inHours > 0) {
           timeAgo = '${diff.inHours}h ago';
+        } else if (diff.inMinutes > 0) {
+          timeAgo = '${diff.inMinutes}m ago';
         }
 
         return Container(
