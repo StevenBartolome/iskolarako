@@ -38,7 +38,14 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (isOpen && actionType === 'process_refund' && !refundRef) {
+      setRefundRef(`REF-2026-${Math.floor(100000 + Math.random() * 900000)}`);
+    }
+  }, [isOpen, actionType]);
+
   if (!isOpen || !disbursement) return null;
+
 
   const getTitle = () => {
     switch (actionType) {
@@ -128,7 +135,7 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
         let { error } = await supabase
           .from('fund_releases')
           .update({
-            status: 'refunded',
+            status: 'returned',
             paymongo_status: 'refunded',
             refund_reference: refundRef.trim(),
             refund_remarks: remarks.trim() || 'Refund credited back to provider allocation pool',
@@ -141,11 +148,12 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
           const fallbackRes = await supabase
             .from('fund_releases')
             .update({
-              status: 'refunded',
+              status: 'returned',
               paymongo_status: 'refunded',
               updated_at: new Date().toISOString(),
             })
             .eq('id', releaseDbId);
+
           error = fallbackRes.error;
         }
 

@@ -253,11 +253,13 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
 
       for (final row in (appsData as List<dynamic>? ?? [])) {
         final appId = row['id']?.toString();
-        final hasRelease = releasesData.any((r) =>
-            r['application_id']?.toString() == appId &&
-            (r['status']?.toString().toLowerCase() == 'released' ||
-             r['status']?.toString().toLowerCase() == 'completed' ||
-             r['blockchain_verified'] == true));
+        final hasRelease = releasesData.any((r) {
+          final s = (r['status'] ?? '').toString().toLowerCase();
+          final isCompleted = s == 'released' || s == 'completed' || s == 'paid' || r['blockchain_verified'] == true;
+          final isCancelled = s == 'returned' || s == 'refunded' || s == 'failed';
+          return r['application_id']?.toString() == appId && isCompleted && !isCancelled;
+        });
+
         final cycle = row['cycle'] as Map<String, dynamic>?;
         final program = cycle?['program'] as Map<String, dynamic>?;
         final provider = program?['provider'] as Map<String, dynamic>?;

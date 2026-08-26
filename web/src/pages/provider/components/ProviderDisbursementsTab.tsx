@@ -436,9 +436,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
           if (rawStatus === 'failed' || pmStatus === 'failed') {
             mappedStatus = 'Failed';
-          } else if (rawStatus === 'refunded' || pmStatus === 'refunded') {
+          } else if (rawStatus === 'refunded' || rawStatus === 'returned' || pmStatus === 'refunded') {
             mappedStatus = 'Refunded';
           } else if (pmStatus === 'paid' || rawStatus === 'released' || rawStatus === 'completed' || item.blockchain_verified) {
+
             mappedStatus = 'Completed';
           } else if (rawStatus === 'processing' || pmStatus === 'processing' || rawStatus === 'pending' || pmStatus === 'pending') {
             mappedStatus = 'Processing';
@@ -1278,29 +1279,18 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         {tx.status === 'Completed' && (
-                          <>
-                            <button
-                              onClick={() => {
-                                setRefundModalItem(tx);
-                                setRefundActionType('flag_failed');
-                              }}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FDF2F2] hover:bg-[#B34040] text-[#B34040] hover:text-white border border-[#B34040]/20 transition-all cursor-pointer"
-                              title="Flag Bounced / Failed Transfer"
-                            >
-                              ⚠️ Flag Failed
-                            </button>
-                            <button
-                              onClick={() => {
-                                setRefundModalItem(tx);
-                                setRefundActionType('process_refund');
-                              }}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FFF8EE] hover:bg-[#C97B2E] text-[#C97B2E] hover:text-white border border-[#C97B2E]/20 transition-all cursor-pointer"
-                              title="Process Refund / Chargeback"
-                            >
-                              🔄 Refund
-                            </button>
-                          </>
+                          <button
+                            onClick={() => {
+                              setRefundModalItem(tx);
+                              setRefundActionType('process_refund');
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FFF8EE] hover:bg-[#C97B2E] text-[#C97B2E] hover:text-white border border-[#C97B2E]/20 transition-all cursor-pointer"
+                            title="Process Refund / Chargeback"
+                          >
+                            🔄 Refund
+                          </button>
                         )}
+
 
                         {(tx.status === 'Failed' || tx.status === 'Refunded') && (
                           <button

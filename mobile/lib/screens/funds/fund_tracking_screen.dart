@@ -120,13 +120,21 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
   double get _totalDisbursedAmount {
     double total = 0.0;
     for (final item in _filteredReleases) {
-      final amt = item['amount'];
-      if (amt != null) {
-        total += (amt is num) ? amt.toDouble() : (double.tryParse(amt.toString()) ?? 0.0);
+      final s = (item['status'] ?? '').toString().toLowerCase();
+      final pmStatus = (item['paymongo_status'] ?? '').toString().toLowerCase();
+      final isCompleted = s == 'released' || s == 'completed' || s == 'paid' || pmStatus == 'paid' || item['blockchain_verified'] == true;
+      final isFailedOrReturned = s == 'failed' || s == 'returned' || s == 'refunded' || pmStatus == 'failed' || pmStatus == 'refunded';
+
+      if (isCompleted && !isFailedOrReturned) {
+        final amt = item['amount'];
+        if (amt != null) {
+          total += (amt is num) ? amt.toDouble() : (double.tryParse(amt.toString()) ?? 0.0);
+        }
       }
     }
     return total;
   }
+
 
   List<Map<String, dynamic>> get _filteredReleases {
     if (_selectedProgramFilter == 'All') {
@@ -699,7 +707,8 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                                   final txHash = rel['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
 
                                   final isFailed = status == 'failed';
-                                  final isRefunded = status == 'refunded';
+                                  final isRefunded = status == 'refunded' || status == 'returned';
+
 
                                   return Container(
                                     padding: const EdgeInsets.all(14),
