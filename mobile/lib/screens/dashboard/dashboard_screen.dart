@@ -528,7 +528,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                 GestureDetector(
                   onTap: () => _navigateToTab(1, AppRouter.scholarships),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(24),
@@ -536,15 +536,18 @@ class DashboardScreenState extends State<DashboardScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          'Browse Scholarships',
-                          style: GoogleFonts.inter(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF1E3D2F),
+                        Flexible(
+                          child: Text(
+                            'Browse Scholarships',
+                            style: GoogleFonts.inter(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF1E3D2F),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
                         const Icon(
                           LucideIcons.arrowRight,
                           size: 14,
@@ -771,8 +774,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF111827),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -783,8 +785,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                       color: const Color(0xFF6B7280),
                       height: 1.25,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
                   ),
                 ],
               ),
@@ -1232,8 +1233,7 @@ class _ActivityCardItem extends StatelessWidget {
                             fontSize: 11.5,
                             color: const Color(0xFF6B7280),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          softWrap: true,
                         ),
                       ),
                       const SizedBox(width: 8),

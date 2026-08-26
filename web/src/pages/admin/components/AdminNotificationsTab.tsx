@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface AdminBroadcastItem {
   id: string | number;
@@ -37,6 +37,12 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
   onDeleteBroadcast,
 }) => {
   const [activeFilter, setActiveFilter] = useState<'All' | 'Students' | 'Providers' | 'Both'>('All');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const ITEMS_PER_PAGE = 3;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter]);
 
   const applyTemplate = (type: 'maintenance' | 'deadline' | 'policy' | 'welcome') => {
     if (type === 'maintenance') {
@@ -62,6 +68,11 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
     if (activeFilter === 'All') return true;
     return b.target === activeFilter;
   });
+
+  const totalPages = Math.ceil(filteredBroadcasts.length / ITEMS_PER_PAGE) || 1;
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+  const paginatedBroadcasts = filteredBroadcasts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -254,7 +265,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                 </p>
               </div>
             ) : (
-              filteredBroadcasts.map(bc => (
+              paginatedBroadcasts.map(bc => (
                 <div
                   key={bc.id}
                   className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-sm space-y-3 hover:shadow-md transition-all animate-fade-in group"
@@ -300,6 +311,52 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                   </p>
                 </div>
               ))
+            )}
+
+            {/* Pagination Controls */}
+            {filteredBroadcasts.length > ITEMS_PER_PAGE && (
+              <div className="bg-white rounded-2xl border border-[#D9D2C5]/70 p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in">
+                <span className="text-xs font-semibold text-[#6C6C70]">
+                  Showing <strong className="text-[#1A3C2E]">{startIndex + 1}</strong> - <strong className="text-[#1A3C2E]">{Math.min(startIndex + ITEMS_PER_PAGE, filteredBroadcasts.length)}</strong> of <strong className="text-[#1A3C2E]">{filteredBroadcasts.length}</strong> broadcasts
+                </span>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={safePage <= 1}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#F9F5EF] hover:bg-[#EDE8DE] disabled:opacity-40 disabled:cursor-not-allowed text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>← Previous</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 px-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center justify-center ${
+                          safePage === pageNum
+                            ? 'bg-[#1A3C2E] text-white shadow-sm font-extrabold'
+                            : 'bg-[#F9F5EF] text-[#6C6C70] hover:bg-[#EDE8DE] hover:text-[#1A3C2E]'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={safePage >= totalPages}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#F9F5EF] hover:bg-[#EDE8DE] disabled:opacity-40 disabled:cursor-not-allowed text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Next →</span>
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>

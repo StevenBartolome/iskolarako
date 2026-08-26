@@ -1086,7 +1086,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                               ) : null}
                             </div>
 
-                            <p className="text-[10px] text-[#8E8E93] mt-1 truncate">
+                            <p className="text-[10px] text-[#8E8E93] mt-1 break-words">
                               File: {doc.filename || doc.name} {doc.filesize ? `• ${doc.filesize}` : ''} {doc.submitted_at ? `• Submitted ${doc.submitted_at}` : ''}
                             </p>
                           </div>
@@ -1108,7 +1108,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                       {doc.remarks && (
                         <div className="px-3 py-1.5 rounded-xl bg-[#F9F5EF] border border-[#D9D2C5]/70 text-[11px] text-[#6C6C70] flex items-center gap-2">
                           <span className="font-semibold text-[#1A3C2E] shrink-0">Note:</span>
-                          <span className="truncate">{doc.remarks}</span>
+                          <span className="break-words">{doc.remarks}</span>
                         </div>
                       )}
 
@@ -1325,8 +1325,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             </div>
                             <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60 col-span-2 sm:col-span-1">
                               <span>🔒</span>
-                              <span className="text-[#6C6C70] truncate font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
-                                Hash: {aiRes.sha256Hash ? aiRes.sha256Hash.slice(0, 10) + '...' : 'N/A'}
+                              <span className="text-[#6C6C70] break-words break-all font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
+                                Hash: {aiRes.sha256Hash || 'N/A'}
                               </span>
                             </div>
                           </div>

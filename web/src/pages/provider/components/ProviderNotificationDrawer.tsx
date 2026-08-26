@@ -292,14 +292,14 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
                         {item.title}
                       </h4>
 
-                      <p className="text-xs text-[#6C6C70] mt-1 leading-relaxed line-clamp-3">
+                      <p className="text-xs text-[#6C6C70] mt-1 leading-relaxed break-words">
                         {item.message}
                       </p>
 
                       {meta.location && (
                         <div className="mt-2 text-[10px] font-bold text-[#C97B2E] bg-amber-50/80 px-2 py-1 rounded-lg flex items-center gap-1 border border-amber-200/50">
                           <span>📍 Venue:</span>
-                          <span className="truncate">{meta.location}</span>
+                          <span className="break-words">{meta.location}</span>
                         </div>
                       )}
 

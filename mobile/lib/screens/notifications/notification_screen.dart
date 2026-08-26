@@ -934,8 +934,7 @@ class _NotifCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             message,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
+            softWrap: true,
             style: GoogleFonts.inter(
               fontSize: 12,
               color: AppColors.textSecondary,
@@ -965,7 +964,7 @@ class _NotifCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: AppColors.amberDeep,
                       ),
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                     ),
                   ),
                   const Icon(LucideIcons.chevronRight, size: 14, color: AppColors.amberDeep),

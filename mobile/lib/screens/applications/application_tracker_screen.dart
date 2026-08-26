@@ -2429,7 +2429,7 @@ class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
                                 fontWeight: FontWeight.w600,
                                 color: const Color(0xFF111827),
                               ),
-                              overflow: TextOverflow.ellipsis,
+                              softWrap: true,
                             ),
                           ),
                           Container(

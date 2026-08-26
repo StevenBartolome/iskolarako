@@ -761,9 +761,9 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                   <span className="text-[#6C6C70]">Citizenship</span>
                   <span className="font-semibold text-[#1A3C2E]">{application.citizenship || 'Filipino'}</span>
                 </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-[#6C6C70]">Address / City</span>
-                  <span className="font-semibold text-[#1A3C2E] text-right max-w-[200px] truncate">{application.address || 'Metro Manila'}</span>
+                <div className="flex flex-col sm:flex-row justify-between py-1.5 gap-1">
+                  <span className="text-[#6C6C70] shrink-0">Address / City</span>
+                  <span className="font-semibold text-[#1A3C2E] text-left sm:text-right break-words">{application.address || 'Metro Manila'}</span>
                 </div>
               </div>
             </div>

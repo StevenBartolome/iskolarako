@@ -404,7 +404,7 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                 {examCoords.address && (
                   <div className="text-[10.5px] font-semibold text-[#1A3C2E] bg-white p-1.5 rounded-xl border border-[#D9D2C5] flex items-start gap-1">
                     <span className="shrink-0 text-amber-600">📌</span>
-                    <span className="leading-snug truncate">{examCoords.address}</span>
+                    <span className="leading-snug break-words">{examCoords.address}</span>
                   </div>
                 )}
               </div>

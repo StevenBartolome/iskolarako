@@ -160,8 +160,8 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
 
               <div className="grid grid-cols-3 gap-1 border-t border-[#FADBD8]/40 pt-1 items-center">
                 <span className="font-semibold text-[#8A3333]">Scholar</span>
-                <span className="text-[#8A3333] font-semibold truncate" title={record.scholarName}>{record.scholarName}</span>
-                <span className="text-[#2D5941] font-semibold truncate" title={auditResult.onChainScholarId}>{auditResult.onChainScholarId}</span>
+                <span className="text-[#8A3333] font-semibold break-words" title={record.scholarName}>{record.scholarName}</span>
+                <span className="text-[#2D5941] font-semibold break-all" title={auditResult.onChainScholarId}>{auditResult.onChainScholarId}</span>
               </div>
             </div>
           </div>
@@ -185,7 +185,7 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
           <div className="space-y-1">
             <div className="text-[9px] uppercase text-white/70 font-semibold">Transaction Hash</div>
             <div className="font-mono text-[11px] text-[#EBF5EE] break-all bg-black/20 p-2 rounded-lg border border-white/10 flex justify-between items-center gap-2">
-              <span className="truncate">{record.txHash}</span>
+              <span className="break-all">{record.txHash}</span>
               <button
                 onClick={handleCopyHash}
                 className="px-2 py-0.5 bg-white/20 hover:bg-white/30 text-white text-[9px] font-bold rounded transition-all cursor-pointer shrink-0 print:hidden"
@@ -202,7 +202,7 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
             <span className="text-[#6C6C70] text-[9px] uppercase font-bold block">
               Scholar Recipient
             </span>
-            <span className="font-bold text-[#1C1C1E] text-xs block truncate" title={record.scholarName}>{record.scholarName}</span>
+            <span className="font-bold text-[#1C1C1E] text-xs block break-words" title={record.scholarName}>{record.scholarName}</span>
           </div>
           <div className="bg-[#F9F5EF] p-2.5 rounded-lg border border-[#D9D2C5]">
             <span className="text-[#6C6C70] text-[9px] uppercase font-bold block">
@@ -221,7 +221,7 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
             <span className="text-[#6C6C70] text-[9px] uppercase font-bold block">
               Grant Program
             </span>
-            <span className="font-semibold text-[#1C1C1E] text-xs block truncate">{record.programTitle}</span>
+            <span className="font-semibold text-[#1C1C1E] text-xs block break-words">{record.programTitle}</span>
           </div>
           <div className="bg-[#F9F5EF] p-2.5 rounded-lg border border-[#D9D2C5]">
             <span className="text-[#6C6C70] text-[9px] uppercase font-bold block">

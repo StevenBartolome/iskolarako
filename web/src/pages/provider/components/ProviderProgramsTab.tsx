@@ -182,16 +182,16 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                         {prog.status}
                       </span>
                       <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5]">
-                        ⚙️ Policy: {prog.renewalPolicy}
+                        ⚙️ Policy: {prog.renewalPolicy || prog.renewal_policy || 'Semestral Re-evaluation'}
                       </span>
                     </div>
                   </div>
 
                   <div>
-                    <h3 className="text-xl font-bold text-[#1A3C2E] font-serif leading-snug truncate">
+                    <h3 className="text-xl font-bold text-[#1A3C2E] font-serif leading-snug break-words">
                       {prog.title}
                     </h3>
-                    <p className="text-xs text-[#6C6C70] mt-0.5 font-medium line-clamp-1">
+                    <p className="text-xs text-[#6C6C70] mt-0.5 font-medium break-words">
                       {prog.description}
                     </p>
                   </div>

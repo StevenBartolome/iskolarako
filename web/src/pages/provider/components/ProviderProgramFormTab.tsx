@@ -818,7 +818,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   <span>Step {step.num}</span>
                   {isCompleted && <span>✓</span>}
                 </div>
-                <div className={`text-[11px] font-semibold truncate ${isActive ? 'text-white' : 'text-[#1C1C1E]'}`}>
+                <div className={`text-[11px] font-semibold break-words ${isActive ? 'text-white' : 'text-[#1C1C1E]'}`}>
                   {step.name}
                 </div>
               </button>
@@ -2081,7 +2081,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                                 : 'bg-[#F9F5EF] text-[#1C1C1E] border-[#D9D2C5] hover:bg-[#EDE8DE]'
                             }`}
                           >
-                            <span className="truncate">{r.name}</span>
+                            <span className="break-words">{r.name}</span>
                             <span className="text-[10px] font-bold ml-1 shrink-0">{isChecked ? '✓' : '+'}</span>
                           </button>
                         );

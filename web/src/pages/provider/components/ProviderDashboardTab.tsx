@@ -126,17 +126,44 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
             <span className="text-xs font-semibold text-[#8E8E93]">AY 2026-2027</span>
           </div>
           <div className="space-y-4 pt-2">
-            {programsList.map(prog => (
-              <div key={prog.id}>
-                <div className="flex justify-between text-xs font-semibold text-[#1C1C1E] mb-1.5">
-                  <span>{prog.title}</span>
-                  <span>{prog.budgetUsed} / {prog.budgetTotal}</span>
-                </div>
-                <div className="w-full bg-[#EDE8DE] h-3.5 rounded-full overflow-hidden">
-                  <div className="bg-[#2D5941] h-full rounded-full" style={{ width: '65%' }} />
-                </div>
-              </div>
-            ))}
+            {(!programsList || programsList.length === 0) ? (
+              <p className="text-xs text-[#8E8E93] italic py-2">No active scholarship programs found.</p>
+            ) : (
+              programsList.map(prog => {
+                const rawTotal = typeof prog.budget_total === 'number' && !isNaN(prog.budget_total)
+                  ? prog.budget_total
+                  : parseFloat(String(prog.budgetTotal || prog.amount || '0').replace(/[^0-9.]/g, '')) || 0;
+
+                const rawUsed = typeof prog.disbursed_total === 'number' && !isNaN(prog.disbursed_total)
+                  ? prog.disbursed_total
+                  : typeof prog.disbursedTotal === 'number' && !isNaN(prog.disbursedTotal)
+                  ? prog.disbursedTotal
+                  : parseFloat(String(prog.budgetUsed || '0').replace(/[^0-9.]/g, '')) || 0;
+
+                const percentage = rawTotal > 0 ? Math.min(100, Math.max(0, (rawUsed / rawTotal) * 100)) : 0;
+                const formattedPercentage = percentage.toFixed(1);
+
+                const displayUsed = prog.budgetUsed || `₱${rawUsed.toLocaleString()}`;
+                const displayTotal = prog.budgetTotal || `₱${rawTotal.toLocaleString()}`;
+
+                return (
+                  <div key={prog.id || prog.title}>
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center text-xs font-semibold text-[#1C1C1E] mb-1.5 gap-1">
+                      <span className="break-words font-medium">{prog.title}</span>
+                      <span className="shrink-0 text-left sm:text-right">
+                        {displayUsed} / {displayTotal} <span className="text-[#6C6C70] font-normal">({formattedPercentage}%)</span>
+                      </span>
+                    </div>
+                    <div className="w-full bg-[#EDE8DE] h-3.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-[#2D5941] h-full rounded-full transition-all duration-500 ease-out"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 

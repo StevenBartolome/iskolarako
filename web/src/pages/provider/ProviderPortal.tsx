@@ -309,7 +309,20 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     fetchCategories();
   }, []);
 
+  const mapFundingFreq = (freq: any) => {
+    if (!freq) return 'Per Semester';
+    const s = String(freq).toLowerCase().replace(/_/g, ' ');
+    if (s.includes('sem')) return 'Per Semester';
+    if (s.includes('year') || s.includes('annua')) return 'Annual';
+    if (s.includes('month')) return 'Monthly';
+    if (s.includes('one') || s.includes('single')) return 'One-Time Grant';
+    return String(freq);
+  };
+
   const mapDbToProgram = (dbProg: any): Program => {
+    const fundingFreq = mapFundingFreq(dbProg.funding_frequency || dbProg.fundingFrequency);
+    const renPolicy = dbProg.renewal_policy || dbProg.renewalPolicy || (dbProg.renewal_gwa_requirement ? `Semestral (GWA ≤ ${dbProg.renewal_gwa_requirement})` : dbProg.minimum_gwa ? `Semestral (GWA ≤ ${dbProg.minimum_gwa})` : 'Semestral Re-evaluation');
+
     return {
       id: dbProg.id,
       provider: providerDetails?.name || 'My Provider',
@@ -363,6 +376,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       custom_benefits: dbProg.custom_benefits || [],
       low_budget_threshold: dbProg.low_budget_threshold || 0.20,
       renewalGwa: dbProg.renewal_gwa_requirement ? String(dbProg.renewal_gwa_requirement) : '',
+      fundingFrequency: fundingFreq,
+      funding_frequency: fundingFreq,
+      renewalPolicy: renPolicy,
+      renewal_policy: renPolicy,
       cycles: (dbProg.cycles || []).map((cyc: any) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -1340,7 +1357,18 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               rawApplication: app
             };
 
-            const payouts = scholarPayoutsMap[scholar.id] || [];
+            const payouts = (scholarPayoutsMap[scholar.id] || []).filter((p: any) => {
+              if (p.program_id && prog.id) {
+                return String(p.program_id) === String(prog.id);
+              }
+              if (p.application_id && app.id) {
+                return String(p.application_id) === String(app.id);
+              }
+              if (p.cycle?.program_id && prog.id) {
+                return String(p.cycle.program_id) === String(prog.id);
+              }
+              return false;
+            });
             const releaseHistory = payouts.map(p => ({
               id: p.id,
               applicationId: p.application_id,
@@ -3192,11 +3220,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 </div>
                 <div className="bg-white rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Renewal Policy</span>
-                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.renewalPolicy}</span>
+                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.renewalPolicy || selectedProgram.renewal_policy || 'Semestral Re-evaluation'}</span>
                 </div>
                 <div className="bg-white rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Funding</span>
-                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.fundingFrequency}</span>
+                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.fundingFrequency || selectedProgram.funding_frequency || 'Per Semester'}</span>
                 </div>
               </div>
 
