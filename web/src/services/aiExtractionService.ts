@@ -53,6 +53,7 @@ export interface DocVerificationResult {
   extractedSchool?: string;
   extractedGwa?: string;
   extractedIncome?: string;
+  extractedTuitionAmount?: string;
   extractedDocType?: string;
   verificationStatus: 'verified' | 'flagged' | 'rejected' | 'manual_review_required';
   confidenceScore: number;
@@ -151,7 +152,8 @@ Perform forensic and content verification:
      c) Do NOT mark verification_status as "flagged" or "rejected" solely for reversed name order or middle initial vs full name. Set verification_status to "verified" if the names match under these rules.
    - Extract school/institution name and compare with "${context.school || ''}".
    - If Transcript of Records or Grade Slip, extract the actual GWA or academic term grades. Compare with declared GWA: "${context.gwa || ''}".
-   - If Indigency / ITR, extract the income amount.
+    - If Indigency / ITR, extract the income amount.
+    - If this document is a Certificate of Registration (COR), Statement of Account (SOA), Tuition Assessment, or Billing Statement, extract the total tuition amount or total matriculation fees (look for labels like "Total Assessment", "Total Tuition", "Gross Assessment", "Total Fees", "Balance", "Net Due", "Amount Payable").
 4. RELEVANCE & INTEGRITY: Is this upload valid and directly relevant to "${docName}", or is it irrelevant/corrupted?
 
 Return ONLY raw valid JSON (no markdown backticks, no commentary) in this exact format:
@@ -164,6 +166,7 @@ Return ONLY raw valid JSON (no markdown backticks, no commentary) in this exact 
   "extracted_school": "School name found on document",
   "extracted_gwa": "GWA found on document or empty string",
   "extracted_income": "Income found or empty string",
+  "extracted_tuition_amount": "Total tuition / matriculation fee found on document or empty string (numeric string only)",
   "extracted_doc_type": "Exact document type identified",
   "verification_status": "verified",
   "confidence_score": 0.95,
@@ -773,6 +776,7 @@ export async function verifyDocumentAuthenticity({
     extractedSchool: rawResult.extracted_school || '',
     extractedGwa: rawResult.extracted_gwa || '',
     extractedIncome: rawResult.extracted_income || '',
+    extractedTuitionAmount: rawResult.extracted_tuition_amount || '',
     extractedDocType: rawResult.extracted_doc_type || documentName,
     verificationStatus: finalStatus,
     confidenceScore: calculatedScore,

@@ -161,6 +161,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
           extractedSchool: result.extractedSchool,
           extractedGwa: result.extractedGwa,
           extractedIncome: result.extractedIncome,
+          extractedTuitionAmount: result.extractedTuitionAmount,
           extractedDocType: result.extractedDocType,
           crossCheckResults: result.crossCheckResults,
         },
@@ -1303,6 +1304,12 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   <div className="flex justify-between items-center">
                                     <span className="text-[#6C6C70]">Extracted GWA:</span>
                                     <strong className="text-[#2D5941] font-mono">{aiRes.extractedGwa}</strong>
+                                  </div>
+                                )}
+                                {aiRes.extractedTuitionAmount && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-[#6C6C70]">Extracted Tuition Fee:</span>
+                                    <strong className="text-[#1A3C2E] font-bold">₱{Number(aiRes.extractedTuitionAmount).toLocaleString()}</strong>
                                   </div>
                                 )}
                               </div>

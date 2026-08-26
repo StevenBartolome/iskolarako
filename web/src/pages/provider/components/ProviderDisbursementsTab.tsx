@@ -650,6 +650,24 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             if (progConfig.tuition_payout_mode === 'direct_to_school_off_system') {
               isTuitionDirectToSchool = true;
               tuitionAmt = 0;
+            } else if (progConfig.tuition_coverage_type === 'actual_matriculation') {
+              // Extract from the document's aiVerification
+              let extractedTuition = 0;
+              const docsList = subDocs && typeof subDocs === 'object'
+                ? (Array.isArray(subDocs.documents) ? subDocs.documents : (Array.isArray(subDocs) ? subDocs : []))
+                : [];
+              for (const doc of docsList) {
+                const aiVerify = doc.aiVerification || doc.ai_verification;
+                const amtVal = aiVerify?.extractedTuitionAmount || aiVerify?.ai_extracted_data?.extractedTuitionAmount || aiVerify?.extracted_tuition_amount;
+                if (amtVal) {
+                  const parsedAmt = parseFloat(String(amtVal).replace(/[^0-9.]/g, ''));
+                  if (!isNaN(parsedAmt) && parsedAmt > 0) {
+                    extractedTuition = parsedAmt;
+                    break;
+                  }
+                }
+              }
+              tuitionAmt = extractedTuition > 0 ? extractedTuition : Number(progConfig.tuition_max_amount || 0);
             } else {
               tuitionAmt = Number(progConfig.tuition_max_amount || 0);
             }
