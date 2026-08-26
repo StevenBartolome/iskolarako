@@ -264,10 +264,10 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       const { data: frData } = await supabase
         .from('fund_releases')
         .select('application_id, scholar_id, program_id, cycle_id, status, blockchain_verified')
-        .or(`program_id.eq.${selectedProgramId},cycle_id.eq.${cycId}`);
+        .eq('cycle_id', cycId);
 
-      const releasedScholarIds = new Set<string>();
       const releasedAppIds = new Set<string>();
+      const releasedScholarCycleKeys = new Set<string>();
 
       (frData || []).forEach((fr: any) => {
         const s = String(fr.status || '').toLowerCase();
@@ -279,15 +279,16 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           fr.blockchain_verified === true;
 
         if (isComplete) {
-          if (fr.scholar_id) releasedScholarIds.add(String(fr.scholar_id));
           if (fr.application_id) releasedAppIds.add(String(fr.application_id));
+          if (fr.scholar_id && fr.cycle_id) releasedScholarCycleKeys.add(`${fr.scholar_id}_${fr.cycle_id}`);
         }
       });
 
       const pendingApps = (apps || []).filter(
-        (a: any) => !releasedScholarIds.has(String(a.scholar_id)) && !releasedAppIds.has(String(a.id))
+        (a: any) => !releasedAppIds.has(String(a.id)) && !releasedScholarCycleKeys.has(`${a.scholar_id}_${cycId}`)
       );
       const scholarIds = pendingApps.map((a: any) => a.scholar_id);
+
 
 
       // 4. Fetch payment accounts for pending scholars
@@ -296,16 +297,20 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
         const { data: pAccounts } = await supabase
           .from('scholar_payment_accounts')
           .select('*')
-          .in('scholar_id', scholarIds);
+          .in('scholar_id', scholarIds)
+          .order('updated_at', { ascending: false });
 
         if (pAccounts) {
           pAccounts.forEach((acc) => {
-            paymentAccountsMap[`${acc.scholar_id}_${acc.program_id || 'global'}`] = acc;
+            if (acc.program_id && !paymentAccountsMap[`${acc.scholar_id}_${acc.program_id}`]) {
+              paymentAccountsMap[`${acc.scholar_id}_${acc.program_id}`] = acc;
+            }
             if (!paymentAccountsMap[acc.scholar_id]) {
               paymentAccountsMap[acc.scholar_id] = acc;
             }
           });
         }
+
       }
 
       const currentCycle = cycles.find((c) => c.id === cycId);
@@ -343,17 +348,11 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           } else {
             const rawAcc = paymentAccountsMap[app.scholar_id];
             if (rawAcc) {
-              const aiData = rawAcc.ai_extracted_data;
-              if (aiData && typeof aiData === 'object') {
-                const progIds = Array.isArray(aiData.program_ids) ? aiData.program_ids.map(String) : [];
-                const appIds = Array.isArray(aiData.application_ids) ? aiData.application_ids.map(String) : [];
-                if (progIds.includes(String(progId)) || appIds.includes(String(app.id))) {
-                  pAcc = rawAcc;
-                }
-              }
+              pAcc = rawAcc;
             }
           }
         }
+
 
         const hasPayment = !!pAcc;
         const isReady = hasPayment || isCash;
@@ -638,7 +637,10 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
         cycleId: row.cycleId,
         amount: row.amount,
         fundType: 'stipend',
-        paymentAccountId: row.paymentAccount?.id || null,
+        paymentAccountId: (row.paymentAccount?.id && row.paymentAccount.id !== 'app_bank_doc' && row.paymentAccount.id !== 'app-bank-details' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.paymentAccount.id))
+          ? row.paymentAccount.id
+          : null,
+
       }));
 
       try {

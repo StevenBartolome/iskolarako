@@ -418,13 +418,17 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             item.paymongo_status === 'cash_otc' ||
             (typeof mode === 'string' && mode.toLowerCase().includes('cash'));
 
+          const snap = item.recipient_account_snapshot || {};
+          const bankName = item.payment_account?.bank_name || snap.bank_name || snap.bankName || snap.bank;
+          const accNum = item.payment_account?.account_number || snap.account_number || snap.accountNumber;
+          const last4 = accNum ? String(accNum).slice(-4) : '';
+
           const bankInfo = isCash
             ? '💵 Over-the-Counter Cash'
-            : item.payment_account
-              ? `${item.payment_account.bank_name || 'Bank'} (•••• ${item.payment_account.account_number?.slice(-4) || '****'})`
-              : item.recipient_account_snapshot?.bankName
-                ? `${item.recipient_account_snapshot.bankName}`
-                : 'Bank / Direct';
+            : bankName
+              ? `💳 ${String(bankName).replace('of the Philippines', '')}${last4 ? ` (•••• ${last4})` : ''}`
+              : '💳 Online Direct Payout';
+
 
           let mappedStatus = 'Completed';
           const rawStatus = (item.status || '').toLowerCase();
@@ -502,7 +506,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         programsMap[p.id] = p;
       });
 
-      // 2. Fetch ONLY approved scholarship applications with cycle info
+      // 2. Fetch ONLY approved scholarship applications with cycle info & submitted documents
       const { data: appsData, error: appsErr } = await supabase
         .from('scholarship_applications')
         .select(`
@@ -510,6 +514,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           cycle_id,
           scholar_id,
           status,
+          submitted_documents,
           scholar:scholar_id(id, first_name, last_name, school),
           cycle:cycle_id(id, cycle_name, semester, cycle_type, program_id, program:program_id(id, title, budget_total, disbursement_mode, banking_policy, covers_tuition, tuition_payout_mode, tuition_coverage_type, tuition_max_amount, covers_stipend, stipend_amount, covers_allowance, allowance_amount, custom_benefits))
         `)
@@ -529,7 +534,6 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       const { data: existingReleases } = await existingReleasesQuery;
 
       const releasedAppIds = new Set<string>();
-      const releasedScholarIds = new Set<string>();
       const releasedScholarCycleKeys = new Set<string>();
       (existingReleases || []).forEach((fr: any) => {
         const s = String(fr.status || '').toLowerCase();
@@ -542,7 +546,6 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
         if (isComplete) {
           if (fr.application_id) releasedAppIds.add(String(fr.application_id));
-          if (fr.scholar_id) releasedScholarIds.add(String(fr.scholar_id));
           if (fr.scholar_id && fr.cycle_id) releasedScholarCycleKeys.add(`${fr.scholar_id}_${fr.cycle_id}`);
         }
       });
@@ -551,17 +554,20 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         new Set((appsData || []).map((a: any) => a.scholar_id).filter(Boolean))
       );
 
-      // 4. Fetch payment accounts for eligible scholars
+      // 4. Fetch payment accounts for eligible scholars (ordered by most recently updated)
       let paymentAccountsMap: Record<string, any> = {};
       if (scholarIds.length > 0) {
         const { data: pAccounts } = await supabase
           .from('scholar_payment_accounts')
           .select('*')
-          .in('scholar_id', scholarIds);
+          .in('scholar_id', scholarIds)
+          .order('updated_at', { ascending: false });
 
         if (pAccounts) {
           pAccounts.forEach((acc) => {
-            paymentAccountsMap[`${acc.scholar_id}_${acc.program_id || 'global'}`] = acc;
+            if (acc.program_id && !paymentAccountsMap[`${acc.scholar_id}_${acc.program_id}`]) {
+              paymentAccountsMap[`${acc.scholar_id}_${acc.program_id}`] = acc;
+            }
             if (!paymentAccountsMap[acc.scholar_id]) {
               paymentAccountsMap[acc.scholar_id] = acc;
             }
@@ -581,17 +587,15 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             return;
           }
 
-
           const isAlreadyReleased =
             releasedAppIds.has(String(app.id)) ||
-            releasedScholarIds.has(String(app.scholar_id)) ||
             releasedScholarCycleKeys.has(`${app.scholar_id}_${app.cycle_id}`);
           if (isAlreadyReleased) {
             return;
           }
 
-
           const scholarObj = app.scholar;
+
           const scholarName = scholarObj
             ? `${scholarObj.first_name || ''} ${scholarObj.last_name || ''}`.trim()
             : 'Approved Scholar';
@@ -615,10 +619,15 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           const subDocs = app.submitted_documents;
           if (subDocs && typeof subDocs === 'object' && subDocs.bank_details) {
             pAcc = {
+              id: subDocs.bank_details.id || 'app_bank_doc',
               bank_name: subDocs.bank_details.bank_name,
+              bankName: subDocs.bank_details.bank_name,
               account_name: subDocs.bank_details.account_name,
+              accountName: subDocs.bank_details.account_name,
               account_number: subDocs.bank_details.account_number,
+              accountNumber: subDocs.bank_details.account_number,
               document_proof_url: subDocs.bank_details.document_proof_url,
+              documentProofUrl: subDocs.bank_details.document_proof_url,
             };
           } else {
             const specificAcc = paymentAccountsMap[`${app.scholar_id}_${progId}`];
@@ -627,17 +636,11 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             } else {
               const rawAcc = paymentAccountsMap[app.scholar_id];
               if (rawAcc) {
-                const aiData = rawAcc.ai_extracted_data;
-                if (aiData && typeof aiData === 'object') {
-                  const progIds = Array.isArray(aiData.program_ids) ? aiData.program_ids.map(String) : [];
-                  const appIds = Array.isArray(aiData.application_ids) ? aiData.application_ids.map(String) : [];
-                  if (progIds.includes(String(progId)) || appIds.includes(String(app.id))) {
-                    pAcc = rawAcc;
-                  }
-                }
+                pAcc = rawAcc;
               }
             }
           }
+
 
           // Calculate Itemized Program Benefit Summary
           let tuitionAmt = 0;
@@ -942,7 +945,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
               cycleId: selected.cycleId,
               releasedBy: currentUser.id,
               fundType: currentFundType,
-              paymentAccountId: selected.paymentAccount?.id || null,
+              paymentAccountId: (selected.paymentAccount?.id && selected.paymentAccount.id !== 'app_bank_doc' && selected.paymentAccount.id !== 'app-bank-details' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selected.paymentAccount.id))
+                ? selected.paymentAccount.id
+                : null,
+
             }
           },
         });

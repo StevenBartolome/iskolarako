@@ -1078,7 +1078,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     if (appBankDoc != null) {
       bankObj = appBankDoc;
     } else if (_paymentAccounts.isNotEmpty) {
-      // Find specific program account first
+      // 1. Find specific program account first
       Map<String, dynamic>? specificAcc;
       for (final acc in _paymentAccounts) {
         if (acc['program_id']?.toString() == scholarship.programId) {
@@ -1090,34 +1090,36 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
       if (specificAcc != null) {
         bankObj = specificAcc;
       } else {
-        // Fallback to legacy/global scoping checks
+        // 2. Check if any payment account explicitly matches programId or applicationId
         for (final acc in _paymentAccounts) {
           final aiData = acc['ai_extracted_data'];
           if (aiData is Map) {
             final progIds = aiData['program_ids'];
             final appIds = aiData['application_ids'];
-            final hasProgIds = aiData.containsKey('program_ids');
-            final hasAppIds = aiData.containsKey('application_ids');
+            final matchesProg = progIds is List && scholarship.programId != null && progIds.map((e) => e.toString()).contains(scholarship.programId!);
+            final matchesApp = appIds is List && scholarship.applicationId != null && appIds.map((e) => e.toString()).contains(scholarship.applicationId!);
 
-            if (!hasProgIds && !hasAppIds) {
+            if (matchesProg || matchesApp) {
               bankObj = acc;
               break;
-            } else {
-              final matchesProg = progIds is List && scholarship.programId != null && progIds.map((e) => e.toString()).contains(scholarship.programId!);
-              final matchesApp = appIds is List && scholarship.applicationId != null && appIds.map((e) => e.toString()).contains(scholarship.applicationId!);
-
-              if (matchesProg || matchesApp) {
-                bankObj = acc;
-                break;
-              }
             }
-          } else {
-            bankObj = acc;
-            break;
+          }
+        }
+
+        // 3. Global Fallback: Use the scholar's primary or uploaded bank card for all programs!
+        if (bankObj == null) {
+          try {
+            bankObj = _paymentAccounts.firstWhere(
+              (acc) => acc['is_primary'] == true,
+              orElse: () => _paymentAccounts.first,
+            );
+          } catch (_) {
+            bankObj = _paymentAccounts.first;
           }
         }
       }
     }
+
 
     final hasBank = bankObj != null;
     final bankName = bankObj?['bank_name']?.toString() ?? 'UnionBank of the Philippines';

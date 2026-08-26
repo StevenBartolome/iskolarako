@@ -924,15 +924,19 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               const { data: pAccData } = await supabase
                 .from('scholar_payment_accounts')
                 .select('*')
-                .in('scholar_id', scholarIds);
+                .in('scholar_id', scholarIds)
+                .order('updated_at', { ascending: false });
               if (pAccData) {
                 pAccData.forEach((p: any) => {
-                  scholarPaymentMap[`${p.scholar_id}_${p.program_id || 'global'}`] = p;
+                  if (p.program_id && !scholarPaymentMap[`${p.scholar_id}_${p.program_id}`]) {
+                    scholarPaymentMap[`${p.scholar_id}_${p.program_id}`] = p;
+                  }
                   if (!scholarPaymentMap[p.scholar_id]) {
                     scholarPaymentMap[p.scholar_id] = p;
                   }
                 });
               }
+
             } catch (pErr) {
               console.warn('[Provider Scholar Payment Accounts Exception]:', pErr);
             }
