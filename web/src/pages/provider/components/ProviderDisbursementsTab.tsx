@@ -274,12 +274,27 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           if (fetchPrograms) fetchPrograms();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchLiveReleases();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholar_payment_accounts' },
+        () => {
+          fetchLiveReleases();
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(disbursementsChannel);
     };
   }, []);
+
 
   const handleCompletePayMongoRedirect = async (params: URLSearchParams) => {
     const numAmount = parseFloat(params.get('amt') || '0');
@@ -514,16 +529,20 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       const { data: existingReleases } = await existingReleasesQuery;
 
       const releasedAppIds = new Set<string>();
+      const releasedScholarIds = new Set<string>();
       const releasedScholarCycleKeys = new Set<string>();
       (existingReleases || []).forEach((fr: any) => {
+        const s = String(fr.status || '').toLowerCase();
         const isComplete =
-          fr.status === 'released' ||
-          fr.status === 'processing' ||
-          fr.blockchain_verified === true ||
-          fr.status === 'Completed';
+          s === 'released' ||
+          s === 'processing' ||
+          s === 'completed' ||
+          s === 'paid' ||
+          fr.blockchain_verified === true;
 
         if (isComplete) {
-          if (fr.application_id) releasedAppIds.add(fr.application_id);
+          if (fr.application_id) releasedAppIds.add(String(fr.application_id));
+          if (fr.scholar_id) releasedScholarIds.add(String(fr.scholar_id));
           if (fr.scholar_id && fr.cycle_id) releasedScholarCycleKeys.add(`${fr.scholar_id}_${fr.cycle_id}`);
         }
       });
@@ -558,16 +577,19 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           const progConfig = programsMap[progId] || app.cycle?.program || {};
           const disbursementMode = progConfig.disbursement_mode || 'online';
 
-          // Include cash-mode programs (disbursementMode is stored in list item)
-
           if (providerId && progId && !programsMap[progId]) {
             return;
           }
 
-          const isAlreadyReleased = releasedAppIds.has(app.id) || releasedScholarCycleKeys.has(`${app.scholar_id}_${app.cycle_id}`);
+
+          const isAlreadyReleased =
+            releasedAppIds.has(String(app.id)) ||
+            releasedScholarIds.has(String(app.scholar_id)) ||
+            releasedScholarCycleKeys.has(`${app.scholar_id}_${app.cycle_id}`);
           if (isAlreadyReleased) {
             return;
           }
+
 
           const scholarObj = app.scholar;
           const scholarName = scholarObj

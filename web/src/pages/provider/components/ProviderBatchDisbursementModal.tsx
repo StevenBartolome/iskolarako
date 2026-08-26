@@ -126,6 +126,41 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
     }
   }, [selectedProgramId, selectedCycleId]);
 
+  // Real-time listener for batch disbursement scholar availability
+  useEffect(() => {
+    if (!isOpen || !selectedProgramId || !selectedCycleId) return;
+
+    const channel = supabase
+      .channel('batch-modal-scholar-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fund_releases' },
+        () => {
+          fetchApprovedScholars(selectedProgramId, selectedCycleId);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchApprovedScholars(selectedProgramId, selectedCycleId);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholar_payment_accounts' },
+        () => {
+          fetchApprovedScholars(selectedProgramId, selectedCycleId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isOpen, selectedProgramId, selectedCycleId]);
+
+
   const fetchCyclesForProgram = async (programId: string) => {
     try {
       const { data, error } = await supabase
@@ -225,27 +260,35 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
       if (appsErr) console.warn('Apps query warning:', appsErr);
 
-      // 3. Fetch existing fund_releases for this cycle to exclude scholars whose payout for this cycle is already complete
+      // 3. Fetch existing fund_releases for this program/cycle to exclude scholars whose payout is already complete
       const { data: frData } = await supabase
         .from('fund_releases')
-        .select('application_id, scholar_id, status, blockchain_verified')
-        .eq('cycle_id', cycId);
+        .select('application_id, scholar_id, program_id, cycle_id, status, blockchain_verified')
+        .or(`program_id.eq.${selectedProgramId},cycle_id.eq.${cycId}`);
 
       const releasedScholarIds = new Set<string>();
-      (frData || []).forEach((fr: any) => {
-        const isComplete =
-          fr.status === 'released' ||
-          fr.status === 'processing' ||
-          fr.blockchain_verified === true ||
-          fr.status === 'Completed';
+      const releasedAppIds = new Set<string>();
 
-        if (isComplete && fr.scholar_id) {
-          releasedScholarIds.add(fr.scholar_id);
+      (frData || []).forEach((fr: any) => {
+        const s = String(fr.status || '').toLowerCase();
+        const isComplete =
+          s === 'released' ||
+          s === 'processing' ||
+          s === 'completed' ||
+          s === 'paid' ||
+          fr.blockchain_verified === true;
+
+        if (isComplete) {
+          if (fr.scholar_id) releasedScholarIds.add(String(fr.scholar_id));
+          if (fr.application_id) releasedAppIds.add(String(fr.application_id));
         }
       });
 
-      const pendingApps = (apps || []).filter((a: any) => !releasedScholarIds.has(a.scholar_id));
+      const pendingApps = (apps || []).filter(
+        (a: any) => !releasedScholarIds.has(String(a.scholar_id)) && !releasedAppIds.has(String(a.id))
+      );
       const scholarIds = pendingApps.map((a: any) => a.scholar_id);
+
 
       // 4. Fetch payment accounts for pending scholars
       let paymentAccountsMap: Record<string, any> = {};
@@ -486,6 +529,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           throw new Error('Insufficient program budget remaining for this scholar payout.');
         }
 
+        // Cash mode rows: process directly over-the-counter
         const isCashMode = row.disbursementMode === 'in_person_cash' || String(row.disbursementMode).includes('cash');
         if (isCashMode) {
           let cashTxHash = '';
@@ -564,31 +608,56 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
               r.scholarId === row.scholarId ? { ...r, status: 'success', txHash: cashTxHash } : r
             )
           );
-          continue;
         }
+      } catch (err: any) {
+        console.error(`Error releasing to ${selectedScholars[i]?.scholarName}:`, err);
+        failedCount++;
+        results.push({ scholarName: selectedScholars[i]?.scholarName, error: err.message || 'Release failed' });
+      }
+    }
 
-        // 1. Authorize PayMongo Payment Checkout Link creation (Single Payout alignment)
-        const origin = window.location.origin;
-        const successUrl = `${origin}/provider?disbursement=success&amt=${row.amount}&scholar_name=${encodeURIComponent(row.scholarName)}`;
-        const cancelUrl = `${origin}/provider?disbursement=cancelled`;
+    // Process Online Rows via Single Combined Batch PayMongo Payment Link
+    const onlineRows = selectedScholars.filter(
+      (r) => r.disbursementMode !== 'in_person_cash' && !String(r.disbursementMode).includes('cash')
+    );
 
+    if (onlineRows.length > 0) {
+      const totalOnlineAmount = onlineRows.reduce((sum, r) => sum + r.amount, 0);
+      const programTitle = onlineRows[0]?.programTitle || 'Scholarship Grant Batch';
+
+      const origin = window.location.origin;
+      const successUrl = `${origin}/provider?disbursement=success&batch=true&amt=${totalOnlineAmount}&count=${onlineRows.length}`;
+      const cancelUrl = `${origin}/provider?disbursement=cancelled`;
+
+      const batchItemsPayload = onlineRows.map((row) => ({
+        applicationId: row.applicationId,
+        scholarId: row.scholarId,
+        scholarName: row.scholarName,
+        programId: row.programId,
+        programTitle: row.programTitle,
+        cycleId: row.cycleId,
+        amount: row.amount,
+        fundType: 'stipend',
+        paymentAccountId: row.paymentAccount?.id || null,
+      }));
+
+      try {
         const { data: funcData, error: funcError } = await supabase.functions.invoke('release-fund', {
           body: {
-            fundReleaseId: `pending_${Date.now()}_${i}`,
-            scholarshipId: row.programTitle,
-            scholarId: row.scholarName,
-            amountPHP: row.amount,
+            isBatch: true,
+            fundReleaseId: `batch_online_${Date.now()}`,
+            scholarshipId: programTitle,
+            scholarId: `${onlineRows.length} Scholars`,
+            amountPHP: totalOnlineAmount,
             successUrl,
             cancelUrl,
             metadata: {
-              applicationId: row.applicationId,
-              scholarId: row.scholarId,
-              programId: row.programId,
-              cycleId: row.cycleId,
+              isBatch: true,
               releasedBy: user?.id,
-              fundType: 'stipend',
-              paymentAccountId: row.paymentAccount?.id || null,
-            }
+              totalAmountPHP: totalOnlineAmount,
+              programTitle,
+              batchItems: batchItemsPayload,
+            },
           },
         });
 
@@ -596,50 +665,52 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
         const checkoutUrl = funcData?.checkoutUrl;
         if (checkoutUrl) {
-          // Trigger Realtime Notification for Scholar
-          await supabase.from('notifications').insert({
-            user_id: row.scholarId,
-            title: '💳 Scholarship Fund Released',
-            message: `Your scholarship payout of ₱${row.amount.toLocaleString()} for ${row.programTitle} has been released and processed.`,
-            type: 'fund_released',
-            is_read: false,
-            created_at: new Date().toISOString(),
-          });
+          // Trigger Notifications for all online scholars in batch
+          for (const row of onlineRows) {
+            await supabase.from('notifications').insert({
+              user_id: row.scholarId,
+              title: '💳 Scholarship Fund Released',
+              message: `Your scholarship payout of ₱${row.amount.toLocaleString()} for ${row.programTitle} has been released and processed.`,
+              type: 'fund_released',
+              is_read: false,
+              created_at: new Date().toISOString(),
+            });
+          }
 
           window.open(checkoutUrl, '_blank');
           createAuditLog(
             'INITIATED BATCH DISBURSEMENT',
-            `Scholar: ${row.scholarName} - Amount: ₱${row.amount.toLocaleString()}`,
+            `Batch Payout for ${onlineRows.length} scholars - Total: ₱${totalOnlineAmount.toLocaleString()}`,
             currentUser.email || 'Provider'
           );
+
+          onlineRows.forEach((row) => {
+            remainingBudget -= row.amount;
+            successCount++;
+            totalDisbursed += row.amount;
+            results.push({ scholarName: row.scholarName, txHash: 'Pending Authorization' });
+
+            setBatchScholars((prev) =>
+              prev.map((r) =>
+                r.scholarId === row.scholarId
+                  ? { ...r, status: 'success', txHash: 'Pending Authorization' }
+                  : r
+              )
+            );
+          });
         }
-
-        // 2. Budget safeguard & UI Update (Webhook handles db insert on authorization)
-        remainingBudget -= row.amount;
-        successCount++;
-        totalDisbursed += row.amount;
-        results.push({ scholarName: row.scholarName, txHash: 'Pending Authorization' });
-
-        setBatchScholars((prev) =>
-          prev.map((r) =>
-            r.scholarId === row.scholarId ? { ...r, status: 'success', txHash: 'Pending Authorization' } : r
-          )
-        );
       } catch (err: any) {
-        console.error(`Error releasing to ${row.scholarName}:`, err);
-        failedCount++;
-        results.push({ scholarName: row.scholarName, error: err.message || 'Release failed' });
-
-        setBatchScholars((prev) =>
-          prev.map((r) =>
-            r.scholarId === row.scholarId
-              ? { ...r, status: 'failed', errorMessage: err.message }
-              : r
-          )
-        );
+        console.error('Error generating single batch checkout link:', err);
+        onlineRows.forEach((row) => {
+          failedCount++;
+          results.push({ scholarName: row.scholarName, error: err.message || 'Batch release failed' });
+          setBatchScholars((prev) =>
+            prev.map((r) =>
+              r.scholarId === row.scholarId ? { ...r, status: 'failed', errorMessage: err.message } : r
+            )
+          );
+        });
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 400));
     }
 
     setIsProcessingBatch(false);
@@ -652,6 +723,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
     });
     onSuccess();
   };
+
 
   if (!isOpen) return null;
 

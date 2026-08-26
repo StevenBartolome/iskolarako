@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
@@ -48,7 +49,26 @@ const getTodayMidnight = () => {
 
 
 export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWelcome }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const getTabFromPath = (): TabType => {
+    const segment = location.pathname.replace(/^\/provider\/?/, '').split('/')[0];
+    const validTabs: TabType[] = [
+      'dashboard', 'applicants', 'programs', 'disbursements',
+      'announcements', 'reports', 'verification', 'appeals',
+      'profile', 'view-application', 'create-program', 'edit-program'
+    ];
+    if (validTabs.includes(segment as TabType)) {
+      return segment as TabType;
+    }
+    return 'dashboard';
+  };
+
+  const activeTab = getTabFromPath();
+  const setActiveTab = (tab: TabType) => {
+    navigate(`/provider/${tab}${location.search}`);
+  };
 
   // Automatically switch to the disbursements tab if returned from PayMongo redirect
   useEffect(() => {
@@ -58,6 +78,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       setActiveTab('disbursements');
     }
   }, []);
+
   
   // Current authenticated user ID
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
 import { RejectRemarksModal } from './components/RejectRemarksModal';
@@ -30,10 +31,28 @@ import type {
   RequirementItem,
 } from './types';
 
-
-
 export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, showWelcome }) => {
-  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const getTabFromPath = (): AdminTab => {
+    const segment = location.pathname.replace(/^\/admin\/?/, '').split('/')[0];
+    const validTabs: AdminTab[] = [
+      'dashboard', 'providers', 'scholarships', 'students',
+      'applications', 'documents', 'reports', 'funds',
+      'notifications', 'logs', 'settings', 'profile'
+    ];
+    if (validTabs.includes(segment as AdminTab)) {
+      return segment as AdminTab;
+    }
+    return 'dashboard';
+  };
+
+  const activeTab = getTabFromPath();
+  const setActiveTab = (tab: AdminTab) => {
+    navigate(`/admin/${tab}`);
+  };
+
   
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | undefined>(undefined);
   const [adminBroadcasts, setAdminBroadcasts] = useState<any[]>([]);
