@@ -298,6 +298,13 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
               .eq('id', existingAccounts[0].id);
             console.log(`[Database Sync Bank]: Updated payment account ${existingAccounts[0].id} for scholar ${scholarId}`);
           } else {
+            // Determine is_primary: only true if this scholar has no other payment accounts yet
+            const { data: allScholarAccounts } = await supabase
+              .from('scholar_payment_accounts')
+              .select('id')
+              .eq('scholar_id', scholarId);
+            const isFirstAccount = !allScholarAccounts || allScholarAccounts.length === 0;
+
             await supabase
               .from('scholar_payment_accounts')
               .insert({
@@ -307,13 +314,13 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                 account_number: accountNum,
                 document_proof_url: docUrl,
                 is_verified: true,
-                is_primary: true,
+                is_primary: isFirstAccount,
                 account_type: 'bank_transfer',
                 program_id: application?.program_id || null,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               });
-            console.log(`[Database Sync Bank]: Created new payment account for scholar ${scholarId}`);
+            console.log(`[Database Sync Bank]: Created new payment account for scholar ${scholarId} (is_primary: ${isFirstAccount})`);
           }
 
           // Force parent real-time reload to update Bank Proof Pending status badge

@@ -210,7 +210,24 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
         }
       }
 
-      // Upsert into scholar_payment_accounts
+      // Determine is_primary dynamically:
+      // - If scholar has NO existing accounts → first account is primary (true)
+      // - If scholar already has an account for THIS program → preserve its current is_primary value
+      // - If scholar has other program accounts but NOT for this program → new account is NOT primary (false)
+      const { data: existingAccounts } = await supabase
+        .from('scholar_payment_accounts')
+        .select('id, program_id, is_primary')
+        .eq('scholar_id', scholarId);
+
+      const hasAny = existingAccounts && existingAccounts.length > 0;
+      const existingForProgram = existingAccounts?.find(
+        (a) => a.program_id === programId
+      );
+      const isPrimary = existingForProgram
+        ? existingForProgram.is_primary  // preserve existing is_primary for this program
+        : !hasAny;                        // first ever account = primary; subsequent = not primary
+
+      // Build payload for scholar_payment_accounts
       const payload: any = {
         scholar_id: scholarId,
         account_type: 'bank_transfer',
@@ -220,7 +237,7 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
         document_proof_url: documentProofUrl,
         ai_extracted_data: extractedInfo?.rawResponse || {},
         ai_model_used: extractedInfo?.aiModelUsed || 'Manual Entry',
-        is_primary: true,
+        is_primary: isPrimary,
         is_verified: true,
         updated_at: new Date().toISOString(),
       };
@@ -236,7 +253,7 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
         .single();
 
       if (saveErr) {
-        // If conflict on unique constraint, update existing
+        // If conflict on unique constraint (scholar_id, program_id), update existing row
         const query = supabase
           .from('scholar_payment_accounts')
           .update(payload)

@@ -192,6 +192,23 @@ class _BankAccountModalState extends State<BankAccountModal> {
       aiData['program_ids'] = programIds;
       aiData['application_ids'] = applicationIds;
 
+      // Determine is_primary dynamically:
+      // - Preserve is_primary of an existing record for this program
+      // - Only set to true if scholar has no other payment accounts yet
+      final allAccounts = await Supabase.instance.client
+          .from('scholar_payment_accounts')
+          .select('id, program_id, is_primary')
+          .eq('scholar_id', widget.scholarId);
+      final accountsList = List<Map<String, dynamic>>.from(allAccounts as List);
+      final hasAny = accountsList.isNotEmpty;
+      final matchingForProgram = accountsList.where(
+        (a) => a['program_id']?.toString() == widget.programId,
+      );
+      final existingForProgram = matchingForProgram.isNotEmpty ? matchingForProgram.first : null;
+      final isPrimary = existingForProgram != null
+          ? existingForProgram['is_primary'] == true
+          : !hasAny;
+
       final payload = {
         'scholar_id': widget.scholarId,
         'program_id': widget.programId,
@@ -201,7 +218,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
         'account_number': accNum,
         'document_proof_url': docUrl,
         'ai_extracted_data': aiData,
-        'is_primary': true,
+        'is_primary': isPrimary,
         'is_verified': true,
         'updated_at': DateTime.now().toIso8601String(),
       };
@@ -214,7 +231,8 @@ class _BankAccountModalState extends State<BankAccountModal> {
       } catch (upsertErr) {
         try {
           await Supabase.instance.client.from('scholar_payment_accounts').insert(payload);
-        } catch (_) {
+        } catch (insertErr) {
+          debugPrint('Insert fallback failed, trying update: $insertErr');
           await Supabase.instance.client
               .from('scholar_payment_accounts')
               .update(payload)
@@ -466,6 +484,23 @@ class _BankAccountModalState extends State<BankAccountModal> {
       aiData['program_ids'] = programIds;
       aiData['application_ids'] = applicationIds;
 
+      // Determine is_primary dynamically:
+      // - Preserve is_primary of an existing record for this program
+      // - Only set to true if scholar has no other payment accounts yet
+      final allAccounts = await Supabase.instance.client
+          .from('scholar_payment_accounts')
+          .select('id, program_id, is_primary')
+          .eq('scholar_id', widget.scholarId);
+      final accountsList = List<Map<String, dynamic>>.from(allAccounts as List);
+      final hasAny = accountsList.isNotEmpty;
+      final matchingForProgram = accountsList.where(
+        (a) => a['program_id']?.toString() == widget.programId,
+      );
+      final existingForProgram = matchingForProgram.isNotEmpty ? matchingForProgram.first : null;
+      final isPrimary = existingForProgram != null
+          ? existingForProgram['is_primary'] == true
+          : !hasAny;
+
       final payload = {
         'scholar_id': widget.scholarId,
         'program_id': widget.programId,
@@ -476,7 +511,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
         'document_proof_url': documentProofUrl,
         'ai_extracted_data': aiData,
         'ai_model_used': _extractedInfo?.aiModelUsed ?? 'Manual Input',
-        'is_primary': true,
+        'is_primary': isPrimary,
         'is_verified': true,
         'updated_at': DateTime.now().toIso8601String(),
       };
@@ -489,7 +524,8 @@ class _BankAccountModalState extends State<BankAccountModal> {
       } catch (upsertErr) {
         try {
           await Supabase.instance.client.from('scholar_payment_accounts').insert(payload);
-        } catch (_) {
+        } catch (insertErr) {
+          debugPrint('Insert fallback failed, trying update: $insertErr');
           await Supabase.instance.client
               .from('scholar_payment_accounts')
               .update(payload)
