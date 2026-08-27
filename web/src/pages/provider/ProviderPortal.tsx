@@ -1030,6 +1030,39 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               };
             }
 
+            // 1.5. Check if there is a verified Bank Proof document in the submitted documents list
+            if (submittedDocs && typeof submittedDocs === 'object') {
+              const docsArray = Array.isArray(submittedDocs)
+                ? submittedDocs
+                : (submittedDocs.documents && Array.isArray(submittedDocs.documents) ? submittedDocs.documents : []);
+              
+              const verifiedBankDoc = docsArray.find((d: any) => {
+                const docName = (d.name || d.filename || '').toLowerCase();
+                const isBank = docName.includes('bank') || docName.includes('atm') || docName.includes('card') || docName.includes('passbook') || docName.includes('statement');
+                return isBank && (d.status === 'Verified' || d.verification_status === 'verified');
+              });
+
+              if (verifiedBankDoc && verifiedBankDoc.aiVerification) {
+                const ai = verifiedBankDoc.aiVerification;
+                const raw = ai.rawResponse || {};
+                const bankName = ai.extractedBankName || raw.bank_name || 'Verified Bank';
+                const accountNum = ai.extractedAccountNumber || raw.account_number || '';
+                const accountName = ai.extractedName || raw.extracted_name || '';
+
+                if (accountNum) {
+                  return {
+                    id: verifiedBankDoc.id || 'verified-bank-doc-fallback',
+                    bank_name: bankName,
+                    account_name: accountName,
+                    account_number: accountNum,
+                    document_proof_url: verifiedBankDoc.document_url || verifiedBankDoc.url || '',
+                    ai_model_used: ai.aiModelUsed || 'Extracted',
+                    is_verified: true,
+                  };
+                }
+              }
+            }
+
             // 2. Look up specific payment account for this program
             if (programId) {
               const specificAcc = scholarPaymentMap[`${scholarId}_${programId}`];

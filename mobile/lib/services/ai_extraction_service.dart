@@ -25,14 +25,16 @@ class AiExtractionService {
   static const String _systemPrompt = '''
 You are a specialized Philippine banking document OCR and data extraction assistant.
 Extract banking details from the provided bank card / ATM card / bank certificate / deposit slip image or PDF page.
-Carefully read the printed or embossed account/card number and the account holder name, even if the document is
-slightly blurry, skewed, low-resolution, or has glare. Transcribe the FULL account/card number digit by digit.
+Carefully read the printed or embossed actual bank account number (typically 10-12 digits) and the account holder name, even if the document is
+slightly blurry, skewed, low-resolution, or has glare. Transcribe the FULL account number digit by digit.
+CRITICAL: Do NOT extract the 16-digit ATM/Debit/Credit card number (often printed/embossed across the middle of the card, grouped in 4s).
+If only a 16-digit card number is visible, do not extract it; return empty string for "account_number" instead.
 If you can confidently identify some fields but not others, return what you found with an empty string for unknown fields.
 Return ONLY valid, raw JSON without markdown backticks or commentary in this exact format:
 {
   "bank_name": "Exact Bank Name (e.g. Landbank of the Philippines, BDO, BPI, UnionBank, SeaBank, Metrobank, etc.)",
   "account_holder_name": "Full Name of Account Holder / Scholar as printed on the card",
-  "account_number": "Account or Card Number as digits only (no dashes, spaces, or letters). Include the full number even if partially visible.",
+  "account_number": "Account number as digits only (no dashes, spaces, or letters). Do NOT use 16-digit card numbers here.",
   "confidence_score": 0.95
 }
 If the document truly contains no banking information at all, return exactly:
@@ -361,6 +363,7 @@ If the document truly contains no banking information at all, return exactly:
     String number = '';
     for (final match in RegExp(r'\d[\d ]{5,18}\d').allMatches(text)) {
       final clean = match.group(0)!.replaceAll(RegExp(r'[^0-9]'), '');
+      if (clean.length == 16) continue; // Skip 16-digit card numbers
       if (clean.length >= 6 && clean.length <= 19 && clean.length > number.length) {
         number = clean;
       }
@@ -597,22 +600,20 @@ If the document truly contains no banking information at all, return exactly:
       String accNum = (data['account_number'] ??
               data['account_no'] ??
               data['account_num'] ??
-              data['card_number'] ??
-              data['card_no'] ??
               data['accountNumber'] ??
-              data['cardNumber'] ??
               data['number'] ??
               '')
           .toString();
 
       // Scan all keys if not standard
-      if (accNum.isEmpty || accNum.replaceAll(RegExp(r'[^0-9]'), '').length < 6) {
+      if (accNum.isEmpty || accNum.replaceAll(RegExp(r'[^0-9]'), '').length < 6 || accNum.replaceAll(RegExp(r'[^0-9]'), '').length == 16) {
         for (final entry in data.entries) {
           final k = entry.key.toLowerCase();
           final v = entry.value?.toString() ?? '';
           final digitsOnly = v.replaceAll(RegExp(r'[^0-9]'), '');
-          if ((k.contains('num') || k.contains('acc') || k.contains('card') || k.contains('id') || k.contains('bank')) &&
-              digitsOnly.length >= 6) {
+          if ((k.contains('num') || k.contains('acc') || k.contains('bank')) &&
+              digitsOnly.length >= 6 &&
+              digitsOnly.length != 16) {
             accNum = digitsOnly;
             break;
           }
@@ -620,10 +621,11 @@ If the document truly contains no banking information at all, return exactly:
       }
 
       // Scan raw text with regex
-      if (accNum.isEmpty || accNum.replaceAll(RegExp(r'[^0-9]'), '').length < 6) {
+      if (accNum.isEmpty || accNum.replaceAll(RegExp(r'[^0-9]'), '').length < 6 || accNum.replaceAll(RegExp(r'[^0-9]'), '').length == 16) {
         String best = '';
         for (final match in RegExp(r'\d[0-9 ]{5,}\d').allMatches(raw)) {
           final clean = match.group(0)!.replaceAll(RegExp(r'[^0-9]'), '');
+          if (clean.length == 16) continue; // Skip 16-digit card numbers
           if (clean.length >= 6 && clean.length <= 19 && clean.length > best.length) {
             best = clean;
           }
@@ -633,10 +635,11 @@ If the document truly contains no banking information at all, return exactly:
 
       final conf = double.tryParse(data['confidence_score']?.toString() ?? '0.95') ?? 0.95;
 
+      final finalAccNum = accNum.replaceAll(RegExp(r'[^0-9]'), '');
       return ExtractedBankInfo(
         bankName: bank,
         accountName: accName,
-        accountNumber: accNum.replaceAll(RegExp(r'[^0-9]'), ''),
+        accountNumber: finalAccNum.length == 16 ? '' : finalAccNum,
         confidenceScore: conf,
         aiModelUsed: modelName,
       );

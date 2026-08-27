@@ -70,6 +70,10 @@ export interface DocVerificationResult {
   };
   sha256Hash?: string;
   rawResponse?: any;
+  detectedGradingScale?: 'scale_5' | 'scale_4' | 'percentage' | 'unknown';
+  subjectGrades?: any[];
+  extractedBankName?: string;
+  extractedAccountNumber?: string;
 }
 
 const BANK_SYSTEM_PROMPT = `You are a specialized Philippine banking document OCR and data extraction assistant.
@@ -78,12 +82,57 @@ Return ONLY valid, raw JSON without markdown backticks or commentary in this exa
 {
   "bank_name": "Exact Bank Name (e.g. Landbank of the Philippines, BDO, BPI, UnionBank, SeaBank, Metrobank, etc.)",
   "account_holder_name": "Full Name of Account Holder / Scholar",
-  "account_number": "Account or Card Number digits (remove spaces and dashes)",
+  "account_number": "The actual bank account number digits (typically 10-12 digits). CRITICAL: Do NOT extract the 16-digit ATM/Debit/Credit card number. If only a 16-digit card number is visible, leave this field empty.",
   "document_type": "atm_card",
   "confidence_score": 0.95
 }`;
 
 const buildDocVerificationPrompt = (docName: string, context: ApplicantVerificationContext) => {
+  const isBankDoc = docName.toLowerCase().includes('bank') || docName.toLowerCase().includes('atm');
+
+  if (isBankDoc) {
+    return `
+You are an expert Forensic Document Auditor and Financial Compliance Assistant for the Philippine Scholarship Platform "IskoAko".
+Analyze the provided document image / PDF page for the bank details requirement: "${docName}".
+
+Applicant Profile:
+- Full Name: "${context.scholarName || 'Unknown'}"
+
+Perform bank card / document verification:
+1. LAYOUT & VALIDITY: Does this appear to be a legitimate bank card or bank proof? (e.g., ATM card, debit card, credit card, bank passbook page, bank statement, bank certificate, or deposit slip). Visa/Mastercard/BPI/BDO/Landbank/UnionBank/etc. are all valid formats.
+2. TAMPERING DETECTION: Look for digital alterations or tampering (e.g., pasted names or numbers).
+3. PROFILE CROSS-CHECK:
+   - Extract the account holder / scholar name on the document and compare with "${context.scholarName || ''}".
+   - IMPORTANT PHILIPPINE NAME MATCHING RULES:
+     a) Reversed Name Order: "LastName, FirstName" vs "FirstName LastName" is a VALID MATCH.
+     b) Middle Initial & Omission: Full Middle Name vs Middle Initial or omitting middle name is a VALID MATCH.
+     c) E.g. "Steven Bartolome" matches "Mark Steven Mendoza Bartolome".
+4. RELEVANCE & INTEGRITY: As long as the document is a valid bank card/debit card, bank statement, passbook, or proof of bank details showing the account or card details belonging to the scholar, it is DIRECTLY RELEVANT and VALID. Do NOT flag it as irrelevant or write warnings about it being a debit card/ATM card. No academic, school, GWA, or income details are required for this document.
+5. ACCOUNT NUMBER EXTRACTION: Extract the actual bank account number (typically 10-12 digits). Do NOT extract the 16-digit card number (e.g. Visa/Mastercard card number usually starting with 4, 5, etc.) under the "account_number" key. If only a 16-digit card number is visible, set "account_number" to an empty string.
+
+Return ONLY raw valid JSON (no markdown backticks, no commentary) in this exact format:
+{
+  "is_authentic_layout": true,
+  "tampering_detected": false,
+  "has_official_seal_or_signature": true,
+  "is_document_legitimate": true,
+  "extracted_name": "Full name found on document",
+  "extracted_school": "",
+  "extracted_gwa": "",
+  "extracted_income": "",
+  "extracted_tuition_amount": "",
+  "extracted_doc_type": "Debit Card (Visa)",
+  "verification_status": "verified",
+  "confidence_score": 0.95,
+  "flags": [],
+  "summary": "Valid bank document/debit card matching applicant profile.",
+  "bank_name": "Land Bank of the Philippines",
+  "account_number": "1234567890"
+}
+* Note for verification_status: use "verified" if the name matches under the flexible rules and it is a valid bank card/proof. Use "flagged" if suspicious or name mismatches, or "rejected" if counterfeit.
+`;
+  }
+
   if (context.isProviderOrg || context.organizationName) {
     const orgName = context.organizationName || context.scholarName || 'Organization / Foundation';
     const repName = context.representativeName || 'Representative';
@@ -151,9 +200,13 @@ Perform forensic and content verification:
      b) Middle Initial & Omission: Full Middle Name vs Middle Initial (e.g. "Steven Mendoza Bartolome" vs "Steven M. Bartolome") or omitting middle name (e.g. "Steven Bartolome") is a VALID MATCH.
      c) Do NOT mark verification_status as "flagged" or "rejected" solely for reversed name order or middle initial vs full name. Set verification_status to "verified" if the names match under these rules.
    - Extract school/institution name and compare with "${context.school || ''}".
-   - If Transcript of Records or Grade Slip, extract the actual GWA or academic term grades. Compare with declared GWA: "${context.gwa || ''}".
-    - If Indigency / ITR, extract the income amount.
-    - If this document is a Certificate of Registration (COR), Statement of Account (SOA), Tuition Assessment, or Billing Statement, extract the total tuition amount or total matriculation fees (look for labels like "Total Assessment", "Total Tuition", "Gross Assessment", "Total Fees", "Balance", "Net Due", "Amount Payable").
+   - If Transcript of Records, Report Card, or Grade Slip:
+     a) Identify the grading scale used in the document (legend descriptions, e.g., "1.00 = Excellent" -> scale_5, "4.0 = A" -> scale_4, or percentages "95, 88" -> percentage). Output this as "detected_grading_scale".
+     b) Extract the overall GWA/GPA if printed on the document.
+     c) If overall GWA/GPA is NOT explicitly printed, or to back it up, extract all individual subject grades listed with their subject name, units/credits, and numeric grade value. Output this list as "subject_grades" array.
+     d) Compare extracted GWA with declared GWA: "${context.gwa || ''}".
+   - If Indigency / ITR, extract the income amount.
+   - If this document is a Certificate of Registration (COR), Statement of Account (SOA), Tuition Assessment, or Billing Statement, extract the total tuition amount or total matriculation fees (look for labels like "Total Assessment", "Total Tuition", "Gross Assessment", "Total Fees", "Balance", "Net Due", "Amount Payable").
 4. RELEVANCE & INTEGRITY: Is this upload valid and directly relevant to "${docName}", or is it irrelevant/corrupted?
 
 Return ONLY raw valid JSON (no markdown backticks, no commentary) in this exact format:
@@ -165,6 +218,10 @@ Return ONLY raw valid JSON (no markdown backticks, no commentary) in this exact 
   "extracted_name": "Full name found on document",
   "extracted_school": "School name found on document",
   "extracted_gwa": "GWA found on document or empty string",
+  "detected_grading_scale": "scale_5",
+  "subject_grades": [
+    { "subject": "Math 101", "units": 3, "grade": "1.75" }
+  ],
   "extracted_income": "Income found or empty string",
   "extracted_tuition_amount": "Total tuition / matriculation fee found on document or empty string (numeric string only)",
   "extracted_doc_type": "Exact document type identified",
@@ -173,6 +230,7 @@ Return ONLY raw valid JSON (no markdown backticks, no commentary) in this exact 
   "flags": [],
   "summary": "Authentic PUP Transcript of Records with verified dry seal and registrar signature. All details match applicant profile."
 }
+* Note for detected_grading_scale: Use "scale_5", "scale_4", "percentage", or "unknown".
 * Note for verification_status: use "verified" if authentic and data matches (including flexible name order and middle initials), "flagged" if suspicious or major data mismatches, or "rejected" if fake/irrelevant.
 `;
 };
@@ -687,6 +745,8 @@ export async function verifyDocumentAuthenticity({
         sealPresent: true,
         tamperingFound: false,
       },
+      detectedGradingScale: 'unknown',
+      subjectGrades: [],
       rawResponse: { errors },
     };
   }
@@ -702,9 +762,12 @@ export async function verifyDocumentAuthenticity({
     isFlexibleNameMatch(expectedName, extractedName) ||
     (repName ? isFlexibleNameMatch(repName, extractedName) : false);
 
+  const isBankDoc = documentName.toLowerCase().includes('bank') || documentName.toLowerCase().includes('atm');
+
   const expectedSchool = (applicantContext.school || applicantContext.providerType || '').toLowerCase().trim();
   const extractedSchool = (rawResult.extracted_school || '').toLowerCase().trim();
   const schoolMatch: boolean =
+    isBankDoc ||
     !extractedSchool ||
     !expectedSchool ||
     expectedSchool.includes(extractedSchool) ||
@@ -786,7 +849,11 @@ export async function verifyDocumentAuthenticity({
     provider: providerName,
     sha256Hash,
     crossCheckResults,
+    detectedGradingScale: rawResult.detected_grading_scale || 'unknown',
+    subjectGrades: rawResult.subject_grades || [],
     rawResponse: rawResult,
+    extractedBankName: rawResult.bank_name || '',
+    extractedAccountNumber: (rawResult.account_number || '').toString().replace(/[^0-9]/g, '').length === 16 ? '' : (rawResult.account_number || '').toString().replace(/[^0-9]/g, ''),
   };
 }
 
@@ -924,10 +991,12 @@ async function extractBankWithMistral(imageDataUrl: string, apiKey: string): Pro
   if (!text) throw new Error('No content returned from Mistral API.');
 
   const parsed = cleanJsonOutput(text);
+  const rawNum = (parsed.account_number || '').toString().replace(/[^0-9]/g, '');
+  const accountNumber = rawNum.length === 16 ? '' : rawNum;
   return {
     bankName: parsed.bank_name || 'Landbank of the Philippines',
     accountName: parsed.account_holder_name || '',
-    accountNumber: (parsed.account_number || '').toString().replace(/[^0-9]/g, ''),
+    accountNumber: accountNumber,
     documentType: parsed.document_type || 'atm_card',
     confidenceScore: parsed.confidence_score || 0.95,
     aiModelUsed: 'Mistral Pixtral 12B',
@@ -969,10 +1038,12 @@ async function extractBankWithGemini(dataUrl: string, apiKey: string): Promise<E
   if (!text) throw new Error('No content returned from Gemini API.');
 
   const parsed = cleanJsonOutput(text);
+  const rawNum = (parsed.account_number || '').toString().replace(/[^0-9]/g, '');
+  const accountNumber = rawNum.length === 16 ? '' : rawNum;
   return {
     bankName: parsed.bank_name || 'Landbank of the Philippines',
     accountName: parsed.account_holder_name || '',
-    accountNumber: (parsed.account_number || '').toString().replace(/[^0-9]/g, ''),
+    accountNumber: accountNumber,
     documentType: parsed.document_type || 'atm_card',
     confidenceScore: parsed.confidence_score || 0.95,
     aiModelUsed: 'Gemini 2.0 Flash',

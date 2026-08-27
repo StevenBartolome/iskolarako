@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:iskoako/services/audit_log_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:iskoako/utils/school_catalog.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   const ProfileEditScreen({super.key});
@@ -61,6 +62,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   final _courseController = TextEditingController();
   int? _selectedYearLevel;
   String _educationLevel = 'college'; // college, graduate, senior_high, vocational, incoming_college
+  String _gradingScale = 'scale_5';
+  List<String> _schoolOptions = [];
+  bool _isScaleLocked = false;
 
   static const Map<String, String> _eduLabels = {
     'college': 'Undergraduate / College',
@@ -100,7 +104,40 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   @override
   void initState() {
     super.initState();
+    _schoolOptions = philippineSchools.map((s) => s.name).toList();
+    _schoolOptions.sort((a, b) => a.compareTo(b));
+    _fetchSchoolsFromApi();
     _loadProfileData();
+  }
+
+  Future<void> _fetchSchoolsFromApi() async {
+    try {
+      final response = await http
+          .get(Uri.parse('http://universities.hipolabs.com/search?country=philippines'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final List<String> remoteSchools = data
+            .map((item) => item['name'].toString().trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+
+        if (mounted) {
+          setState(() {
+            final Set<String> allSchoolsSet = {};
+            for (final localSchool in philippineSchools) {
+              allSchoolsSet.add(localSchool.name);
+            }
+            allSchoolsSet.addAll(remoteSchools);
+
+            _schoolOptions = allSchoolsSet.toList();
+            _schoolOptions.sort((a, b) => a.compareTo(b));
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading remote schools from HipoLabs: $e');
+    }
   }
 
   @override
@@ -215,6 +252,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         _selectedYearLevel = dataList['year_level'];
         _selectedGender = dataList['gender'];
         _educationLevel = dataList['education_level'] ?? 'college';
+        _gradingScale = dataList['gpa_scale'] ?? 'scale_5';
+
+        final loadedSchool = dataList['school']?.toString() ?? '';
+        final matchedIndex = philippineSchools.indexWhere(
+          (s) => s.name.toLowerCase().trim() == loadedSchool.toLowerCase().trim(),
+        );
+        _isScaleLocked = (matchedIndex != -1) ? philippineSchools[matchedIndex].isAccurate : false;
         final scholarAvatar = dataList['avatar_url']?.toString().trim();
         final metaAvatar = user.userMetadata?['avatar_url']?.toString().trim();
         if (scholarAvatar != null && scholarAvatar.isNotEmpty && scholarAvatar != 'null') {
@@ -308,6 +352,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           'course': _courseController.text.trim(),
           'year_level': _selectedYearLevel,
           'education_level': _educationLevel,
+          'gpa_scale': _gradingScale,
           'updated_at': DateTime.now().toIso8601String(),
         }, onConflict: 'user_id');
 
@@ -1731,12 +1776,116 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           ),
           const SizedBox(height: 12),
 
-          _buildTextField(
-            controller: _schoolController,
-            label: 'School / University Name *',
-            hint: 'e.g. University of the Philippines',
-            validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
+          Autocomplete<String>(
+            optionsBuilder: (TextEditingValue textEditingValue) {
+              if (textEditingValue.text.isEmpty) {
+                return const Iterable<String>.empty();
+              }
+              return _schoolOptions
+                  .where((school) => school.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+            },
+            onSelected: (String selection) {
+              _schoolController.text = selection;
+              final matchedIndex = philippineSchools.indexWhere(
+                (s) => s.name.toLowerCase() == selection.toLowerCase(),
+              );
+              setState(() {
+                if (matchedIndex != -1) {
+                  final matched = philippineSchools[matchedIndex];
+                  _gradingScale = matched.defaultScale;
+                  _isScaleLocked = matched.isAccurate;
+                } else {
+                  _isScaleLocked = false;
+                }
+              });
+            },
+            fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+              if (textController.text != _schoolController.text) {
+                textController.text = _schoolController.text;
+              }
+              textController.addListener(() {
+                _schoolController.text = textController.text;
+                
+                final typed = textController.text.trim();
+                final matchedIndex = philippineSchools.indexWhere(
+                  (s) => s.name.toLowerCase().trim() == typed.toLowerCase().trim(),
+                );
+                
+                setState(() {
+                  if (matchedIndex != -1) {
+                    final matched = philippineSchools[matchedIndex];
+                    _gradingScale = matched.defaultScale;
+                    _isScaleLocked = matched.isAccurate;
+                  } else {
+                    _isScaleLocked = false;
+                  }
+                });
+              });
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('School / University Name *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: textController,
+                    focusNode: focusNode,
+                    onFieldSubmitted: (val) => onFieldSubmitted(),
+                    validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
+                    decoration: InputDecoration(
+                      hintText: 'e.g. University of the Philippines',
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      filled: true,
+                      fillColor: const Color(0xFFFAFCFA),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
+          const SizedBox(height: 12),
+
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Grading System *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _gradingScale,
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  filled: true,
+                  fillColor: const Color(0xFFFAFCFA),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'scale_5', child: Text('1.00 - 5.00 Scale (PH State Univ / UP / PUP / UST)', style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: 'scale_4', child: Text('4.00 - 1.00 Scale (ADMU / DLSU / FEU / NU)', style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: 'percentage', child: Text('Percentage Scale (DepEd K-12 / 65 - 100%)', style: TextStyle(fontSize: 13))),
+                ],
+                onChanged: _isScaleLocked
+                    ? null
+                    : (val) => setState(() {
+                          if (val != null) _gradingScale = val;
+                        }),
+              ),
+            ],
+          ),
+          if (_isScaleLocked)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 12, left: 2),
+              child: Text(
+                '🔒 Grading system verified for this school and locked.',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: const Color(0xFF6B7280),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
 
           _buildTextField(

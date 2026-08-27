@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'package:iskoako/services/audit_log_service.dart';
+import 'package:iskoako/utils/school_catalog.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -42,6 +43,9 @@ class _RegisterScreenState extends State<RegisterScreen>
   final TextEditingController _courseController = TextEditingController();
   int? _selectedYearLevel;
   String? _selectedEduLevel = 'college';
+  String _selectedGpaScale = 'scale_5';
+  List<String> _schoolOptions = [];
+  bool _isScaleLocked = false;
   // For incoming_college students
   final TextEditingController _plannedUniversityController = TextEditingController();
   final List<TextEditingController> _plannedCoursesControllers = [
@@ -88,12 +92,46 @@ class _RegisterScreenState extends State<RegisterScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic));
 
+    _schoolOptions = philippineSchools.map((s) => s.name).toList();
+    _schoolOptions.sort((a, b) => a.compareTo(b));
+    _fetchSchoolsFromApi();
+
     Future.delayed(const Duration(milliseconds: 100), () {
       _heroController.forward();
     });
     Future.delayed(const Duration(milliseconds: 320), () {
       _formController.forward();
     });
+  }
+
+  Future<void> _fetchSchoolsFromApi() async {
+    try {
+      final response = await http
+          .get(Uri.parse('http://universities.hipolabs.com/search?country=philippines'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final List<String> remoteSchools = data
+            .map((item) => item['name'].toString().trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+
+        if (mounted) {
+          setState(() {
+            final Set<String> allSchoolsSet = {};
+            for (final localSchool in philippineSchools) {
+              allSchoolsSet.add(localSchool.name);
+            }
+            allSchoolsSet.addAll(remoteSchools);
+
+            _schoolOptions = allSchoolsSet.toList();
+            _schoolOptions.sort((a, b) => a.compareTo(b));
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading remote schools from HipoLabs: $e');
+    }
   }
 
   @override
@@ -393,6 +431,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         'course': course,
         if (yearLevel != null) 'year_level': yearLevel,
         'education_level': eduLevel,
+        'gpa_scale': _selectedGpaScale,
         if (plannedUniversity != null) 'planned_university': plannedUniversity,
         if (plannedCourses != null && plannedCourses.isNotEmpty) 'planned_courses': plannedCourses,
       });
@@ -955,12 +994,152 @@ class _RegisterScreenState extends State<RegisterScreen>
         ),
         const SizedBox(height: 16),
 
-        // ── School name (label changes per level) ──
-        _buildField(
-          label: schoolLabel[_selectedEduLevel] ?? 'School Name *',
-          controller: _schoolController,
-          icon: LucideIcons.graduationCap,
-          hint: isIncoming ? 'e.g. Pasig City Science High School' : 'School / University name',
+        Autocomplete<String>(
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            if (textEditingValue.text.isEmpty) {
+              return const Iterable<String>.empty();
+            }
+            return _schoolOptions
+                .where((school) => school.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+          },
+          onSelected: (String selection) {
+            _schoolController.text = selection;
+            final matchedIndex = philippineSchools.indexWhere(
+              (s) => s.name.toLowerCase() == selection.toLowerCase(),
+            );
+            setState(() {
+              if (matchedIndex != -1) {
+                final matched = philippineSchools[matchedIndex];
+                _selectedGpaScale = matched.defaultScale;
+                _isScaleLocked = matched.isAccurate;
+              } else {
+                _isScaleLocked = false;
+              }
+            });
+          },
+          fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+            if (textController.text != _schoolController.text) {
+              textController.text = _schoolController.text;
+            }
+            textController.addListener(() {
+              _schoolController.text = textController.text;
+              
+              final typed = textController.text.trim();
+              final matchedIndex = philippineSchools.indexWhere(
+                (s) => s.name.toLowerCase().trim() == typed.toLowerCase().trim(),
+              );
+              
+              setState(() {
+                if (matchedIndex != -1) {
+                  final matched = philippineSchools[matchedIndex];
+                  _selectedGpaScale = matched.defaultScale;
+                  _isScaleLocked = matched.isAccurate;
+                } else {
+                  _isScaleLocked = false;
+                }
+              });
+            });
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  schoolLabel[_selectedEduLevel] ?? 'School Name *',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: textController,
+                  focusNode: focusNode,
+                  onSubmitted: (val) => onFieldSubmitted(),
+                  style: GoogleFonts.inter(
+                    fontSize: 13.5,
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: isIncoming ? 'e.g. Pasig City Science High School' : 'School / University name',
+                    hintStyle: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13),
+                    prefixIcon: const Icon(LucideIcons.graduationCap, size: 16, color: AppColors.textSecondary),
+                    filled: true,
+                    fillColor: AppColors.surfaceAlt,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.rule, width: 1),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.rule, width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 1.8),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+
+        // ── Grading System dropdown ──
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Grading System *',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.rule, width: 1),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedGpaScale,
+                  isExpanded: true,
+                  icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
+                  items: const [
+                    DropdownMenuItem(value: 'scale_5', child: Text('1.00 - 5.00 Scale (PH State Univ / UP / PUP / UST)')),
+                    DropdownMenuItem(value: 'scale_4', child: Text('4.00 - 1.00 Scale (ADMU / DLSU / FEU / NU)')),
+                    DropdownMenuItem(value: 'percentage', child: Text('Percentage Scale (DepEd K-12 / 65 - 100%)')),
+                  ],
+                  onChanged: _isScaleLocked
+                      ? null
+                      : (val) => setState(() {
+                            if (val != null) _selectedGpaScale = val;
+                          }),
+                ),
+              ),
+            ),
+            if (_isScaleLocked)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 2),
+                child: Text(
+                  '🔒 Grading system verified for this school and locked.',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 16),
 

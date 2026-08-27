@@ -8,6 +8,12 @@ import {
 } from '@/services/aiExtractionService';
 import { supabase } from '@/services/supabaseClient';
 import { createAuditLog } from '@/services/auditLogService';
+import { 
+  computeGwaFromSubjects, 
+  normalizeGwaToPercent, 
+  meetsGwaRequirement,
+  getSchoolDefaultScale
+} from '@/services/gwaCalculationService';
 
 interface ProviderViewApplicationTabProps {
   application: ApplicationDetail | null;
@@ -96,6 +102,31 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
       const docStatusDb = result.verificationStatus === 'verified' ? 'verified' : 'rejected';
       const docRemarks = result.flags && result.flags.length > 0 ? `AI Flag: ${result.flags[0]}` : result.summary;
 
+      const rawGwaStr = result.extractedGwa || '';
+      let finalGwa: string = rawGwaStr;
+      let calculatedGwa: number | null = null;
+      
+      let detectedScale = result.detectedGradingScale || 'unknown';
+      if (detectedScale === 'unknown') {
+        const resolved = getSchoolDefaultScale(result.extractedSchool || application?.school || '');
+        if (resolved) {
+          detectedScale = resolved;
+        } else {
+          detectedScale = (application?.rawApplication?.scholar?.gpa_scale as any) || 'scale_5';
+        }
+      }
+      
+      if (!rawGwaStr && result.subjectGrades && result.subjectGrades.length > 0 && detectedScale !== 'unknown') {
+        calculatedGwa = computeGwaFromSubjects(result.subjectGrades, detectedScale);
+        if (calculatedGwa !== null) {
+          finalGwa = String(calculatedGwa);
+        }
+      }
+      
+      const normalizedPercent = finalGwa && detectedScale !== 'unknown'
+        ? normalizeGwaToPercent(parseFloat(finalGwa), detectedScale)
+        : null;
+
       const aiPayload: any = {
         ai_verification_status: result.verificationStatus,
         ai_confidence_score: result.confidenceScore,
@@ -103,16 +134,23 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
         ai_extracted_data: {
           extractedName: result.extractedName,
           extractedSchool: result.extractedSchool,
-          extractedGwa: result.extractedGwa,
+          extractedGwa: finalGwa,
+          extractedGwaScale: detectedScale,
+          normalizedGwaPercent: normalizedPercent,
+          calculatedFromSubjects: calculatedGwa !== null,
           extractedIncome: result.extractedIncome,
           extractedTuitionAmount: result.extractedTuitionAmount,
           extractedDocType: result.extractedDocType,
-          crossCheckResults: result.crossCheckResults,
+          crossCheckResults: {
+            ...result.crossCheckResults,
+            gwaMatch: finalGwa ? true : null
+          },
+          subjectGrades: result.subjectGrades || [],
         },
         ai_model_used: result.aiModelUsed,
         file_sha256_hash: result.sha256Hash,
         verification_status: docStatusDb,
-        remarks: docRemarks,
+        remarks: docRemarks + (calculatedGwa !== null ? ` (GWA calculated from subjects: ${finalGwa})` : ''),
         updated_at: new Date().toISOString(),
       };
 
@@ -181,6 +219,110 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
         if (application) {
           application.submittedDocuments = updatedDocsJson;
+        }
+      }
+
+      // 3. Sync verified GWA and scale to scholar's profile
+      const docName = doc.name || doc.filename || 'Submitted Document';
+      const isAcademicDoc = 
+        docName.toLowerCase().includes('grade') || 
+        docName.toLowerCase().includes('transcript') || 
+        docName.toLowerCase().includes('tor') || 
+        docName.toLowerCase().includes('report card') ||
+        result.extractedDocType?.toLowerCase().includes('grade') ||
+        result.extractedDocType?.toLowerCase().includes('transcript') ||
+        result.extractedDocType?.toLowerCase().includes('tor') ||
+        result.extractedDocType?.toLowerCase().includes('report card');
+
+      if (scholarId && finalGwa && isAcademicDoc && docStatusDb !== 'rejected') {
+        const numericGwa = parseFloat(finalGwa);
+        if (!isNaN(numericGwa)) {
+          // Update scholar GWA and scale
+          await supabase
+            .from('scholar')
+            .update({
+              gpa: numericGwa,
+              gpa_scale: detectedScale,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', scholarId);
+
+          // Force parent real-time reload
+          await supabase
+            .from('scholarship_applications')
+            .update({
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', application.id);
+            
+          console.log(`[Database Sync GWA]: Scholar GWA updated to ${numericGwa} (${detectedScale})`);
+        }
+      }
+
+      // 4. Sync verified bank account details to scholar_payment_accounts table
+      const isBankDoc = 
+        docName.toLowerCase().includes('bank') || 
+        docName.toLowerCase().includes('atm') || 
+        docName.toLowerCase().includes('card') || 
+        docName.toLowerCase().includes('passbook') || 
+        docName.toLowerCase().includes('statement') ||
+        result.extractedDocType?.toLowerCase().includes('bank') ||
+        result.extractedDocType?.toLowerCase().includes('atm') ||
+        result.extractedDocType?.toLowerCase().includes('card') ||
+        result.extractedDocType?.toLowerCase().includes('passbook') ||
+        result.extractedDocType?.toLowerCase().includes('statement');
+
+      if (scholarId && isBankDoc && (docStatusDb === 'verified' || result.verificationStatus === 'verified')) {
+        const bankName = result.extractedBankName || 'Unknown Bank';
+        const accountNum = result.extractedAccountNumber || '';
+        const accountName = result.extractedName || application?.name || '';
+        const docUrl = doc.document_url || doc.url || '';
+
+        if (accountNum && bankName) {
+          const { data: existingAccounts } = await supabase
+            .from('scholar_payment_accounts')
+            .select('id')
+            .eq('scholar_id', scholarId)
+            .eq('bank_name', bankName);
+
+          if (existingAccounts && existingAccounts.length > 0) {
+            await supabase
+              .from('scholar_payment_accounts')
+              .update({
+                account_name: accountName,
+                account_number: accountNum,
+                document_proof_url: docUrl,
+                is_verified: true,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existingAccounts[0].id);
+            console.log(`[Database Sync Bank]: Updated payment account ${existingAccounts[0].id} for scholar ${scholarId}`);
+          } else {
+            await supabase
+              .from('scholar_payment_accounts')
+              .insert({
+                scholar_id: scholarId,
+                bank_name: bankName,
+                account_name: accountName,
+                account_number: accountNum,
+                document_proof_url: docUrl,
+                is_verified: true,
+                is_primary: true,
+                account_type: 'bank_transfer',
+                program_id: application?.program_id || null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+            console.log(`[Database Sync Bank]: Created new payment account for scholar ${scholarId}`);
+          }
+
+          // Force parent real-time reload to update Bank Proof Pending status badge
+          await supabase
+            .from('scholarship_applications')
+            .update({
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', application.id);
         }
       }
     } catch (err) {
@@ -1205,11 +1347,41 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                       <strong className="text-[#1C1C1E]">{aiRes.extractedDocType || doc.name}</strong>
                                     </div>
                                     {aiRes.extractedGwa && (
-                                      <div className="flex justify-between items-center">
-                                        <span className="text-[#6C6C70]">Extracted GWA:</span>
-                                        <strong className="text-[#2D5941] font-mono">{aiRes.extractedGwa}</strong>
-                                      </div>
-                                    )}
+                                       <div className="flex justify-between items-center">
+                                         <span className="text-[#6C6C70]">Extracted GWA:</span>
+                                         <div className="flex items-center gap-1.5 font-mono">
+                                           <strong className="text-[#2D5941]">{aiRes.extractedGwa}</strong>
+                                           {(() => {
+                                             const scale = getSchoolDefaultScale(aiRes.extractedSchool || application?.school || '') || 
+                                               (aiRes.rawResponse?.detected_grading_scale && aiRes.rawResponse.detected_grading_scale !== 'unknown' 
+                                                 ? aiRes.rawResponse.detected_grading_scale 
+                                                 : application?.rawApplication?.scholar?.gpa_scale) || 
+                                               'scale_5';
+                                             const minGwa = application?.rawApplication?.cycle?.program?.minimum_gwa;
+                                             const programScale = application?.rawApplication?.cycle?.program?.grading_system || 'scale_5';
+                                             
+                                             const numericGwa = parseFloat(aiRes.extractedGwa);
+                                             if (isNaN(numericGwa)) return null;
+ 
+                                             const normalizedPercent = normalizeGwaToPercent(numericGwa, scale);
+                                             const scaleLabel = scale === 'scale_5' ? '1-5 Scale' : scale === 'scale_4' ? '4.0 Scale' : '% Scale';
+                                             
+                                             let isQualified = true;
+                                             if (minGwa !== null && minGwa !== undefined && !isNaN(parseFloat(minGwa))) {
+                                               isQualified = meetsGwaRequirement(numericGwa, scale, parseFloat(minGwa), programScale);
+                                             }
+ 
+                                             return (
+                                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                                                 isQualified ? 'bg-[#EBF5EE] text-[#2D5941]' : 'bg-red-50 text-[#B34040]'
+                                               }`} title={`${scaleLabel} (equiv ${normalizedPercent.toFixed(1)}%). Min requirement: ${minGwa || 'None'}`}>
+                                                 {scaleLabel} • {isQualified ? 'Meets Min ✓' : 'Below Min ⚠️'}
+                                               </span>
+                                             );
+                                           })()}
+                                         </div>
+                                       </div>
+                                     )}
                                     {aiRes.extractedTuitionAmount && (
                                       <div className="flex justify-between items-center">
                                         <span className="text-[#6C6C70]">Extracted Tuition Fee:</span>
