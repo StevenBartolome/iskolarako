@@ -538,12 +538,21 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       const releasedScholarCycleKeys = new Set<string>();
       (existingReleases || []).forEach((fr: any) => {
         const s = String(fr.status || '').toLowerCase();
+        // Refunded/returned/failed releases should NOT block re-release — they need re-issuance
+        const isRefundedOrFailed =
+          s === 'returned' ||
+          s === 'failed' ||
+          s === 'refunded';
+
         const isComplete =
-          s === 'released' ||
-          s === 'processing' ||
-          s === 'completed' ||
-          s === 'paid' ||
-          fr.blockchain_verified === true;
+          !isRefundedOrFailed &&
+          (
+            s === 'released' ||
+            s === 'processing' ||
+            s === 'completed' ||
+            s === 'paid' ||
+            fr.blockchain_verified === true
+          );
 
         if (isComplete) {
           if (fr.application_id) releasedAppIds.add(String(fr.application_id));
@@ -933,11 +942,61 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         if (showToast) {
           showToast(`✓ Cash Payout recorded for ${selected.scholarName}! Logged on Polygon Blockchain: ${cashTxHash.substring(0, 14)}...`);
         }
+  const checkAndAutoCloseCycle = async (cycleId: string, programId: string) => {
+    try {
+      if (!cycleId || !programId) return;
+
+      const { data: prog } = await supabase
+        .from('scholarship_programs')
+        .select('funding_frequency')
+        .eq('id', programId)
+        .maybeSingle();
+
+      const freq = prog?.funding_frequency || '';
+      const isOneTimeOrAnnual = freq === 'One-time' || freq === 'Once a Year';
+      if (!isOneTimeOrAnnual) return;
+
+      const { data: approvedApps } = await supabase
+        .from('scholarship_applications')
+        .select('id')
+        .eq('cycle_id', cycleId)
+        .eq('status', 'approved');
+
+      if (!approvedApps || approvedApps.length === 0) return;
+
+      const { data: releases } = await supabase
+        .from('fund_releases')
+        .select('application_id, status, blockchain_verified')
+        .eq('cycle_id', cycleId);
+
+      const successfulAppIds = new Set<string>();
+      (releases || []).forEach((r: any) => {
+        const s = (r.status || '').toLowerCase();
+        if (s === 'released' || s === 'completed' || r.blockchain_verified) {
+          if (r.application_id) successfulAppIds.add(String(r.application_id));
+        }
+      });
+
+      const allPaid = approvedApps.every((a) => successfulAppIds.has(String(a.id)));
+
+      if (allPaid) {
+        await supabase
+          .from('application_cycles')
+          .update({ status: 'closed', updated_at: new Date().toISOString() })
+          .eq('id', cycleId);
+        if (fetchPrograms) fetchPrograms();
+      }
+    } catch (err) {
+      console.warn('Auto-close cycle check warning:', err);
+    }
+  };
+
         createAuditLog(
           'RECORDED CASH DISBURSEMENT',
           `Scholar: ${selected.scholarName} - Amount: ₱${numAmount.toLocaleString()} (Over-the-Counter Cash) - Blockchain TX: ${cashTxHash}`,
           currentUser.email || 'Provider'
         );
+        await checkAndAutoCloseCycle(selected.cycleId, selected.programId);
         if (fetchPrograms) fetchPrograms();
         return;
       }
@@ -1187,6 +1246,13 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             >
               Failed ({displayList.filter((t: any) => t.status === 'Failed').length})
             </button>
+            <button
+              onClick={() => setStatusFilter('refunded')}
+              className={`px-3 py-1 rounded-lg border-0 cursor-pointer transition-all ${statusFilter === 'refunded' ? 'bg-[#C97B2E] text-white' : 'text-[#6C6C70] bg-transparent'
+                }`}
+            >
+              Refunds ({displayList.filter((t: any) => t.status === 'Refunded').length})
+            </button>
           </div>
         </div>
 
@@ -1305,7 +1371,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                             className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FFF8EE] hover:bg-[#C97B2E] text-[#C97B2E] hover:text-white border border-[#C97B2E]/20 transition-all cursor-pointer"
                             title="Process Refund / Chargeback"
                           >
-                            🔄 Refund
+                            Refund
                           </button>
                         )}
 
@@ -1316,10 +1382,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                               setRefundModalItem(tx);
                               setRefundActionType('reissue');
                             }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white border border-[#2D5941]/20 transition-all cursor-pointer flex items-center gap-1"
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white border border-[#2D5941]/20 transition-all cursor-pointer whitespace-nowrap"
                             title="Re-issue payout to scholar"
                           >
-                            <span>⚡ Re-issue</span>
+                            Re-issue
                           </button>
                         )}
                       </div>

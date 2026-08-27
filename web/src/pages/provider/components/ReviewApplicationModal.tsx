@@ -57,6 +57,7 @@ export interface ApplicationDetail {
   submittedDocuments: SubmittedDocItem[];
   remarks?: string;
   rawApplication?: any;
+  isContinuingScholar?: boolean;
 }
 
 interface ReviewApplicationModalProps {

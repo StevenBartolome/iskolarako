@@ -76,9 +76,12 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
       ? String(programToEdit.budget_total || programToEdit.amount || programToEdit.budgetTotal).replace(/[^0-9.]/g, '')
       : ''
   );
-  const [fundingFreq, setFundingFreq] = useState(
-    programToEdit?.funding_frequency || programToEdit?.fundingFrequency || 'Per Semester'
-  );
+  const [fundingFreq, setFundingFreq] = useState(() => {
+    const raw = programToEdit?.funding_frequency || programToEdit?.fundingFrequency || 'Per Semester';
+    if (raw === 'Annual') return 'Once a Year';
+    if (raw === 'One-Time Grant') return 'One-time';
+    return raw;
+  });
   const [totalSlots, setTotalSlots] = useState(
     programToEdit?.total_slots || programToEdit?.totalSlots ? String(programToEdit.total_slots || programToEdit.totalSlots) : ''
   );
@@ -429,7 +432,9 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           ? String(programToEdit.budget_total || programToEdit.amount || programToEdit.budgetTotal).replace(/[^0-9.]/g, '')
           : ''
       );
-      setFundingFreq(programToEdit.funding_frequency || programToEdit.fundingFrequency || 'Per Semester');
+      const rawFreq = programToEdit.funding_frequency || programToEdit.fundingFrequency || 'Per Semester';
+      const normalizedFreq = rawFreq === 'Annual' ? 'Once a Year' : rawFreq === 'One-Time Grant' ? 'One-time' : rawFreq;
+      setFundingFreq(normalizedFreq);
       setTotalSlots(
         programToEdit.total_slots || programToEdit.totalSlots ? String(programToEdit.total_slots || programToEdit.totalSlots) : ''
       );

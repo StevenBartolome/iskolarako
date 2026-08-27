@@ -391,6 +391,19 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
             final bDetails = Map<String, dynamic>.from(submittedDocsObj['bank_details'] as Map);
             bDetails['name'] = 'bank_details';
             bDetails['document_name'] = 'bank_details';
+
+            // Sync verification status from scholar_payment_accounts
+            final hasVerifiedBank = paymentAccs.any((acc) =>
+                acc['is_verified'] == true &&
+                (acc['program_id']?.toString() == programId || acc['is_primary'] == true));
+
+            if (hasVerifiedBank) {
+              bDetails['status'] = 'verified';
+              bDetails['verification_status'] = 'verified';
+            } else {
+              bDetails['status'] = 'pending';
+              bDetails['verification_status'] = 'pending';
+            }
             parsedDocs.add(bDetails);
           }
         } else if (submittedDocsObj is List) {
@@ -1732,7 +1745,9 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                             const SizedBox(width: 8),
                             GestureDetector(
                               onTap: () async {
-                                final docUrl = doc['document_url']?.toString();
+                                final docUrl = doc['document_url']?.toString() ??
+                                    doc['document_proof_url']?.toString() ??
+                                    doc['url']?.toString();
                                 if (docUrl != null && docUrl.isNotEmpty && docUrl != '#') {
                                   final uri = Uri.parse(docUrl);
                                   try {
@@ -1748,6 +1763,48 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(content: Text('File preview available upon upload.')),
+                                    );
+                                  }
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF3F4F6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                                ),
+                                child: Text(
+                                  'View',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1E3D2F),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () async {
+                                final docUrl = doc['document_url']?.toString() ??
+                                    doc['document_proof_url']?.toString() ??
+                                    doc['url']?.toString();
+                                if (docUrl != null && docUrl.isNotEmpty && docUrl != '#') {
+                                  final uri = Uri.parse(docUrl);
+                                  try {
+                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Could not download file: $e')),
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('File download available upon upload.')),
                                     );
                                   }
                                 }

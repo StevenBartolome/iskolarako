@@ -11,7 +11,7 @@ interface ProviderProgramsTabProps {
   setActiveTab: (tab: any) => void;
   handleViewDetails: (prog: Program) => void;
   handleEditProgram: (prog: Program) => void;
-  handleOpenRenewModal: (prog: Program) => void;
+  handleOpenRenewModal: (prog: Program, targetMode?: 'renewal_2nd_sem' | 'next_academic_year') => void;
   handleOpenEditCycle?: (prog: Program, cyc: any) => void;
   handleDeleteCycle?: (id: string, name: string) => void;
   setProgramToClose: (prog: Program | null) => void;
@@ -255,23 +255,132 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                   </div>
                 )}
 
+                {/* Smart Program Cycle Completion Banners & Re-Opening Prompts */}
+                {(() => {
+                  const freq = prog.fundingFrequency || prog.funding_frequency || 'Per Semester';
+                  const isPerSemester = freq === 'Per Semester';
+                  const cycles = prog.cycles || [];
+                  const sem1Cycle = cycles.find((c: any) =>
+                    !(c.name || '').toLowerCase().includes('2nd') &&
+                    !(c.semester || '').toLowerCase().includes('2nd') &&
+                    c.cycleType !== 'renewal'
+                  );
+                  const sem2Cycle = cycles.find((c: any) =>
+                    (c.name || '').toLowerCase().includes('2nd') ||
+                    (c.semester || '').toLowerCase().includes('2nd') ||
+                    c.cycleType === 'renewal'
+                  );
+                  const latestCycle = cycles[cycles.length - 1];
+
+                  if (!isPerSemester && latestCycle && (latestCycle.status === 'Closed' || latestCycle.status === 'closed')) {
+                    return (
+                      <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 my-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🎉</span>
+                          <div>
+                            <h4 className="text-xs font-bold text-[#1A3C2E]">Program Cycle Completed</h4>
+                            <p className="text-[11px] text-[#2D5941]">All scholars for {latestCycle.name} have completed disbursements.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRenewModal(prog, 'next_academic_year')}
+                          className="w-full py-2 px-3 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <span>🚀</span> Re-Open Program for Next Academic Year
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  if (isPerSemester) {
+                    const isSem1Closed = sem1Cycle && (sem1Cycle.status === 'Closed' || sem1Cycle.status === 'closed');
+                    const isSem2Closed = sem2Cycle && (sem2Cycle.status === 'Closed' || sem2Cycle.status === 'closed');
+
+                    if (isSem1Closed && !sem2Cycle) {
+                      return (
+                        <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 rounded-2xl p-3.5 my-2 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🎓</span>
+                            <div>
+                              <h4 className="text-xs font-bold text-[#8C5216]">1st Semester Cycle Completed</h4>
+                              <p className="text-[11px] text-[#C97B2E]">Ready to accept 2nd semester renewal requirements from scholars.</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRenewModal(prog, 'renewal_2nd_sem')}
+                            className="w-full py-2 px-3 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                          >
+                            <span>🔄</span> Open 2nd Semester Renewal Cycle
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    if (isSem2Closed || (isSem1Closed && sem2Cycle && isSem2Closed)) {
+                      return (
+                        <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 my-2 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🏆</span>
+                            <div>
+                              <h4 className="text-xs font-bold text-[#1A3C2E]">Academic Year Fully Completed</h4>
+                              <p className="text-[11px] text-[#2D5941]">Both 1st & 2nd semester cycles are completed for this program.</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRenewModal(prog, 'next_academic_year')}
+                            className="w-full py-2 px-3 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                          >
+                            <span>🚀</span> Re-Open Program for Next Academic Year
+                          </button>
+                        </div>
+                      );
+                    }
+                  }
+
+                  return null;
+                })()}
+
                 {/* Footer Meta & Structured Action Button Grid */}
                 <div className="border-t border-[#D9D2C5]/50 pt-4 mt-4 space-y-3">
                   {/* Meta stats bar */}
-                  <div className="flex items-center justify-between text-xs">
+                  <div className="grid grid-cols-3 gap-2 text-xs bg-[#F9F5EF] p-3 rounded-2xl border border-[#D9D2C5]/40">
                     <div>
-                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
-                      <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency || 'Per Semester'}</span>
+                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Frequency</span>
+                      <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block truncate">{prog.fundingFrequency || 'Per Semester'}</span>
+                    </div>
+                    <div className="text-center border-x border-[#D9D2C5]/40 px-1">
+                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Slots & Remaining</span>
+                      <span className="text-[#1A3C2E] font-bold text-xs mt-0.5 block">
+                        {(() => {
+                          const totalSlots = Number(prog.totalSlots || prog.total_slots || 0);
+                          const approvedCount = Number(prog.approvedCount || prog.approved_count || prog.scholars_count || 0);
+                          if (totalSlots > 0) {
+                            const remaining = Math.max(0, totalSlots - approvedCount);
+                            return (
+                              <>
+                                <span>{approvedCount}/{totalSlots}</span>{' '}
+                                <span className={`text-[10px] ${remaining === 0 ? 'text-[#B34040] font-extrabold' : 'text-[#C97B2E]'}`}>
+                                  ({remaining === 0 ? 'Full' : `${remaining} left`})
+                                </span>
+                              </>
+                            );
+                          }
+                          return <span>{approvedCount} Approved <span className="text-gray-400 text-[10px]">(∞)</span></span>;
+                        })()}
+                      </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Total Budget / Remaining</span>
-                      <span className="text-[#1A3C2E] font-bold text-xs mt-0.5 block">
+                      <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Budget / Left</span>
+                      <span className="text-[#1A3C2E] font-bold text-xs mt-0.5 block truncate">
                         {rawBudget > 0 ? (
                           <>
-                            ₱{rawBudget.toLocaleString()} <span className="text-[#C97B2E] text-[10px]">(₱{remainingBudget.toLocaleString()} left)</span>
+                            ₱{rawBudget.toLocaleString()} <span className="text-[#C97B2E] text-[10px]">(₱{remainingBudget.toLocaleString()})</span>
                           </>
                         ) : (
-                          <span className="text-gray-400 italic">Not set (₱0)</span>
+                          <span className="text-gray-400 italic">₱0</span>
                         )}
                       </span>
                     </div>

@@ -295,7 +295,16 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                         <span className="text-[10px] text-[#8E8E93]">{app.school} • {app.course} ({app.yearLevel}) • Applied {app.date}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-[#1C1C1E]">{app.program}</td>
+                    <td className="px-6 py-4 text-[#1C1C1E]">
+                      <div className="flex flex-col items-start gap-1">
+                        <span>{app.program}</span>
+                        {app.isContinuingScholar && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30">
+                            🔄 Continuing Scholar
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">
                         <span className="text-xs font-bold text-[#2D5941]">{app.cycle}</span>
@@ -309,14 +318,28 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                     <td className="px-6 py-4 text-center font-serif text-[#1C1C1E]">{app.grade}</td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${app.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                          app.status === 'Pending' ? 'bg-[#F9F0E0] text-[#C97B2E]' :
-                            app.status === 'Under Review' ? 'bg-[#EAF3FA] text-[#2A6BA8]' :
-                              app.status === 'For Exam' ? 'bg-purple-100 text-purple-700' :
-                                'bg-[#FDF2F2] text-[#B34040]'
-                          }`}>
-                          {app.status}
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            app.status === 'Approved'
+                              ? 'bg-[#EBF5EE] text-[#2D5941]'
+                              : app.status === 'Pending'
+                              ? 'bg-[#F9F0E0] text-[#C97B2E]'
+                              : app.status === 'Under Review'
+                              ? 'bg-[#EAF3FA] text-[#2A6BA8]'
+                              : app.status === 'For Exam'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/20'
+                          }`}
+                          title={app.status === 'Rejected' && app.remarks ? `Reason: ${app.remarks}` : undefined}
+                        >
+                          {app.status === 'Rejected' ? '✕ Rejected' : app.status}
                         </span>
+
+                        {app.status === 'Rejected' && app.remarks && (
+                          <span className="text-[9px] text-[#B34040] italic max-w-[150px] truncate" title={app.remarks}>
+                            "{app.remarks}"
+                          </span>
+                        )}
 
                         {/* Post-Approval Bank Account Badge */}
                         {app.status === 'Approved' && (
@@ -448,7 +471,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                             sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
                               'bg-gray-100 text-gray-700'
                           }`}>
-                          {sch.status}
+                          {sch.status === 'Maintaining' ? 'Continuing' : sch.status}
                         </span>
                         {sch.disbursement_mode === 'in_person_cash' ? (
                           <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
@@ -466,30 +489,66 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                       </div>
 
                       {/* Semestral Payout Release Status */}
-                      {sch.payoutHistory && sch.payoutHistory.length > 0 ? (
-                        <div className="flex flex-col gap-1">
-                          {sch.payoutHistory.map((p: any, pIdx: number) => {
-                            const isReleased = p.status === 'released' || p.status === 'Completed' || p.blockchain_verified;
-                            const semLabel = p.isRenewal || p.semester?.includes('2nd') ? '2nd Sem' : '1st Sem';
-                            return (
-                              <span
-                                key={pIdx}
-                                className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded border ${
-                                  isReleased
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                    : 'bg-amber-50 text-amber-800 border-amber-300'
-                                }`}
-                              >
-                                {isReleased ? '✅' : '⏳'} {semLabel} Payout: {isReleased ? `₱${p.amount?.toLocaleString()} (Released)` : 'Pending Release'}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
-                          ⏳ 1st Sem Payout Pending
-                        </span>
-                      )}
+                      {(() => {
+                        const freq = sch.appDetail?.rawApplication?.cycle?.program?.funding_frequency;
+                        const isPerSemester = freq === 'Per Semester';
+
+                        const expectedSems = isPerSemester ? ['1st Sem', '2nd Sem'] : [sch.cycleJoined || 'Payout'];
+                        
+                        return (
+                          <div className="flex flex-col gap-1">
+                            {expectedSems.map((sem, semIdx) => {
+                              const match = (sch.payoutHistory || []).find((p: any) => {
+                                if (isPerSemester) {
+                                  const pSemLabel = p.isRenewal || p.semester?.includes('2nd') ? '2nd Sem' : '1st Sem';
+                                  return pSemLabel === sem;
+                                }
+                                return true;
+                              });
+
+                              const displaySem = isPerSemester ? sem : (sch.cycleJoined || 'Payout');
+
+                              if (match) {
+                                const isReleased = match.status === 'released' || match.status === 'Completed' || match.blockchain_verified;
+                                const isRefunded = match.status === 'returned' || match.status === 'failed' || match.paymongoStatus === 'refunded' || String(match.status).toLowerCase().includes('refund');
+                                
+                                if (isRefunded) {
+                                  return (
+                                    <span
+                                      key={semIdx}
+                                      className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded border bg-rose-50 text-rose-800 border-rose-300"
+                                    >
+                                      🔄 {displaySem} Payout: Refunded
+                                    </span>
+                                  );
+                                }
+                                
+                                return (
+                                  <span
+                                    key={semIdx}
+                                    className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded border ${
+                                      isReleased
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                        : 'bg-amber-50 text-amber-800 border-amber-300'
+                                    }`}
+                                  >
+                                    {isReleased ? '✅' : '⏳'} {displaySem} Payout: {isReleased ? `₱${match.amount?.toLocaleString()} (Released)` : 'Pending Release'}
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <span
+                                    key={semIdx}
+                                    className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded"
+                                  >
+                                    ⏳ {displaySem} Payout Pending
+                                  </span>
+                                );
+                              }
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-[#8E8E93] text-center text-xs">{sch.dateAwarded}</td>

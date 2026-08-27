@@ -271,12 +271,20 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
       (frData || []).forEach((fr: any) => {
         const s = String(fr.status || '').toLowerCase();
+        const isRefundedOrFailed =
+          s === 'returned' ||
+          s === 'failed' ||
+          s === 'refunded';
+
         const isComplete =
-          s === 'released' ||
-          s === 'processing' ||
-          s === 'completed' ||
-          s === 'paid' ||
-          fr.blockchain_verified === true;
+          !isRefundedOrFailed &&
+          (
+            s === 'released' ||
+            s === 'processing' ||
+            s === 'completed' ||
+            s === 'paid' ||
+            fr.blockchain_verified === true
+          );
 
         if (isComplete) {
           if (fr.application_id) releasedAppIds.add(String(fr.application_id));
@@ -316,10 +324,12 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       const currentCycle = cycles.find((c) => c.id === cycId);
       const cycleName = currentCycle?.cycle_name || 'Active Cycle';
       const semester = currentCycle?.semester || '1st Semester';
-      const isRenewal = currentCycle?.cycle_type === 'renewal' ||
+      const selectedProgram = availablePrograms.find(p => String(p.id) === String(progId));
+      const isPerSemester = (selectedProgram?.funding_frequency || selectedProgram?.fundingFrequency) === 'Per Semester';
+      const isRenewal = isPerSemester && (currentCycle?.cycle_type === 'renewal' ||
         cycleName.toLowerCase().includes('renewal') ||
         cycleName.toLowerCase().includes('2nd sem') ||
-        semester.toLowerCase().includes('2nd');
+        semester.toLowerCase().includes('2nd'));
 
       const formattedProgTitle = isRenewal
         ? `${progTitle} • 2nd Sem Renewal (${cycleName})`
@@ -715,6 +725,52 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       }
     }
 
+    if (selectedCycleId && selectedProgramId) {
+      try {
+        const { data: prog } = await supabase
+          .from('scholarship_programs')
+          .select('funding_frequency')
+          .eq('id', selectedProgramId)
+          .maybeSingle();
+
+        const freq = prog?.funding_frequency || '';
+        const isOneTimeOrAnnual = freq === 'One-time' || freq === 'Once a Year';
+
+        if (isOneTimeOrAnnual) {
+          const { data: approvedApps } = await supabase
+            .from('scholarship_applications')
+            .select('id')
+            .eq('cycle_id', selectedCycleId)
+            .eq('status', 'approved');
+
+          if (approvedApps && approvedApps.length > 0) {
+            const { data: releases } = await supabase
+              .from('fund_releases')
+              .select('application_id, status, blockchain_verified')
+              .eq('cycle_id', selectedCycleId);
+
+            const successfulAppIds = new Set<string>();
+            (releases || []).forEach((r: any) => {
+              const s = (r.status || '').toLowerCase();
+              if (s === 'released' || s === 'completed' || r.blockchain_verified) {
+                if (r.application_id) successfulAppIds.add(String(r.application_id));
+              }
+            });
+
+            const allPaid = approvedApps.every((a) => successfulAppIds.has(String(a.id)));
+            if (allPaid) {
+              await supabase
+                .from('application_cycles')
+                .update({ status: 'closed', updated_at: new Date().toISOString() })
+                .eq('id', selectedCycleId);
+            }
+          }
+        }
+      } catch (autoCloseErr) {
+        console.warn('Auto-close cycle check error:', autoCloseErr);
+      }
+    }
+
     setIsProcessingBatch(false);
     setBatchResult({
       batchId: bulkBatchId,
@@ -877,15 +933,17 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                   className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-xs font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
                 >
                   {cycles.map((cyc) => {
-                    const isRenewal = cyc.cycle_type === 'renewal' ||
+                    const selectedProgram = availablePrograms.find(p => String(p.id) === String(selectedProgramId));
+                    const isPerSemester = (selectedProgram?.funding_frequency || selectedProgram?.fundingFrequency) === 'Per Semester';
+                    const isRenewal = isPerSemester && (cyc.cycle_type === 'renewal' ||
                       (cyc.cycle_name || '').toLowerCase().includes('renewal') ||
                       (cyc.cycle_name || '').toLowerCase().includes('2nd sem') ||
-                      (cyc.semester || '').toLowerCase().includes('2nd');
+                      (cyc.semester || '').toLowerCase().includes('2nd'));
                     return (
                       <option key={cyc.id} value={cyc.id}>
                         {isRenewal ? '🔄 ' : '📅 '}
                         {cyc.cycle_name || 'Active Cycle'}
-                        {isRenewal ? ' • 2nd Semester Renewal' : ` (${cyc.semester || '1st Sem'})`}
+                        {isPerSemester ? (isRenewal ? ' • 2nd Semester Renewal' : ` (${cyc.semester || '1st Sem'})`) : ''}
                       </option>
                     );
                   })}

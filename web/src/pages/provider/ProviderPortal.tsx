@@ -380,6 +380,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       funding_frequency: fundingFreq,
       renewalPolicy: renPolicy,
       renewal_policy: renPolicy,
+      approved_count: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
+      approvedCount: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
+      scholars_count: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
       cycles: (dbProg.cycles || []).map((cyc: any) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -463,8 +466,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             .then(() => console.log(`[Auto-Close Cycles]: Synced ${expiredCycleIds.length} expired cycles to closed in DB.`));
         }
 
-        // Fetch fund releases to calculate disbursed total
+        // Fetch fund releases to calculate disbursed total & approved scholars count
         let disbursementsMap: Record<string, number> = {};
+        let approvedCountMap: Record<string, number> = {};
+
         if (data.length > 0) {
           const programIds = data.map((p: any) => p.id);
           const { data: releasesData } = await supabase
@@ -482,14 +487,33 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               }
             });
           }
+
+          // Count ONLY approved applications per program
+          const { data: approvedAppsData } = await supabase
+            .from('scholarship_applications')
+            .select('id, cycle:cycle_id(program_id)')
+            .eq('status', 'approved');
+
+          if (approvedAppsData) {
+            approvedAppsData.forEach((app: any) => {
+              const pId = app.cycle?.program_id;
+              if (pId) {
+                approvedCountMap[pId] = (approvedCountMap[pId] || 0) + 1;
+              }
+            });
+          }
         }
 
         const mapped = data.map((dbProg: any) => {
           const disbursedAmt = disbursementsMap[dbProg.id] || 0;
+          const approvedCnt = approvedCountMap[dbProg.id] || 0;
           return mapDbToProgram({
             ...dbProg,
             disbursed_total: disbursedAmt,
             disbursedTotal: disbursedAmt,
+            approved_count: approvedCnt,
+            approvedCount: approvedCnt,
+            scholars_count: approvedCnt,
           });
         });
         setProgramsList(mapped);
@@ -1249,7 +1273,46 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             };
           });
 
-          setApplicantsList(mappedApplicants);
+          // Deduplicate/merge applicant applications by scholar + program
+          const applicantMap = new Map<string, ApplicationDetail>();
+          for (const app of mappedApplicants) {
+            const key = `${app.scholarId || app.name}_${app.program}`;
+            if (!applicantMap.has(key)) {
+              const isRenewal = app.cycle_type === 'renewal' || (app.cycle || '').toLowerCase().includes('renewal') || (app.cycle || '').toLowerCase().includes('2nd sem');
+              if (isRenewal) {
+                app.isContinuingScholar = true;
+              }
+              applicantMap.set(key, app);
+            } else {
+              const existing = applicantMap.get(key)!;
+              
+              // Multiple applications for the same program implies continuing scholar
+              existing.isContinuingScholar = true;
+              app.isContinuingScholar = true;
+              
+              // We want to keep the application that is more recent or renewal
+              const existingIsRenewal = existing.cycle_type === 'renewal' || (existing.cycle || '').toLowerCase().includes('renewal') || (existing.cycle || '').toLowerCase().includes('2nd sem');
+              const currentIsRenewal = app.cycle_type === 'renewal' || (app.cycle || '').toLowerCase().includes('renewal') || (app.cycle || '').toLowerCase().includes('2nd sem');
+              
+              const existingDate = existing.rawApplication?.created_at ? new Date(existing.rawApplication.created_at) : new Date(0);
+              const currentDate = app.rawApplication?.created_at ? new Date(app.rawApplication.created_at) : new Date(0);
+              
+              if ((currentIsRenewal && !existingIsRenewal) || currentDate > existingDate) {
+                const mergedDocs = [...(existing.submittedDocuments || []), ...(app.submittedDocuments || [])];
+                const uniqueDocs = Array.from(new Map(mergedDocs.map(d => [d.id || d.url, d])).values());
+                app.submittedDocuments = uniqueDocs;
+                app.isContinuingScholar = true;
+                applicantMap.set(key, app);
+              } else {
+                const mergedDocs = [...(existing.submittedDocuments || []), ...(app.submittedDocuments || [])];
+                const uniqueDocs = Array.from(new Map(mergedDocs.map(d => [d.id || d.url, d])).values());
+                existing.submittedDocuments = uniqueDocs;
+                existing.isContinuingScholar = true;
+              }
+            }
+          }
+          const deduplicatedApplicants = Array.from(applicantMap.values());
+          setApplicantsList(deduplicatedApplicants);
 
           const approvedApps = data.filter((app: any) => (app.status || '').toLowerCase() === 'approved');
           const mappedScholars: ScholarAward[] = approvedApps.map((app: any) => {
@@ -1410,6 +1473,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               semester: p.cycle?.semester || '1st Semester',
               amount: Number(p.amount) || 0,
               status: p.status || (p.blockchain_verified ? 'released' : 'pending'),
+              paymongoStatus: p.paymongo_status,
               date: p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently',
               isRenewal: p.cycle?.cycle_type === 'renewal' ||
                 (p.cycle?.cycle_name || '').toLowerCase().includes('renewal') ||
@@ -1718,6 +1782,41 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         prev.map(a => (a.id === id ? { ...a, status: 'Approved', remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
       );
       showToast(`Approved application for ${applicant.name}! Scholar record created.`);
+
+      // Check slot limit auto-close for cycle
+      try {
+        const cycleId = applicant.rawApplication?.cycle_id;
+        if (cycleId) {
+          supabase
+            .from('scholarship_applications')
+            .select('id')
+            .eq('cycle_id', cycleId)
+            .eq('status', 'approved')
+            .then(({ data: approvedApps }) => {
+              const approvedCount = approvedApps?.length || 0;
+              supabase
+                .from('application_cycles')
+                .select('slots_available, program:program_id(total_slots)')
+                .eq('id', cycleId)
+                .maybeSingle()
+                .then(({ data: cycData }) => {
+                  const slots = cycData?.slots_available || (cycData?.program as any)?.total_slots;
+                  if (slots && approvedCount >= Number(slots)) {
+                    supabase
+                      .from('application_cycles')
+                      .update({ status: 'closed', updated_at: new Date().toISOString() })
+                      .eq('id', cycleId)
+                      .then(() => {
+                        showToast(`Scholarship slot limit of ${slots} reached! Cycle automatically marked as Closed.`);
+                        fetchApplicantsAndScholars();
+                      });
+                  }
+                });
+            });
+        }
+      } catch (slotCheckErr) {
+        console.warn('Slot limit auto-close check warning:', slotCheckErr);
+      }
     } else {
       setApplicantsList(prev =>
         prev.map(a => (a.id === id ? { ...a, status: nextStatus, remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
@@ -1914,7 +2013,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
-  const handleOpenRenewModal = (prog: Program) => {
+  const handleOpenRenewModal = (prog: Program, targetMode?: 'renewal_2nd_sem' | 'next_academic_year') => {
     setSelectedProgramForRenewal(prog);
     setCycleToEdit(null);
     
@@ -1933,23 +2032,45 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       }
     }
       
-    const currentYear = new Date().getFullYear();
-    setRenewCycleType('renewal');
-    setRenewSemester('2nd Semester');
-    setRenewCycleName(`AY ${currentYear}-${currentYear + 1} • 2nd Sem Renewal`);
+    const freq = prog.fundingFrequency || prog.funding_frequency || 'Per Semester';
+    const isPerSemester = freq === 'Per Semester';
+    const isRenewal2ndSem = targetMode === 'renewal_2nd_sem' || (isPerSemester && targetMode !== 'next_academic_year');
+
+    if (isRenewal2ndSem) {
+      const currentYear = new Date().getFullYear();
+      setRenewCycleType('renewal');
+      setRenewSemester('2nd Semester');
+      setRenewCycleName(`AY ${currentYear}-${currentYear + 1} (2nd Sem Renewal)`);
+      setRenewRequirements([
+        {
+          name: '1st Semester Official Grade Slip / Report of Grades',
+          description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
+        },
+        {
+          name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
+          description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+        },
+      ]);
+    } else {
+      const nextAY = `AY ${nextStartYear + 1}-${nextStartYear + 2}`;
+      setRenewCycleType('new_applicant');
+      setRenewSemester('1st Semester');
+      setRenewCycleName(nextAY);
+      setRenewRequirements([
+        {
+          name: 'Official Grade Slip / Report of Grades',
+          description: 'Signed copy or student portal screenshot of latest grades/GWA',
+        },
+        {
+          name: 'Certificate of Enrollment / Registration',
+          description: 'Official proof of enrollment for the new academic year',
+        },
+      ]);
+    }
+
     setRenewStartDate(new Date().toISOString().split('T')[0]);
     setRenewEndDate(new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0]);
     setRenewSlots(prog.totalSlots || '');
-    setRenewRequirements([
-      {
-        name: '1st Semester Official Grade Slip / Report of Grades',
-        description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
-      },
-      {
-        name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
-        description: 'Official proof of enrollment for the upcoming semester with enrolled units',
-      },
-    ]);
     setIsRenewModalOpen(true);
   };
 
