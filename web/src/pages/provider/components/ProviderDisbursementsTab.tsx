@@ -32,6 +32,7 @@ interface BenefitSummary {
 interface EligibleApplicant {
   applicationId: string;
   scholarId: string;
+  userId?: string;
   scholarName: string;
   school: string;
   programId: string;
@@ -516,7 +517,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           scholar_id,
           status,
           submitted_documents,
-          scholar:scholar_id(id, first_name, last_name, school),
+          scholar:scholar_id(id, user_id, first_name, last_name, school),
           cycle:cycle_id(id, cycle_name, semester, cycle_type, program_id, program:program_id(id, title, budget_total, disbursement_mode, banking_policy, covers_tuition, tuition_payout_mode, tuition_coverage_type, tuition_max_amount, covers_stipend, stipend_amount, covers_allowance, allowance_amount, custom_benefits))
         `)
         .eq('status', 'approved');
@@ -700,6 +701,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           list.push({
             applicationId: app.id,
             scholarId: app.scholar_id,
+            userId: scholarObj?.user_id,
             scholarName,
             school: scholarObj?.school || 'University',
             programId: progId || 'program-id',
@@ -744,6 +746,90 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       console.error('Error fetching eligible approved applicants:', err);
     } finally {
       setIsLoadingApplicants(false);
+    }
+  };
+
+  async function checkAndAutoCloseCycle(cycleId: string, programId: string) {
+    try {
+      if (!cycleId || !programId) return;
+
+      const { data: approvedApps } = await supabase
+        .from('scholarship_applications')
+        .select('id')
+        .eq('cycle_id', cycleId)
+        .eq('status', 'approved');
+
+      if (!approvedApps || approvedApps.length === 0) return;
+
+      const { data: releases } = await supabase
+        .from('fund_releases')
+        .select('application_id, status, blockchain_verified')
+        .eq('cycle_id', cycleId);
+
+      const successfulAppIds = new Set<string>();
+      (releases || []).forEach((r: any) => {
+        const s = (r.status || '').toLowerCase();
+        if (s === 'released' || s === 'completed' || r.blockchain_verified) {
+          if (r.application_id) successfulAppIds.add(String(r.application_id));
+        }
+      });
+
+      const allPaid = approvedApps.every((a) => successfulAppIds.has(String(a.id)));
+
+      if (allPaid) {
+        await supabase
+          .from('application_cycles')
+          .update({ status: 'closed', updated_at: new Date().toISOString() })
+          .eq('id', cycleId);
+        if (fetchPrograms) fetchPrograms();
+      }
+    } catch (err) {
+      console.warn('Auto-close cycle check warning:', err);
+    }
+  }
+
+  const handleDeferScholar = async (appId: string, scholarName: string) => {
+    if (!window.confirm(`Are you sure you want to defer the disbursement for ${scholarName} in this cycle? This will exclude them from the current payout requirements, allowing you to proceed with closing this cycle. They can be re-evaluated or approved in future cycles once they complete their details.`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from('scholarship_applications')
+        .update({
+          status: 'deferred',
+          remarks: 'Disbursement deferred due to incomplete bank account details. Cycle auto-close bypass enabled.'
+        })
+        .eq('id', appId);
+
+      if (error) throw error;
+
+      showToast?.(`✓ ${scholarName} deferred successfully.`);
+
+      const currentSelected = eligibleApplicants.find(a => a.applicationId === appId);
+      if (currentSelected?.userId) {
+        await supabase.from('notifications').insert({
+          user_id: currentSelected.userId,
+          title: '⚠️ Payout Deferred - Action Required',
+          message: `Your disbursement for this cycle has been deferred because you haven't completed your bank/e-wallet details. Please upload your bank details immediately to be eligible for future releases.`,
+          type: 'warning',
+          is_read: false,
+          created_at: new Date().toISOString(),
+        });
+      }
+
+      await fetchEligibleApplicants();
+      if (currentSelected?.cycleId && currentSelected?.programId) {
+        await checkAndAutoCloseCycle(currentSelected.cycleId, currentSelected.programId);
+      }
+      if (fetchPrograms) fetchPrograms();
+      setIsReleaseModalOpen(false);
+    } catch (err: any) {
+      console.error('Error deferring scholar:', err);
+      showToast?.(`Error deferring scholar: ${err.message || err}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -942,54 +1028,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         if (showToast) {
           showToast(`✓ Cash Payout recorded for ${selected.scholarName}! Logged on Polygon Blockchain: ${cashTxHash.substring(0, 14)}...`);
         }
-  const checkAndAutoCloseCycle = async (cycleId: string, programId: string) => {
-    try {
-      if (!cycleId || !programId) return;
 
-      const { data: prog } = await supabase
-        .from('scholarship_programs')
-        .select('funding_frequency')
-        .eq('id', programId)
-        .maybeSingle();
-
-      const freq = prog?.funding_frequency || '';
-      const isOneTimeOrAnnual = freq === 'One-time' || freq === 'Once a Year';
-      if (!isOneTimeOrAnnual) return;
-
-      const { data: approvedApps } = await supabase
-        .from('scholarship_applications')
-        .select('id')
-        .eq('cycle_id', cycleId)
-        .eq('status', 'approved');
-
-      if (!approvedApps || approvedApps.length === 0) return;
-
-      const { data: releases } = await supabase
-        .from('fund_releases')
-        .select('application_id, status, blockchain_verified')
-        .eq('cycle_id', cycleId);
-
-      const successfulAppIds = new Set<string>();
-      (releases || []).forEach((r: any) => {
-        const s = (r.status || '').toLowerCase();
-        if (s === 'released' || s === 'completed' || r.blockchain_verified) {
-          if (r.application_id) successfulAppIds.add(String(r.application_id));
-        }
-      });
-
-      const allPaid = approvedApps.every((a) => successfulAppIds.has(String(a.id)));
-
-      if (allPaid) {
-        await supabase
-          .from('application_cycles')
-          .update({ status: 'closed', updated_at: new Date().toISOString() })
-          .eq('id', cycleId);
-        if (fetchPrograms) fetchPrograms();
-      }
-    } catch (err) {
-      console.warn('Auto-close cycle check warning:', err);
-    }
-  };
 
         createAuditLog(
           'RECORDED CASH DISBURSEMENT',
@@ -1739,21 +1778,58 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                         )}
                       </div>
                     ) : (
-                      <div className="space-y-2 pt-1">
+                      <div className="space-y-2.5 pt-1">
                         <p className="text-[11px] text-[#B34040]">
-                          Scholar has not uploaded their bank card scan yet.
+                          ⚠️ Scholar has not uploaded their bank details yet.
                         </p>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setUploadModalScholar({
+                                id: currentSelectedApplicant.scholarId,
+                                name: currentSelectedApplicant.scholarName,
+                              })
+                            }
+                            className="w-full py-2 bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border-0"
+                          >
+                            <span>📤 Upload Scan (OCR)</span>
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                if (currentSelectedApplicant.userId) {
+                                  await supabase.from('notifications').insert({
+                                    user_id: currentSelectedApplicant.userId,
+                                    title: '⚠️ Urgent: Complete Bank Details',
+                                    message: `Your disbursement for ${currentSelectedApplicant.programTitle} is pending because you haven't uploaded your bank account details. Please upload your card scan immediately to receive your funds.`,
+                                    type: 'warning',
+                                    is_read: false,
+                                    created_at: new Date().toISOString(),
+                                  });
+                                  showToast?.('✓ Bank details reminder sent successfully.');
+                                } else {
+                                  showToast?.('Cannot send reminder: Scholar user ID is missing.');
+                                }
+                              } catch (err: any) {
+                                showToast?.(`Error sending reminder: ${err.message}`);
+                              }
+                            }}
+                            className="w-full py-2 bg-[#FFF8EE] hover:bg-[#C97B2E] hover:text-white text-[#C97B2E] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border-0"
+                          >
+                            <span>🔔 Send Reminder</span>
+                          </button>
+                        </div>
+
                         <button
                           type="button"
-                          onClick={() =>
-                            setUploadModalScholar({
-                              id: currentSelectedApplicant.scholarId,
-                              name: currentSelectedApplicant.scholarName,
-                            })
-                          }
-                          className="w-full py-2 bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          onClick={() => handleDeferScholar(currentSelectedApplicant.applicationId, currentSelectedApplicant.scholarName)}
+                          className="w-full py-2 bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-rose-200"
                         >
-                          <span>📤 Upload Card Scan & Run AI OCR on Scholar's Behalf</span>
+                          <span>⏭️ Defer Payout & Bypass Cycle Close Block</span>
                         </button>
                       </div>
                     )}

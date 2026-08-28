@@ -77,10 +77,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   String? _getSafeGenderValue() {
     if (_selectedGender == null) return null;
     final val = _selectedGender!.trim().toLowerCase();
-    if (val == 'male') return 'Male';
-    if (val == 'female') return 'Female';
-    if (val.contains('non')) return 'Non-binary';
-    if (val.contains('prefer')) return 'Prefer not to say';
+    if (val == 'male') return 'male';
+    if (val == 'female') return 'female';
+    if (val == 'other' || val.contains('non')) return 'other';
+    if (val.contains('prefer')) return 'prefer_not_to_say';
     return null;
   }
 
@@ -1235,7 +1235,23 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     final dob = _selectedBirthDate != null
         ? '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}'
         : 'Not set';
-    final gender = _selectedGender ?? 'Not set';
+    final String gender;
+    if (_selectedGender == null) {
+      gender = 'Not set';
+    } else {
+      final gVal = _selectedGender!.toLowerCase();
+      if (gVal == 'male') {
+        gender = 'Male';
+      } else if (gVal == 'female') {
+        gender = 'Female';
+      } else if (gVal == 'other') {
+        gender = 'Other';
+      } else if (gVal == 'prefer_not_to_say') {
+        gender = 'Prefer not to say';
+      } else {
+        gender = _selectedGender!;
+      }
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1568,10 +1584,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       ),
                       hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF9CA3AF))),
                       items: const [
-                        DropdownMenuItem(value: 'Male', child: Text('Male')),
-                        DropdownMenuItem(value: 'Female', child: Text('Female')),
-                        DropdownMenuItem(value: 'Non-binary', child: Text('Non-binary')),
-                        DropdownMenuItem(value: 'Prefer not to say', child: Text('Prefer not to say')),
+                        DropdownMenuItem(value: 'male', child: Text('Male')),
+                        DropdownMenuItem(value: 'female', child: Text('Female')),
+                        DropdownMenuItem(value: 'other', child: Text('Other')),
+                        DropdownMenuItem(value: 'prefer_not_to_say', child: Text('Prefer not to say')),
                       ],
                       onChanged: (val) => setState(() => _selectedGender = val),
                     ),

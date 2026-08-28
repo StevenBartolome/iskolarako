@@ -155,9 +155,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   );
 
   // Step 3: Eligibility & Grading
-  const [gradingSystem, setGradingSystem] = useState<GradingSystem>(
-    programToEdit?.grading_system || programToEdit?.gradingSystem || 'scale_5'
-  );
+  const [gradingSystem] = useState<GradingSystem>('percentage');
   const [gpaRequirement, setGpaRequirement] = useState(
     programToEdit?.gpa_requirement || programToEdit?.minimum_gwa || programToEdit?.minimumGwa
       ? String(programToEdit.gpa_requirement || programToEdit.minimum_gwa || programToEdit.minimumGwa)
@@ -448,7 +446,6 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           ? programToEdit.other_benefits.join(', ')
           : (programToEdit.otherBenefits || '')
       );
-      setGradingSystem((programToEdit.grading_system || programToEdit.gradingSystem || 'scale_5') as GradingSystem);
       setGpaRequirement(
         programToEdit.gpa_requirement || programToEdit.minimum_gwa || programToEdit.minimumGwa
           ? String(programToEdit.gpa_requirement || programToEdit.minimum_gwa || programToEdit.minimumGwa)
@@ -1390,32 +1387,17 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
             </div>
 
             {/* Academic Standards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6">
               <div>
                 <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
-                  Grading Scale System
-                </label>
-                <select
-                  value={gradingSystem}
-                  onChange={(e) => setGradingSystem(e.target.value as GradingSystem)}
-                  className="w-full px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none text-sm bg-white font-medium cursor-pointer"
-                >
-                  <option value="scale_5">1.00 - 5.00 Scale (PH University System)</option>
-                  <option value="scale_4">4.00 Scale (US System)</option>
-                  <option value="percentage">Percentage (e.g. 88% - 100%)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
-                  Minimum Required GWA / GPA
+                  Minimum Grade Percentage Requirement (%)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. 1.75 or 85%"
+                  placeholder="e.g. 85"
                   value={gpaRequirement}
                   onChange={(e) => setGpaRequirement(e.target.value)}
-                  className="w-full px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none text-sm font-semibold"
+                  className="w-full md:w-1/2 px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none text-sm font-semibold"
                 />
               </div>
             </div>

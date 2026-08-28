@@ -727,43 +727,32 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
     if (selectedCycleId && selectedProgramId) {
       try {
-        const { data: prog } = await supabase
-          .from('scholarship_programs')
-          .select('funding_frequency')
-          .eq('id', selectedProgramId)
-          .maybeSingle();
+        const { data: approvedApps } = await supabase
+          .from('scholarship_applications')
+          .select('id')
+          .eq('cycle_id', selectedCycleId)
+          .eq('status', 'approved');
 
-        const freq = prog?.funding_frequency || '';
-        const isOneTimeOrAnnual = freq === 'One-time' || freq === 'Once a Year';
+        if (approvedApps && approvedApps.length > 0) {
+          const { data: releases } = await supabase
+            .from('fund_releases')
+            .select('application_id, status, blockchain_verified')
+            .eq('cycle_id', selectedCycleId);
 
-        if (isOneTimeOrAnnual) {
-          const { data: approvedApps } = await supabase
-            .from('scholarship_applications')
-            .select('id')
-            .eq('cycle_id', selectedCycleId)
-            .eq('status', 'approved');
-
-          if (approvedApps && approvedApps.length > 0) {
-            const { data: releases } = await supabase
-              .from('fund_releases')
-              .select('application_id, status, blockchain_verified')
-              .eq('cycle_id', selectedCycleId);
-
-            const successfulAppIds = new Set<string>();
-            (releases || []).forEach((r: any) => {
-              const s = (r.status || '').toLowerCase();
-              if (s === 'released' || s === 'completed' || r.blockchain_verified) {
-                if (r.application_id) successfulAppIds.add(String(r.application_id));
-              }
-            });
-
-            const allPaid = approvedApps.every((a) => successfulAppIds.has(String(a.id)));
-            if (allPaid) {
-              await supabase
-                .from('application_cycles')
-                .update({ status: 'closed', updated_at: new Date().toISOString() })
-                .eq('id', selectedCycleId);
+          const successfulAppIds = new Set<string>();
+          (releases || []).forEach((r: any) => {
+            const s = (r.status || '').toLowerCase();
+            if (s === 'released' || s === 'completed' || r.blockchain_verified) {
+              if (r.application_id) successfulAppIds.add(String(r.application_id));
             }
+          });
+
+          const allPaid = approvedApps.every((a) => successfulAppIds.has(String(a.id)));
+          if (allPaid) {
+            await supabase
+              .from('application_cycles')
+              .update({ status: 'closed', updated_at: new Date().toISOString() })
+              .eq('id', selectedCycleId);
           }
         }
       } catch (autoCloseErr) {

@@ -234,28 +234,20 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
         result.extractedDocType?.toLowerCase().includes('tor') ||
         result.extractedDocType?.toLowerCase().includes('report card');
 
-      if (scholarId && finalGwa && isAcademicDoc && docStatusDb !== 'rejected') {
+      if (scholarId && finalGwa && isAcademicDoc && docStatusDb !== 'rejected' && application?.id) {
         const numericGwa = parseFloat(finalGwa);
         if (!isNaN(numericGwa)) {
-          // Update scholar GWA and scale
-          await supabase
-            .from('scholar')
-            .update({
-              gpa: numericGwa,
-              gpa_scale: detectedScale,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', scholarId);
-
-          // Force parent real-time reload
+          // Update application-level GWA and scale
           await supabase
             .from('scholarship_applications')
             .update({
+              grade: numericGwa,
+              gpa_scale: detectedScale,
               updated_at: new Date().toISOString(),
             })
             .eq('id', application.id);
             
-          console.log(`[Database Sync GWA]: Scholar GWA updated to ${numericGwa} (${detectedScale})`);
+          console.log(`[Database Sync GWA]: Application GWA updated to ${numericGwa} (${detectedScale})`);
         }
       }
 
@@ -386,6 +378,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
       course: application?.course || '',
       yearLevel: application?.yearLevel || '',
       gwa: application?.grade || '',
+      gpaScale: application?.rawApplication?.scholar?.gpa_scale || 'scale_5',
       email: application?.email || '',
       phone: application?.phone || '',
       programTitle: application?.program || '',
@@ -797,8 +790,8 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
           <div className="flex items-center gap-2 flex-wrap lg:justify-end shrink-0">
             <button
               onClick={() => handleSaveStatus('Approved')}
-              disabled={isSubmitting}
-              className="px-4 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-sm flex items-center gap-1.5"
+              disabled={isSubmitting || application.status === 'Rejected'}
+              className="px-4 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>✓</span> Approve Scholar
             </button>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ScholarAward, ApplicantStatus } from '../types';
+import { normalizeGwa } from '../utils/gwaUtils';
 
 interface ProviderApplicantsTabProps {
   subTab: 'applicants' | 'scholars';
@@ -16,6 +17,9 @@ interface ProviderApplicantsTabProps {
   setIsReviewModalOpen: (open: boolean) => void;
   onOpenViewTab?: (app: any) => void;
   handleUpdateStatus: (id: any, newStatus: ApplicantStatus) => void;
+  showToast?: (message: string) => void;
+  triggerQuotaFilledModal?: (cycleId: string, programTitle: string, cycleName: string, totalSlots: number, excludeAppIds: (string | number)[]) => Promise<void>;
+  setQuotaPendingApproveIds?: (ids: string[]) => void;
 }
 
 export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
@@ -33,10 +37,14 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
   setIsReviewModalOpen,
   onOpenViewTab,
   handleUpdateStatus,
+  showToast,
+  triggerQuotaFilledModal,
+  setQuotaPendingApproveIds,
 }) => {
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>('All');
   const [selectedBatchFilter, setSelectedBatchFilter] = useState<string>('All');
-  const [sortBy, setSortBy] = useState<string>('newest');
+  const [sortBy, setSortBy] = useState<string>('gwa_asc');
+  const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
 
   // Dynamic Options for Applicants
   const applicantProgramOptions = ['All', ...Array.from(new Set(applicantsList.map(a => a.program).filter(Boolean)))];
@@ -55,8 +63,16 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
     if (sortBy === 'newest') return new Date(b.date || b.created_at || 0).getTime() - new Date(a.date || a.created_at || 0).getTime();
     if (sortBy === 'oldest') return new Date(a.date || a.created_at || 0).getTime() - new Date(b.date || b.created_at || 0).getTime();
     if (sortBy === 'name_asc') return (a.name || '').localeCompare(b.name || '');
-    if (sortBy === 'gwa_asc') return (parseFloat(a.grade) || 99) - (parseFloat(b.grade) || 99);
-    if (sortBy === 'gwa_desc') return (parseFloat(b.grade) || 0) - (parseFloat(a.grade) || 0);
+    if (sortBy === 'gwa_asc') {
+      const scoreA = normalizeGwa(a.grade, a.gpa_scale || a.gpaScale);
+      const scoreB = normalizeGwa(b.grade, b.gpa_scale || b.gpaScale);
+      return scoreB - scoreA; // Highest Normalized Score First
+    }
+    if (sortBy === 'gwa_desc') {
+      const scoreA = normalizeGwa(a.grade, a.gpa_scale || a.gpaScale);
+      const scoreB = normalizeGwa(b.grade, b.gpa_scale || b.gpaScale);
+      return scoreA - scoreB; // Lowest Normalized Score First
+    }
     return 0;
   });
 
@@ -105,7 +121,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
             className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${subTab === 'applicants' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
               }`}
           >
-            Applicants ({applicantsList.length})
+            Applicants ({filteredApplicants.length})
           </button>
           <button
             onClick={() => {
@@ -182,7 +198,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
 
           {/* Status Filter Buttons */}
           <div className="flex flex-wrap gap-1 bg-[#EDE8DE]/45 p-1 rounded-lg text-[10px] font-bold">
-            {['All', 'New Applicants', 'Renewals', 'Pending', 'Under Review', 'For Exam', 'Rejected'].map(st => (
+            {['All', 'New Applicants', 'Renewals', 'Pending', 'Under Review', 'For Exam', 'Waitlisted', 'Rejected'].map(st => (
               <button
                 key={st} onClick={() => setStatusFilter(st)}
                 className={`px-3 py-1.5 rounded cursor-pointer transition-colors ${statusFilter === st ? 'bg-[#1A3C2E] text-white' : 'text-[#6C6C70] hover:text-[#1A3C2E]'}`}
@@ -252,14 +268,117 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
 
       {/* Render table based on toggle */}
       {subTab === 'applicants' ? (
-        <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead>
-              <tr className="bg-[#F9F5EF] border-b border-[#D9D2C5]/60 text-xs font-bold text-[#6C6C70] uppercase tracking-wider">
-                <th className="px-6 py-4">Applicant Name</th>
+        <div className="space-y-3">
+          {/* Floating Batch Action Bar */}
+          {selectedAppIds.length > 0 && (
+            <div className="bg-[#1A3C2E] text-white px-5 py-3 rounded-2xl flex flex-wrap items-center justify-between shadow-lg text-xs animate-fade-in gap-3">
+              <div className="flex items-center gap-2 font-bold">
+                <span>✓ Selected {selectedAppIds.length} candidate{selectedAppIds.length > 1 ? 's' : ''}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selectedApps = applicantsList.filter(app => selectedAppIds.includes(app.id));
+                    if (selectedApps.length === 0) return;
+
+                    // 1. Validate that all selected applicants belong to the same program
+                    const programNames = Array.from(new Set(selectedApps.map(app => app.program)));
+                    if (programNames.length > 1) {
+                      const msg = "Batch approval is only allowed for candidates of the same program. Please filter by program or adjust your selection.";
+                      if (showToast) showToast(msg);
+                      else alert(msg);
+                      return;
+                    }
+
+                    // 2. Validate that the selection count does not exceed remaining slots
+                    const targetProgramTitle = programNames[0];
+                    const activeApp = selectedApps[0];
+                    const totalSlots = activeApp.rawApplication?.cycle?.program?.total_slots || 
+                                       activeApp.rawApplication?.cycle?.slots_available || 0;
+
+                    if (totalSlots > 0) {
+                      const alreadyApprovedCount = scholarsList.filter(sch => sch.programTitle === targetProgramTitle).length;
+                      const remainingSlots = totalSlots - alreadyApprovedCount;
+
+                      if (selectedAppIds.length > remainingSlots) {
+                        const errorMsg = `Cannot approve: you selected ${selectedAppIds.length} applicants, but there are only ${remainingSlots} slots remaining for "${targetProgramTitle}" (${alreadyApprovedCount}/${totalSlots} filled).`;
+                        if (showToast) showToast(errorMsg);
+                        else alert(errorMsg);
+                        return; // Block batch approval!
+                      }
+
+                      // Check if the selection exactly fills the remaining slots
+                      if (selectedAppIds.length === remainingSlots && triggerQuotaFilledModal && setQuotaPendingApproveIds) {
+                        const cycleId = activeApp.rawApplication?.cycle_id;
+                        const cycleName = activeApp.cycle || activeApp.rawApplication?.cycle?.cycle_name || 'Current Cycle';
+                        setQuotaPendingApproveIds(selectedAppIds);
+                        triggerQuotaFilledModal(cycleId, targetProgramTitle, cycleName, totalSlots, selectedAppIds);
+                        setSelectedAppIds([]); // Clear selection so the floating action bar disappears
+                        return; // Abort direct approval!
+                      }
+                    }
+
+                    // Run status updates sequentially to prevent race conditions
+                    const approveAll = async () => {
+                      for (const id of selectedAppIds) {
+                        await handleUpdateStatus(id, 'Approved');
+                      }
+                      setSelectedAppIds([]);
+                    };
+                    approveAll();
+                  }}
+                  className="bg-[#2D5941] hover:bg-[#3D7355] text-white px-3.5 py-1.5 rounded-xl font-bold border-0 cursor-pointer shadow-sm text-xs transition-all"
+                >
+                  🎓 Batch Approve ({selectedAppIds.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectedAppIds.forEach(id => handleUpdateStatus(id, 'For Exam'));
+                    setSelectedAppIds([]);
+                  }}
+                  className="bg-purple-700 hover:bg-purple-800 text-white px-3 py-1.5 rounded-xl font-bold border-0 cursor-pointer text-xs transition-all"
+                >
+                  📋 Set For Exam ({selectedAppIds.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAppIds([])}
+                  className="text-gray-300 hover:text-white px-2 py-1 text-xs cursor-pointer bg-transparent border-0 underline"
+                >
+                  Clear Selection
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="bg-[#F9F5EF] border-b border-[#D9D2C5]/60 text-xs font-bold text-[#6C6C70] uppercase tracking-wider">
+                  <th className="px-4 py-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={
+                        processedApplicants.length > 0 &&
+                        processedApplicants.filter(a => a.status !== 'Rejected').length > 0 &&
+                        selectedAppIds.length === processedApplicants.filter(a => a.status !== 'Rejected').length
+                      }
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedAppIds(processedApplicants.filter(a => a.status !== 'Rejected').map(a => a.id));
+                        } else {
+                          setSelectedAppIds([]);
+                        }
+                      }}
+                      className="w-4 h-4 text-[#2D5941] rounded focus:ring-[#2D5941] cursor-pointer"
+                    />
+                  </th>
+                  <th className="px-6 py-4">Applicant Name</th>
                 <th className="px-6 py-4">Target Program</th>
                 <th className="px-6 py-4">Active Cycle / Batch</th>
-                <th className="px-6 py-4 text-center">GWA</th>
+                <th className="px-6 py-4 text-center">GWA / Score %</th>
                 <th className="px-6 py-4">Current Status</th>
                 <th className="px-6 py-4 text-center">Actions / Decision</th>
               </tr>
@@ -286,6 +405,21 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                 const isRenewal = app.cycle_type === 'renewal' || (app.cycle && app.cycle.toLowerCase().includes('renewal'));
                 return (
                   <tr key={app.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
+                    <td className="px-4 py-4 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedAppIds.includes(app.id)}
+                        disabled={app.status === 'Rejected'}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedAppIds(prev => [...prev, app.id]);
+                          } else {
+                            setSelectedAppIds(prev => prev.filter(id => id !== app.id));
+                          }
+                        }}
+                        className="w-4 h-4 text-[#2D5941] rounded focus:ring-[#2D5941] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                      />
+                    </td>
                     <td className="px-6 py-4 flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-[#1A3C2E] text-white flex items-center justify-center font-bold text-xs uppercase">
                         {app.name.split(' ').map((n: string) => n[0]).join('')}
@@ -315,7 +449,29 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center font-serif text-[#1C1C1E]">{app.grade}</td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        {(() => {
+                          const scale = app.gpa_scale || app.gpaScale || app.scholar?.gpa_scale || 'scale_5';
+                          const normScore = normalizeGwa(app.grade, scale);
+                          const scaleLabel = scale === 'scale_4' ? 'Scale 4.0' : scale === 'percentage' ? 'Percentage' : 'Scale 5.0';
+
+                          return (
+                            <>
+                              <div className="flex items-center gap-1.5 justify-center">
+                                <span className="font-serif font-bold text-[#1C1C1E] text-xs">{app.grade}</span>
+                                <span className="text-[9px] font-bold text-[#6C6C70] bg-[#EDE8DE]/70 px-1.5 py-0.5 rounded border border-[#D9D2C5]/60" title={`Grading System: ${scaleLabel}`}>
+                                  {scaleLabel}
+                                </span>
+                              </div>
+                              <span className="text-[9px] font-extrabold text-[#2D5941] bg-[#EBF5EE] px-1.5 py-0.5 rounded-md border border-[#2D5941]/20 mt-0.5" title={`Normalized Score: ${normScore}% (${scaleLabel})`}>
+                                Score: {normScore}%
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col items-start gap-1">
                         <span
@@ -328,15 +484,17 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                               ? 'bg-[#EAF3FA] text-[#2A6BA8]'
                               : app.status === 'For Exam'
                               ? 'bg-purple-100 text-purple-700'
+                              : app.status === 'Waitlisted'
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
                               : 'bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/20'
                           }`}
-                          title={app.status === 'Rejected' && app.remarks ? `Reason: ${app.remarks}` : undefined}
+                          title={app.remarks ? `Remarks: ${app.remarks}` : undefined}
                         >
-                          {app.status === 'Rejected' ? '✕ Rejected' : app.status}
+                          {app.status === 'Rejected' ? '✕ Rejected' : app.status === 'Waitlisted' ? '⏳ Waitlisted' : app.status}
                         </span>
 
-                        {app.status === 'Rejected' && app.remarks && (
-                          <span className="text-[9px] text-[#B34040] italic max-w-[150px] truncate" title={app.remarks}>
+                        {(app.status === 'Rejected' || app.status === 'Waitlisted') && app.remarks && (
+                          <span className={`text-[9px] italic max-w-[150px] truncate ${app.status === 'Waitlisted' ? 'text-amber-700 font-bold' : 'text-[#B34040]'}`} title={app.remarks}>
                             "{app.remarks}"
                           </span>
                         )}
@@ -387,12 +545,14 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                         <div className="relative inline-block text-left">
                           <select
                             value={app.status}
+                            disabled={app.status === 'Rejected'}
                             onChange={(e) => handleUpdateStatus(app.id, e.target.value as ApplicantStatus)}
-                            className="appearance-none bg-white hover:bg-[#F9F5EF]/60 text-[#1C1C1E] font-semibold text-xs border border-[#D9D2C5] hover:border-[#2D5941] focus:border-[#2D5941] focus:ring-2 focus:ring-[#2D5941]/20 rounded-xl pl-3.5 pr-8 py-2 cursor-pointer outline-none transition-all shadow-sm"
+                            className="appearance-none bg-white hover:bg-[#F9F5EF]/60 text-[#1C1C1E] font-semibold text-xs border border-[#D9D2C5] hover:border-[#2D5941] focus:border-[#2D5941] focus:ring-2 focus:ring-[#2D5941]/20 rounded-xl pl-3.5 pr-8 py-2 cursor-pointer outline-none transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             <option value="Pending">Pending</option>
                             <option value="Under Review">Under Review</option>
                             <option value="For Exam">For Exam</option>
+                            <option value="Waitlisted">Waitlisted</option>
                             <option value="Approved">Approve & Issue Award</option>
                             <option value="Rejected">Rejected</option>
                           </select>
@@ -410,6 +570,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
             </tbody>
           </table>
         </div>
+      </div>
       ) : (
         /* Scholars Monitoring View */
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">

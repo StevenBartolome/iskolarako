@@ -50,6 +50,8 @@ export interface ApplicationDetail {
   course: string;
   yearLevel: string;
   grade: string; // Real GWA
+  gpa_scale?: string;
+  gpaScale?: string;
   citizenship?: string;
   address?: string;
   status: ApplicantStatus;
@@ -122,6 +124,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
       course: application?.course || '',
       yearLevel: application?.yearLevel || '',
       gwa: application?.grade || '',
+      gpaScale: application?.rawApplication?.scholar?.gpa_scale || 'scale_5',
       email: application?.email || '',
       phone: application?.phone || '',
       programTitle: application?.program || '',
@@ -1001,9 +1004,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
                   <button
                     type="button"
-                    disabled={isBatchScanning || documentsList.length === 0}
+                    disabled={isBatchScanning || documentsList.length === 0 || application.status === 'Rejected'}
                     onClick={() => handleScanAllDocs()}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-[11px] font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5 transition-all border-0 disabled:opacity-50"
+                    className="px-3.5 py-1.5 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-[11px] font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5 transition-all border-0 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isBatchScanning ? (
                       <>
@@ -1020,7 +1023,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                   <button
                     type="button"
                     onClick={handleApproveAllDocs}
-                    className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-[11px] font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1 transition-all"
+                    disabled={application.status === 'Rejected'}
+                    className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-[11px] font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1323,7 +1327,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleDocStatus(idx, docStatus === 'Verified' ? 'Pending' : 'Verified')}
-                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[98px] ${
+                            disabled={application.status === 'Rejected'}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[98px] disabled:opacity-50 disabled:cursor-not-allowed ${
                               docStatus === 'Verified'
                                 ? 'bg-[#2D5941] text-white border-[#2D5941]'
                                 : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
@@ -1336,7 +1341,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleDocStatus(idx, docStatus === 'Flagged' ? 'Pending' : 'Flagged')}
-                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[84px] ${
+                            disabled={application.status === 'Rejected'}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[84px] disabled:opacity-50 disabled:cursor-not-allowed ${
                               docStatus === 'Flagged'
                                 ? 'bg-[#B34040] text-white border-[#B34040]'
                                 : 'bg-red-50 text-[#B34040] border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
@@ -1615,8 +1621,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                     </label>
                     <select
                       value={selectedStatus}
+                      disabled={application.status === 'Rejected'}
                       onChange={(e) => setSelectedStatus(e.target.value as ApplicantStatus)}
-                      className={`w-full px-3.5 py-2.5 rounded-xl border focus:outline-none bg-white text-xs font-bold cursor-pointer transition-all ${
+                      className={`w-full px-3.5 py-2.5 rounded-xl border focus:outline-none bg-white text-xs font-bold cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
                         allDocsApproved ? 'border-[#2D5941] text-[#2D5941] bg-[#F4F9F5]' : 'border-[#D9D2C5]'
                       }`}
                     >
@@ -1654,8 +1661,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                       type="text"
                       placeholder={allDocsApproved ? 'e.g. All credentials verified. Approved for scholarship award!' : 'e.g. Under review / awaiting document resubmission...'}
                       value={remarks}
+                      disabled={application.status === 'Rejected'}
                       onChange={(e) => setRemarks(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none bg-white text-xs"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none bg-white text-xs disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -1671,8 +1679,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                     </button>
                     <button
                       type="submit"
-                      disabled={isSubmitting}
-                      className="px-7 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white text-xs font-bold shadow-md cursor-pointer border-0 disabled:opacity-50"
+                      disabled={isSubmitting || application.status === 'Rejected'}
+                      className="px-7 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white text-xs font-bold shadow-md cursor-pointer border-0 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isSubmitting ? 'Saving Decision...' : 'Save Decision & Notify Student'}
                     </button>

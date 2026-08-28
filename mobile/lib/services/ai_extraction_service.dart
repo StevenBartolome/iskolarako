@@ -648,4 +648,266 @@ If the document truly contains no banking information at all, return exactly:
       return null;
     }
   }
+
+  static const String _academicPrompt = '''
+You are a specialized Philippine academic document auditor and GPA/GWA data extraction assistant.
+Extract details from the provided Transcript of Records (TOR), Report Card, or True Copy of Grades.
+Your tasks are:
+1. Extract the overall GWA / GPA / General Average of the student (typically a single overall summary grade).
+2. Determine the grading scale used by the school:
+   - "scale_5": if 1.0 is the highest grade and 5.0 is failing (standard PH State University/UP system).
+   - "scale_4": if 4.0 is the highest grade and 1.0 or 0.0 is failing (standard US/Ateneo/DLSU system).
+   - "percentage": if the grades are based on 100 (e.g. 85, 92, 95).
+3. Identify the school name if visible.
+Return ONLY valid, raw JSON without markdown backticks or commentary in this exact format:
+{
+  "gpa": 1.75,
+  "gpa_scale": "scale_5",
+  "school_name": "University of the Philippines",
+  "confidence_score": 0.95
+}
+If no grade or scale is found, return exactly:
+{"gpa":null,"gpa_scale":"scale_5","school_name":"","confidence_score":0}
+''';
+
+  static Future<ExtractedAcademicInfo?> extractAcademicDetails({
+    required Uint8List fileBytes,
+    required String fileName,
+    String? filePath,
+    String? expectedScale,
+  }) async {
+    Uint8List actualBytes = fileBytes;
+    if (actualBytes.isEmpty && filePath != null && filePath.isNotEmpty) {
+      try {
+        actualBytes = await File(filePath).readAsBytes();
+      } catch (e) {
+        debugPrint('Error reading file from path: $e');
+      }
+    }
+
+    if (actualBytes.isEmpty) {
+      debugPrint('Error: Document bytes are completely empty');
+      return null;
+    }
+
+    final isPdf = fileName.toLowerCase().endsWith('.pdf');
+    final isPng = fileName.toLowerCase().endsWith('.png');
+    final mimeType = isPdf ? 'application/pdf' : (isPng ? 'image/png' : 'image/jpeg');
+
+    final geminiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+    final openRouterKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
+
+    List<Uint8List> visionImages = [];
+    String visionMime = mimeType;
+
+    if (isPdf) {
+      final embeddedJpegs = _extractJpegsFromPdf(actualBytes);
+      if (embeddedJpegs.isNotEmpty) {
+        for (final img in embeddedJpegs) {
+          final prepped = await _prepareImageForOcr(img);
+          if (prepped != null) visionImages.add(prepped);
+        }
+        visionMime = 'image/jpeg';
+      } else {
+        visionImages.add(actualBytes);
+      }
+    } else {
+      final prepped = await _prepareImageForOcr(actualBytes);
+      visionImages.add(prepped ?? actualBytes);
+    }
+
+    if (visionImages.isEmpty) return null;
+
+    final customPrompt = _academicPrompt + (expectedScale != null
+        ? '\nADDITIONAL CONTEXT: The student\'s expected grading scale format is "$expectedScale". Please prioritize matching and extracting grades according to this scale format if applicable.'
+        : '');
+
+    if (geminiKey.isNotEmpty) {
+      final result = await _extractAcademicWithGemini(
+        images: visionImages,
+        mimeType: visionMime,
+        apiKey: geminiKey,
+        prompt: customPrompt,
+        expectedScale: expectedScale,
+      );
+      if (result != null && result.gpa != null) return result;
+    }
+
+    if (openRouterKey.isNotEmpty) {
+      final result = await _extractAcademicWithOpenRouter(
+        images: visionImages,
+        mimeType: visionMime,
+        apiKey: openRouterKey,
+        prompt: customPrompt,
+        expectedScale: expectedScale,
+      );
+      if (result != null && result.gpa != null) return result;
+    }
+
+    return null;
+  }
+
+  static Future<ExtractedAcademicInfo?> _extractAcademicWithGemini({
+    required List<Uint8List> images,
+    required String mimeType,
+    required String apiKey,
+    required String prompt,
+    String? expectedScale,
+  }) async {
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash'];
+
+    for (final model in models) {
+      try {
+        final url = Uri.parse(
+            'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey');
+
+        final parts = <Map<String, dynamic>>[
+          {'text': prompt},
+        ];
+
+        for (final img in images) {
+          parts.add({
+            'inline_data': {
+              'mime_type': mimeType,
+              'data': base64Encode(img),
+            },
+          });
+        }
+
+        final response = await http
+            .post(
+              url,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'contents': [
+                  {
+                    'parts': parts,
+                  },
+                ],
+                'generationConfig': {
+                  'response_mime_type': 'application/json',
+                  'temperature': 0.1,
+                },
+              }),
+            )
+            .timeout(const Duration(seconds: 60));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final rawText = data['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString() ?? '';
+          final parsed = _parseAcademicJsonResponse(rawText, 'Gemini $model', expectedScale);
+          if (parsed != null && parsed.gpa != null) return parsed;
+        }
+      } catch (e) {
+        debugPrint('Gemini $model academic error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<ExtractedAcademicInfo?> _extractAcademicWithOpenRouter({
+    required List<Uint8List> images,
+    required String mimeType,
+    required String apiKey,
+    required String prompt,
+    String? expectedScale,
+  }) async {
+    final url = Uri.parse('https://openrouter.ai/api/v1/chat/completions');
+    const models = [
+      'google/gemini-2.5-pro',
+      'openai/gpt-4o',
+      'google/gemini-2.5-flash',
+      'openai/gpt-4o-mini',
+    ];
+
+    for (final model in models) {
+      try {
+        final contentList = <Map<String, dynamic>>[
+          {'type': 'text', 'text': prompt},
+        ];
+
+        for (final img in images) {
+          contentList.add({
+            'type': 'image_url',
+            'image_url': {'url': 'data:$mimeType;base64,${base64Encode(img)}'},
+          });
+        }
+
+        final response = await http
+            .post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $apiKey',
+                'HTTP-Referer': 'https://iskoako.app',
+                'X-Title': 'IskoAko',
+              },
+              body: jsonEncode({
+                'model': model,
+                'messages': [
+                  {'role': 'user', 'content': contentList}
+                ],
+                'response_format': {'type': 'json_object'},
+                'temperature': 0.1,
+              }),
+            )
+            .timeout(const Duration(seconds: 60));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final rawText = data['choices']?[0]?['message']?['content']?.toString() ?? '';
+          final parsed = _parseAcademicJsonResponse(rawText, 'OpenRouter $model', expectedScale);
+          if (parsed != null && parsed.gpa != null) return parsed;
+        }
+      } catch (e) {
+        debugPrint('OpenRouter $model academic error: $e');
+      }
+    }
+    return null;
+  }
+
+  static ExtractedAcademicInfo? _parseAcademicJsonResponse(String raw, String modelName, [String? expectedScale]) {
+    try {
+      String clean = raw.trim();
+      if (clean.startsWith('```')) {
+        final start = clean.indexOf('{');
+        final end = clean.lastIndexOf('}');
+        if (start != -1 && end != -1) {
+          clean = clean.substring(start, end + 1);
+        }
+      }
+      final data = jsonDecode(clean);
+      final gpaVal = double.tryParse(data['gpa']?.toString() ?? '');
+      final scale = data['gpa_scale']?.toString() ?? expectedScale ?? 'scale_5';
+      final school = data['school_name']?.toString() ?? '';
+      final conf = double.tryParse(data['confidence_score']?.toString() ?? '0.95') ?? 0.95;
+
+      return ExtractedAcademicInfo(
+        gpa: gpaVal,
+        gpaScale: scale,
+        schoolName: school,
+        confidenceScore: conf,
+        aiModelUsed: modelName,
+      );
+    } catch (e) {
+      debugPrint('JSON parse error in AI academic extraction: $e');
+      return null;
+    }
+  }
+}
+
+class ExtractedAcademicInfo {
+  final double? gpa;
+  final String? gpaScale;
+  final String? schoolName;
+  final double confidenceScore;
+  final String aiModelUsed;
+
+  const ExtractedAcademicInfo({
+    required this.gpa,
+    required this.gpaScale,
+    this.schoolName,
+    this.confidenceScore = 0.95,
+    this.aiModelUsed = 'AI OCR',
+  });
 }

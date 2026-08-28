@@ -33,6 +33,7 @@ export interface ApplicantVerificationContext {
   course?: string;
   yearLevel?: string;
   gwa?: string | number;
+  gpaScale?: string;
   incomeBracket?: string;
   email?: string;
   phone?: string;
@@ -188,6 +189,7 @@ Applicant Profile:
 - Course: "${context.course || 'Unknown'}"
 - Year Level: "${context.yearLevel || 'Unknown'}"
 - Declared GWA: "${context.gwa || 'N/A'}"
+- Expected GWA Scale: "${context.gpaScale || 'scale_5'}"
 - Declared Income: "${context.incomeBracket || 'N/A'}"
 
 Perform forensic and content verification:
@@ -201,7 +203,7 @@ Perform forensic and content verification:
      c) Do NOT mark verification_status as "flagged" or "rejected" solely for reversed name order or middle initial vs full name. Set verification_status to "verified" if the names match under these rules.
    - Extract school/institution name and compare with "${context.school || ''}".
    - If Transcript of Records, Report Card, or Grade Slip:
-     a) Identify the grading scale used in the document (legend descriptions, e.g., "1.00 = Excellent" -> scale_5, "4.0 = A" -> scale_4, or percentages "95, 88" -> percentage). Output this as "detected_grading_scale".
+     a) Identify the grading scale used in the document. The student's expected scale is "${context.gpaScale || 'scale_5'}" (e.g. scale_5 means 1.0 is highest and 5.0 is failing, scale_4 means 4.0 is highest, and percentage means 100% scale). Please prioritize matching and extracting grades according to this scale format. Output this as "detected_grading_scale".
      b) Extract the overall GWA/GPA if printed on the document.
      c) If overall GWA/GPA is NOT explicitly printed, or to back it up, extract all individual subject grades listed with their subject name, units/credits, and numeric grade value. Output this list as "subject_grades" array.
      d) Compare extracted GWA with declared GWA: "${context.gwa || ''}".

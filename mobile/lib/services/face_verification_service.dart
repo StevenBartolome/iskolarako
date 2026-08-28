@@ -108,24 +108,6 @@ CRITICAL MATCHING RULES:
 
     debugPrint('[FaceVerification] Matching faces: ID size=${idImageBytes.length} bytes, isPdf=$isIdPdf, selfie size=${selfieBytes.length} bytes');
 
-    // 1. Try Google Gemini (Native PDF & Vision support)
-    if (_geminiKey.isNotEmpty) {
-      try {
-        final result = await _geminiMatchFaces(
-          prompt: prompt,
-          idBase64: fullIdBase64,
-          selfieBase64: selfieBase64,
-          idMimeType: fullIdMimeType,
-        );
-        if (result != null) {
-          debugPrint('[FaceVerification] Gemini match result: isMatch=${result.isMatch}, reason=${result.reason}');
-          return result;
-        }
-      } catch (e) {
-        debugPrint('[FaceVerification] Gemini face-match error: $e');
-      }
-    }
-
     // Prepare JPEG fallback for non-PDF-native engines if needed
     Uint8List fallbackIdBytes = idImageBytes;
     String fallbackMimeType = fullIdMimeType;
@@ -138,7 +120,7 @@ CRITICAL MATCHING RULES:
     }
     final fallbackIdBase64 = base64Encode(fallbackIdBytes);
 
-    // 2. Try OpenRouter Multi-Model Router
+    // 1. Try OpenRouter Multi-Model Router
     if (_openRouterKey.isNotEmpty) {
       try {
         final result = await _openRouterMatchFaces(
@@ -153,6 +135,24 @@ CRITICAL MATCHING RULES:
         }
       } catch (e) {
         debugPrint('[FaceVerification] OpenRouter face-match error: $e');
+      }
+    }
+
+    // 2. Try Google Gemini (Native PDF & Vision support)
+    if (_geminiKey.isNotEmpty) {
+      try {
+        final result = await _geminiMatchFaces(
+          prompt: prompt,
+          idBase64: fullIdBase64,
+          selfieBase64: selfieBase64,
+          idMimeType: fullIdMimeType,
+        );
+        if (result != null) {
+          debugPrint('[FaceVerification] Gemini match result: isMatch=${result.isMatch}, reason=${result.reason}');
+          return result;
+        }
+      } catch (e) {
+        debugPrint('[FaceVerification] Gemini face-match error: $e');
       }
     }
 
@@ -279,7 +279,22 @@ CRITICAL MATCHING RULES:
       actionFrameCount: actionCount,
     );
 
-    // 1. Try Gemini
+    // 1. Try OpenRouter
+    if (_openRouterKey.isNotEmpty) {
+      try {
+        final result = await _openRouterLiveness(
+          prompt: prompt,
+          frameBase64: frameBase64,
+          baselineFrameBase64: baselineFrameBase64,
+          additionalActionFramesBase64: additionalFramesBase64,
+        );
+        if (result != null) return result;
+      } catch (e) {
+        debugPrint('[FaceVerification] OpenRouter liveness error: $e');
+      }
+    }
+
+    // 2. Try Gemini
     if (_geminiKey.isNotEmpty) {
       try {
         final result = await _geminiLiveness(
@@ -294,7 +309,7 @@ CRITICAL MATCHING RULES:
       }
     }
 
-    // 2. Try Groq
+    // 3. Try Groq
     if (_groqKey.isNotEmpty) {
       try {
         final result = await _groqLiveness(
@@ -306,21 +321,6 @@ CRITICAL MATCHING RULES:
         if (result != null) return result;
       } catch (e) {
         debugPrint('[FaceVerification] Groq liveness error: $e');
-      }
-    }
-
-    // 3. Try OpenRouter
-    if (_openRouterKey.isNotEmpty) {
-      try {
-        final result = await _openRouterLiveness(
-          prompt: prompt,
-          frameBase64: frameBase64,
-          baselineFrameBase64: baselineFrameBase64,
-          additionalActionFramesBase64: additionalFramesBase64,
-        );
-        if (result != null) return result;
-      } catch (e) {
-        debugPrint('[FaceVerification] OpenRouter liveness error: $e');
       }
     }
 
@@ -1005,19 +1005,16 @@ Your tasks are:
 1. Extract the owner's details from the FRONT of the ID (Image 1):
    - First Name
    - Last Name
-   - Birth Date (format as YYYY-MM-DD, e.g., 2002-12-31)
    - ID Number / Document Number / Student Number
 2. Compare the extracted details against the applicant's registered details in our system:
    - Registered First Name: "$regFirstName"
    - Registered Last Name: "$regLastName"
-   - Registered Birth Date: "$regBirthDate" (in YYYY-MM-DD format)
-3. Set is_match to true ONLY IF the extracted First Name, Last Name, and Birth Date match the registered values.
+3. Set is_match to true ONLY IF the extracted First Name and Last Name match the registered values.
    Rules for matching:
    - Ignore casing and minor whitespace differences.
    - Ignore middle names or suffix variations if not present on the ID (e.g. "Jr" or "Junior").
    - Accept common abbreviations (e.g. "Ma." vs "Maria").
-   - Birth Date match is crucial.
-4. If there is a mismatch on first name, last name, or birth date, list the mismatched fields in "mismatched_fields" (e.g., ["first_name", "birth_date"]).
+4. If there is a mismatch on first name or last name, list the mismatched fields in "mismatched_fields" (e.g., ["first_name"]).
 5. Set confidence from 0.0 to 1.0.
 
 Return ONLY raw JSON (no markdown, no backticks):
@@ -1026,7 +1023,7 @@ Return ONLY raw JSON (no markdown, no backticks):
   "confidence": 0.0 to 1.0,
   "extracted_first_name": "...",
   "extracted_last_name": "...",
-  "extracted_birth_date": "YYYY-MM-DD",
+  "extracted_birth_date": "N/A",
   "extracted_id_number": "...",
   "mismatched_fields": [],
   "reason": "Clear explanation of why they match or mismatch."
@@ -1038,19 +1035,7 @@ Return ONLY raw JSON (no markdown, no backticks):
 
     IdExtractResult? rawResult;
 
-    if (_geminiKey.isNotEmpty) {
-      try {
-        rawResult = await _geminiVerifyId(
-          prompt: prompt,
-          frontBase64: frontBase64,
-          backBase64: backBase64,
-        );
-      } catch (e) {
-        debugPrint('[FaceVerification] Gemini ID verify error: $e');
-      }
-    }
-
-    if (rawResult == null && _openRouterKey.isNotEmpty) {
+    if (_openRouterKey.isNotEmpty) {
       try {
         rawResult = await _openRouterVerifyId(
           prompt: prompt,
@@ -1059,6 +1044,18 @@ Return ONLY raw JSON (no markdown, no backticks):
         );
       } catch (e) {
         debugPrint('[FaceVerification] OpenRouter ID verify error: $e');
+      }
+    }
+
+    if (rawResult == null && _geminiKey.isNotEmpty) {
+      try {
+        rawResult = await _geminiVerifyId(
+          prompt: prompt,
+          frontBase64: frontBase64,
+          backBase64: backBase64,
+        );
+      } catch (e) {
+        debugPrint('[FaceVerification] Gemini ID verify error: $e');
       }
     }
 
@@ -1272,13 +1269,13 @@ Return ONLY raw JSON (no markdown, no backticks):
 }
 ''';
 
-    if (_geminiKey.isNotEmpty) {
-      final result = await _geminiClassifyIdSide(base64Image: base64Image, prompt: prompt, isFront: isFront);
+    if (_openRouterKey.isNotEmpty) {
+      final result = await _openRouterClassifyIdSide(base64Image: base64Image, prompt: prompt, isFront: isFront);
       if (result != null) return result;
     }
 
-    if (_openRouterKey.isNotEmpty) {
-      final result = await _openRouterClassifyIdSide(base64Image: base64Image, prompt: prompt, isFront: isFront);
+    if (_geminiKey.isNotEmpty) {
+      final result = await _geminiClassifyIdSide(base64Image: base64Image, prompt: prompt, isFront: isFront);
       if (result != null) return result;
     }
 
@@ -1807,16 +1804,7 @@ Return ONLY raw JSON (no markdown, no backticks):
       matchReasons.add('Last Name matched.');
     }
 
-    // 3. Validate Birth Date
-    if (regBirthDate.trim().isNotEmpty && extBirth.isNotEmpty) {
-      final bool birthDateMatches = _compareDatesStrictly(regBirthDate, extBirth);
-      if (!birthDateMatches) {
-        mismatches.add('birth_date');
-        mismatchReasons.add('Birth Date mismatch: Registered "$regBirthDate" vs ID "$extBirth".');
-      } else {
-        matchReasons.add('Birth Date matched.');
-      }
-    }
+
 
     final bool isFinalMatch = mismatches.isEmpty && rawResult.isMatch;
 
@@ -1874,41 +1862,7 @@ Return ONLY raw JSON (no markdown, no backticks):
         .trim();
   }
 
-  static bool _compareDatesStrictly(String regDate, String extDate) {
-    final normReg = regDate.replaceAll(RegExp(r'[^\d]'), '');
-    final normExt = extDate.replaceAll(RegExp(r'[^\d]'), '');
 
-    if (normReg.isNotEmpty && normExt.isNotEmpty && normReg == normExt) return true;
-
-    final regDigits = RegExp(r'\d+').allMatches(regDate).map((m) => m.group(0)!).toList();
-    final extDigits = RegExp(r'\d+').allMatches(extDate).map((m) => m.group(0)!).toList();
-
-    String regYear = regDigits.firstWhere((d) => d.length == 4, orElse: () => '');
-    String extYear = extDigits.firstWhere((d) => d.length == 4, orElse: () => '');
-
-    if (regYear.isNotEmpty && extYear.isNotEmpty && regYear != extYear) {
-      return false;
-    }
-
-    for (final d in regDigits) {
-      if (d.length <= 2 && d != '0' && d != '00') {
-        final dNum = int.tryParse(d);
-        if (dNum != null && dNum > 0) {
-          final hasInExt = extDigits.any((ed) => int.tryParse(ed) == dNum);
-          if (!hasInExt) {
-            final monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-            if (dNum >= 1 && dNum <= 12) {
-              final mName = monthNames[dNum - 1];
-              if (extDate.toLowerCase().contains(mName)) continue;
-            }
-            return false;
-          }
-        }
-      }
-    }
-
-    return true;
-  }
 }
 
 class IdExtractResult {

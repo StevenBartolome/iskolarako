@@ -14,6 +14,7 @@ interface ProviderProgramsTabProps {
   handleOpenRenewModal: (prog: Program, targetMode?: 'renewal_2nd_sem' | 'next_academic_year') => void;
   handleOpenEditCycle?: (prog: Program, cyc: any) => void;
   handleDeleteCycle?: (id: string, name: string) => void;
+  handleCloseCycle?: (id: string, name: string) => void;
   setProgramToClose: (prog: Program | null) => void;
   setIsCloseConfirmOpen: (open: boolean) => void;
   fetchPrograms: () => Promise<void>;
@@ -30,6 +31,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
   handleOpenRenewModal,
   handleOpenEditCycle,
   handleDeleteCycle,
+  handleCloseCycle,
   setProgramToClose: _setProgramToClose,
   setIsCloseConfirmOpen: _setIsCloseConfirmOpen,
   fetchPrograms,
@@ -239,6 +241,9 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                             )}
                             {handleDeleteCycle && (
                               <button onClick={(e) => { e.stopPropagation(); handleDeleteCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-red-700 cursor-pointer bg-transparent border-0" title="Delete cycle">🗑️</button>
+                            )}
+                            {handleCloseCycle && cyc.status !== 'Closed' && cyc.status !== 'closed' && (
+                              <button onClick={(e) => { e.stopPropagation(); handleCloseCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-amber-700 cursor-pointer bg-transparent border-0" title="Force Close cycle">🔒</button>
                             )}
                           </div>
                         </div>

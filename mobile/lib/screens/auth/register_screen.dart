@@ -13,6 +13,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'package:iskoako/services/audit_log_service.dart';
 import 'package:iskoako/utils/school_catalog.dart';
+import 'package:iskoako/utils/academic_catalog.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -1144,11 +1145,34 @@ class _RegisterScreenState extends State<RegisterScreen>
         const SizedBox(height: 16),
 
         // ── Course / Strand / Program (label changes per level) ──
-        _buildField(
-          label: courseLabel[_selectedEduLevel] ?? 'Course / Strand *',
-          controller: _courseController,
-          icon: LucideIcons.bookOpen,
-          hint: isIncoming ? 'e.g. STEM' : 'e.g. BS Computer Science',
+        Autocomplete<String>(
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            final options = getCoursesByEducationLevel(_selectedEduLevel);
+            if (textEditingValue.text.isEmpty) {
+              return options;
+            }
+            return options.where(
+              (c) => c.toLowerCase().contains(textEditingValue.text.toLowerCase()),
+            );
+          },
+          onSelected: (String selection) {
+            _courseController.text = selection;
+          },
+          fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+            if (textController.text != _courseController.text) {
+              textController.text = _courseController.text;
+            }
+            textController.addListener(() {
+              _courseController.text = textController.text;
+            });
+            return _buildField(
+              label: courseLabel[_selectedEduLevel] ?? 'Course / Strand *',
+              controller: textController,
+              icon: LucideIcons.bookOpen,
+              hint: isIncoming ? 'e.g. STEM' : 'e.g. BS Computer Science',
+              focusNode: focusNode,
+            );
+          },
         ),
         const SizedBox(height: 16),
 
@@ -1168,11 +1192,34 @@ class _RegisterScreenState extends State<RegisterScreen>
           const SizedBox(height: 6),
           ...List.generate(3, (i) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: _buildField(
-              label: 'Choice ${i + 1}${i == 0 ? ' *' : ''}',
-              controller: _plannedCoursesControllers[i],
-              icon: LucideIcons.star,
-              hint: 'e.g. BS Computer Science',
+            child: Autocomplete<String>(
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                final options = getCoursesByEducationLevel('college');
+                if (textEditingValue.text.isEmpty) {
+                  return options;
+                }
+                return options.where(
+                  (c) => c.toLowerCase().contains(textEditingValue.text.toLowerCase()),
+                );
+              },
+              onSelected: (String selection) {
+                _plannedCoursesControllers[i].text = selection;
+              },
+              fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                if (textController.text != _plannedCoursesControllers[i].text) {
+                  textController.text = _plannedCoursesControllers[i].text;
+                }
+                textController.addListener(() {
+                  _plannedCoursesControllers[i].text = textController.text;
+                });
+                return _buildField(
+                  label: 'Choice ${i + 1}${i == 0 ? ' *' : ''}',
+                  controller: textController,
+                  icon: LucideIcons.star,
+                  hint: 'e.g. BS Computer Science',
+                  focusNode: focusNode,
+                );
+              },
             ),
           )),
           const SizedBox(height: 4),
@@ -1298,6 +1345,7 @@ class _RegisterScreenState extends State<RegisterScreen>
     required IconData icon,
     required String hint,
     TextInputType keyboardType = TextInputType.text,
+    FocusNode? focusNode,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1314,6 +1362,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         const SizedBox(height: 6),
         TextField(
           controller: controller,
+          focusNode: focusNode,
           keyboardType: keyboardType,
           style: GoogleFonts.inter(
             fontSize: 13.5,

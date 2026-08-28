@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
@@ -17,6 +18,8 @@ class AppliedScholarship {
   final String? cycleId;
   final String? programId;
   final Map<String, dynamic>? activeRenewalCycle;
+  final Map<String, dynamic>? program;
+  final Map<String, dynamic>? scholar;
   final String providerName;
   final String scholarshipName;
   final String cycleLabel;
@@ -38,6 +41,8 @@ class AppliedScholarship {
     this.programId,
     this.disbursementMode,
     this.activeRenewalCycle,
+    this.program,
+    this.scholar,
     required this.providerName,
     required this.scholarshipName,
     this.cycleLabel = 'Initial Cycle',
@@ -177,14 +182,16 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
       final List<String> scholarIds = [user.id];
       String scholarName = 'Scholar';
       String resolvedScholarId = user.id;
+      Map<String, dynamic>? scholarMap;
       try {
         final scholarData = await Supabase.instance.client
             .from('scholar')
-            .select('id, first_name, last_name')
+            .select('*')
             .eq('user_id', user.id)
             .maybeSingle();
 
         if (scholarData != null && scholarData['id'] != null) {
+          scholarMap = scholarData;
           final idStr = scholarData['id'].toString();
           resolvedScholarId = idStr;
           if (!scholarIds.contains(idStr)) {
@@ -249,9 +256,18 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
         debugPrint('Fund releases fetch error: $rErr');
       }
 
+      final List<dynamic> appsList = appsData as List<dynamic>? ?? [];
+      final Set<String> submittedCycleIds = {};
+      for (final r in appsList) {
+        final cId = r['cycle_id']?.toString();
+        if (cId != null && cId.isNotEmpty) {
+          submittedCycleIds.add(cId);
+        }
+      }
+
       final List<AppliedScholarship> loadedApps = [];
 
-      for (final row in (appsData as List<dynamic>? ?? [])) {
+      for (final row in appsList) {
         final appId = row['id']?.toString();
         final hasRelease = releasesData.any((r) {
           final s = (r['status'] ?? '').toString().toLowerCase();
@@ -354,6 +370,11 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
 
             if (renewalCycles.isNotEmpty) {
               for (final c in renewalCycles) {
+                final cId = c['id']?.toString();
+                if (cId != null && submittedCycleIds.contains(cId)) {
+                  // Scholar has already submitted an application for this renewal cycle!
+                  continue;
+                }
                 final cType = c['cycle_type']?.toString().toLowerCase() ?? '';
                 final cName = c['cycle_name']?.toString().toLowerCase() ?? '';
                 if (cType == 'renewal' || cName.contains('renewal') || cName.contains('sem')) {
@@ -515,12 +536,34 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
             ));
           }
         } else if (dbStatus == 'rejected') {
+          final isQuota = (remarks ?? '').toLowerCase().contains('quota') || (remarks ?? '').toLowerCase().contains('slot capacity');
+          final isExam = (remarks ?? '').toLowerCase().contains('exam');
+
           steps.add(TrackerStep(
-            icon: LucideIcons.xCircle,
-            title: 'Application Unsuccessful',
+            icon: isQuota ? LucideIcons.users : isExam ? LucideIcons.award : LucideIcons.xCircle,
+            title: isQuota ? 'Slot Capacity Reached' : isExam ? 'Evaluation Finalized' : 'Application Unsuccessful',
             date: 'Decision Finalized',
-            description: remarks ?? 'Unfortunately, your application was not selected for this cycle.',
+            description: remarks ?? (isQuota
+                ? 'All available scholarship slots for this cycle were filled by top-ranked applicants based on program criteria.'
+                : 'Unfortunately, your application was not selected for this cycle.'),
             state: StepState.active,
+          ));
+        } else if (dbStatus == 'deferred') {
+          steps.add(const TrackerStep(
+            icon: LucideIcons.search,
+            title: 'Evaluation Completed',
+            date: 'Completed',
+            description: 'Scholarship committee evaluation completed successfully.',
+            state: StepState.done,
+          ));
+          steps.add(TrackerStep(
+            icon: LucideIcons.alertTriangle,
+            title: 'Disbursement Deferred',
+            date: 'Deferred',
+            description: remarks ??
+                'Your disbursement has been deferred for this cycle (e.g., due to missing bank account details). Please complete your profile to enable future payouts.',
+            state: StepState.active,
+            note: remarks,
           ));
         } else if (dbStatus == 'withdrawn') {
           steps.add(const TrackerStep(
@@ -554,6 +597,8 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           programId: programId,
           disbursementMode: program?['disbursement_mode']?.toString() ?? program?['disbursementMode']?.toString(),
           activeRenewalCycle: activeRenewalCycle,
+          program: program,
+          scholar: scholarMap,
           providerName: providerName,
           scholarshipName: scholarshipName,
           cycleLabel: cycleLabel,
@@ -970,6 +1015,10 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
                                                 if (scholarship.statusType == StatusType.approved) ...[
+                                                  if (scholarship.activeRenewalCycle != null) ...[
+                                                    _buildRenewalCard(scholarship),
+                                                    const SizedBox(height: 12),
+                                                  ],
                                                   if (scholarship.disbursementMode == 'in_person_cash')
                                                     _buildCashOtcInfoCard(scholarship)
                                                   else
@@ -1068,6 +1117,158 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRenewalCard(AppliedScholarship scholarship) {
+    final cycle = scholarship.activeRenewalCycle!;
+    final cycleName = cycle['cycle_name'] ?? 'Renewal Cycle';
+    final deadline = cycle['application_end_date'] ?? '';
+    
+    // Parse requirements
+    final reqsObj = cycle['renewal_requirements'];
+    List<dynamic> reqs = [];
+    if (reqsObj is List) {
+      reqs = reqsObj;
+    } else if (reqsObj is String) {
+      try {
+        reqs = jsonDecode(reqsObj);
+      } catch (_) {}
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFDE68A), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFEF3C7),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(
+                    LucideIcons.rotateCw,
+                    color: Color(0xFFD97706),
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Semestral Renewal Period Open!',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Cycle: $cycleName',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFFD97706),
+                      ),
+                    ),
+                    if (deadline.toString().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Deadline: $deadline',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFFB91C1C),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (reqs.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Required Documents for Renewal:',
+              style: GoogleFonts.inter(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...reqs.map((r) {
+              final name = r is Map ? (r['name'] ?? '') : r.toString();
+              final desc = r is Map ? (r['description'] ?? '') : '';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('• ', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF4B5563)),
+                          children: [
+                            TextSpan(text: name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            if (desc.toString().isNotEmpty) TextSpan(text: ' — $desc'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(
+                  context,
+                  AppRouter.documentUpload,
+                  arguments: {
+                    'program': scholarship.program,
+                    'scholar': scholarship.scholar,
+                    'cycle': cycle,
+                  },
+                );
+              },
+              icon: const Icon(LucideIcons.send, size: 14),
+              label: Text(
+                'Submit Renewal Requirements →',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3D2F),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
             ),
           ),
         ],

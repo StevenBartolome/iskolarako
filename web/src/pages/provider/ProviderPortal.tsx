@@ -6,6 +6,7 @@ import { supabase } from '@/services/supabaseClient';
 import { CloseProgramConfirmModal } from './components/CloseProgramConfirmModal';
 import { DeleteCycleConfirmModal } from './components/DeleteCycleConfirmModal';
 import { RenewCycleModal } from './components/RenewCycleModal';
+import { QuotaFilledModal } from './components/QuotaFilledModal';
 import { ReviewApplicationModal } from './components/ReviewApplicationModal';
 import type { ApplicationDetail, SubmittedDocItem } from './components/ReviewApplicationModal';
 import { ProviderDashboardTab } from './components/ProviderDashboardTab';
@@ -114,6 +115,104 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   // Tracks whether the provider has edited/re-uploaded a document in the current status window
   const [hasModifiedDocs, setHasModifiedDocs] = useState(false);
+
+  // Quota-filled resolution modal states
+  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState<boolean>(false);
+  const [quotaCycleId, setQuotaCycleId] = useState<string>('');
+  const [quotaProgramTitle, setQuotaProgramTitle] = useState<string>('');
+  const [quotaCycleName, setQuotaCycleName] = useState<string>('');
+  const [quotaTotalSlots, setQuotaTotalSlots] = useState<number>(0);
+  const [quotaUnselectedApplicants, setQuotaUnselectedApplicants] = useState<any[]>([]);
+  const [quotaPendingApproveIds, setQuotaPendingApproveIds] = useState<string[]>([]);
+
+  const triggerQuotaFilledModal = async (cycleId: string, programTitle: string, cycleName: string, totalSlots: number, excludeAppIds: (string | number)[] = []) => {
+    try {
+      const { data: pendingApps, error } = await supabase
+        .from('scholarship_applications')
+        .select(`
+          id, 
+          status, 
+          cycle_id, 
+          remarks, 
+          created_at, 
+          grade, 
+          gpa_scale, 
+          scholar:scholar(
+            id,
+            first_name, 
+            last_name, 
+            middle_name,
+            suffix,
+            school, 
+            course, 
+            year_level, 
+            phone,
+            gpa_scale,
+            gpa,
+            user:users (
+              id,
+              email,
+              first_name,
+              last_name
+            )
+          )
+        `)
+        .eq('cycle_id', cycleId)
+        .in('status', ['pending', 'under_review', 'for_exam']);
+
+      if (error) throw error;
+
+      const mappedUnselected = (pendingApps || [])
+        .map((app: any) => {
+          const scholar = app.scholar || {};
+          const user = scholar.user || {};
+          const scholarName = [
+            scholar.first_name || user.first_name,
+            scholar.middle_name,
+            scholar.last_name || user.last_name,
+            scholar.suffix
+          ].filter(Boolean).join(' ').trim() || 'Pending Scholar';
+
+          return {
+            id: app.id,
+            name: scholarName,
+            school: scholar.school || '',
+            course: scholar.course || '',
+            yearLevel: scholar.year_level?.toString() || '',
+            grade: app.grade || scholar.gpa || '',
+            gpa_scale: app.gpa_scale || scholar.gpa_scale || 'scale_5',
+            gpaScale: app.gpa_scale || scholar.gpa_scale || 'scale_5',
+            status: app.status === 'under_review' ? 'Under Review' : app.status === 'for_exam' ? 'For Exam' : 'Pending',
+            email: user.email || '',
+            phone: scholar.phone || '',
+            program: programTitle,
+            cycle: cycleName,
+            scholarId: user.id || scholar.user_id || app.scholar_id,
+            rawApplication: app
+          };
+        })
+        .filter((app: any) => !excludeAppIds.map(String).includes(String(app.id)));
+
+      if (mappedUnselected.length > 0) {
+        setQuotaCycleId(cycleId);
+        setQuotaProgramTitle(programTitle);
+        setQuotaCycleName(cycleName);
+        setQuotaTotalSlots(totalSlots);
+        setQuotaUnselectedApplicants(mappedUnselected);
+        setIsQuotaModalOpen(true);
+      }
+    } catch (err) {
+      console.error('Error triggering quota modal:', err);
+    }
+  };
+
+  const handleConfirmApprove = async () => {
+    if (quotaPendingApproveIds.length === 0) return;
+    for (const id of quotaPendingApproveIds) {
+      await handleUpdateStatus(id, 'Approved', undefined, undefined, quotaPendingApproveIds, true);
+    }
+    setQuotaPendingApproveIds([]);
+  };
 
   // Reset the modification flag whenever the verification status changes,
   // so a resubmission always requires a fresh document edit/re-upload
@@ -1036,7 +1135,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               const match = remarksStr.match(/GWA:\s*([0-9\.]+)/i);
               if (match && match[1]) return match[1];
             }
-            return '1.50';
+            return 'N/A';
           };
 
           const resolveScopedPaymentAccount = (scholarId: string, programId: string | undefined, applicationId: string | undefined, submittedDocs: any) => {
@@ -1143,17 +1242,27 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             const school = scholar.school || scholar.institution || 'Unspecified University';
             const course = scholar.course || scholar.degree || 'Undergraduate Degree';
             const yearLevel = formatYearLevel(scholar.year_level);
-            const gpa = formatGwa(scholar.gpa || scholar.gwa, app.remarks);
+            const finalGrade = app.grade !== null && app.grade !== undefined ? app.grade : (scholar.gpa || scholar.gwa);
+            const gpa = formatGwa(finalGrade, app.remarks);
             const citizenship = scholar.citizenship || 'Filipino';
             const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
             const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
 
             const dbStatus = (app.status || 'pending').toLowerCase();
+            const remarksLower = (app.remarks || '').toLowerCase();
             let status: ApplicantStatus = 'Pending';
-            if (dbStatus === 'under_review') status = 'Under Review';
-            else if (dbStatus === 'for_exam') status = 'For Exam';
-            else if (dbStatus === 'approved') status = 'Approved';
-            else if (dbStatus === 'rejected') status = 'Rejected';
+
+            if (remarksLower.includes('waitlist') && dbStatus !== 'approved' && dbStatus !== 'rejected') {
+              status = 'Waitlisted';
+            } else if (dbStatus === 'under_review') {
+              status = 'Under Review';
+            } else if (dbStatus === 'for_exam') {
+              status = 'For Exam';
+            } else if (dbStatus === 'approved') {
+              status = 'Approved';
+            } else if (dbStatus === 'rejected') {
+              status = 'Rejected';
+            }
 
             const createdDate = app.created_at ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently';
 
@@ -1263,6 +1372,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               course: course,
               yearLevel: yearLevel,
               grade: gpa,
+              gpa_scale: app.gpa_scale || scholar.gpa_scale || scholar.gpaScale || 'scale_5',
+              gpaScale: app.gpa_scale || scholar.gpa_scale || scholar.gpaScale || 'scale_5',
               citizenship: citizenship,
               address: address,
               status: status,
@@ -1298,15 +1409,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               const currentDate = app.rawApplication?.created_at ? new Date(app.rawApplication.created_at) : new Date(0);
               
               if ((currentIsRenewal && !existingIsRenewal) || currentDate > existingDate) {
-                const mergedDocs = [...(existing.submittedDocuments || []), ...(app.submittedDocuments || [])];
-                const uniqueDocs = Array.from(new Map(mergedDocs.map(d => [d.id || d.url, d])).values());
-                app.submittedDocuments = uniqueDocs;
                 app.isContinuingScholar = true;
                 applicantMap.set(key, app);
               } else {
-                const mergedDocs = [...(existing.submittedDocuments || []), ...(app.submittedDocuments || [])];
-                const uniqueDocs = Array.from(new Map(mergedDocs.map(d => [d.id || d.url, d])).values());
-                existing.submittedDocuments = uniqueDocs;
                 existing.isContinuingScholar = true;
               }
             }
@@ -1335,7 +1440,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             const school = scholar.school || scholar.institution || 'Unspecified University';
             const course = scholar.course || scholar.degree || 'Undergraduate Degree';
             const yearLevel = formatYearLevel(scholar.year_level);
-            const gpa = formatGwa(scholar.gpa || scholar.gwa, app.remarks);
+            const gpa = formatGwa(scholar.gpa || scholar.gwa || app.grade, app.remarks);
             const citizenship = scholar.citizenship || 'Filipino';
             const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
             const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
@@ -1578,7 +1683,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     id: string | number,
     nextStatus: ApplicantStatus,
     remarks?: string,
-    updatedDocs?: SubmittedDocItem[]
+    updatedDocs?: SubmittedDocItem[],
+    excludeAppIds?: (string | number)[],
+    bypassQuotaCheck?: boolean
   ) => {
     let dbStatus = 'pending';
     if (nextStatus === 'Under Review') dbStatus = 'under_review';
@@ -1588,6 +1695,56 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
     const applicant = applicantsList.find(a => a.id === id);
     const existingRefNum = applicant?.rawApplication?.submitted_documents?.reference_number || `ISK-${new Date().getFullYear()}-${id.toString().substring(0, 5).toUpperCase()}`;
+
+    // Pre-approval check for slots capacity to prevent race conditions
+    if (nextStatus === 'Approved' && applicant && !bypassQuotaCheck) {
+      const cycleId = applicant.rawApplication?.cycle_id;
+      if (cycleId) {
+        try {
+          const { data: approvedApps } = await supabase
+            .from('scholarship_applications')
+            .select('id')
+            .eq('cycle_id', cycleId)
+            .eq('status', 'approved');
+
+          const approvedCount = approvedApps?.length || 0;
+
+          const { data: cycData } = await supabase
+            .from('application_cycles')
+            .select('slots_available, program:program_id(total_slots)')
+            .eq('id', cycleId)
+            .maybeSingle();
+
+          const slots = cycData?.slots_available || (cycData?.program as any)?.total_slots;
+
+          if (slots && approvedCount + 1 >= Number(slots)) {
+            // Check if there are other pending applications to reject
+            const { data: pendingApps } = await supabase
+              .from('scholarship_applications')
+              .select('id')
+              .eq('cycle_id', cycleId)
+              .in('status', ['pending', 'under_review', 'for_exam'])
+              .neq('id', id);
+
+            if (pendingApps && pendingApps.length > 0) {
+              // Open the resolution modal first, suspending approval
+              setQuotaPendingApproveIds([String(id)]);
+              triggerQuotaFilledModal(cycleId, applicant.program, applicant.cycle, Number(slots), [id]);
+              return; // Abort approval update!
+            } else {
+              // No other pending applications to resolve, so approve candidate and close cycle directly
+              await supabase
+                .from('application_cycles')
+                .update({ status: 'closed', updated_at: new Date().toISOString() })
+                .eq('id', cycleId);
+              showToast(`Scholarship slot limit of ${slots} reached! Cycle automatically marked as Closed.`);
+            }
+          }
+        } catch (slotErr) {
+          console.warn('Error checking slot limit during pre-approval check:', slotErr);
+        }
+      }
+    }
 
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -1631,6 +1788,26 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           }
         } catch (fetchScholarErr) {
           console.warn('[Fetch scholar_id fallback note]:', fetchScholarErr);
+        }
+      }
+
+      // Sync approved scholar GWA and scale back to scholar profile table
+      if (nextStatus === 'Approved' && scholarId) {
+        try {
+          const appGrade = applicant?.rawApplication?.grade || applicant?.grade;
+          const appScale = applicant?.rawApplication?.gpa_scale || applicant?.gpaScale;
+          if (appGrade != null) {
+            await supabase
+              .from('scholar')
+              .update({
+                gpa: appGrade,
+                gpa_scale: appScale || 'scale_5',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', scholarId);
+          }
+        } catch (scholarSyncErr) {
+          console.warn('[Sync scholar profile GWA error]:', scholarSyncErr);
         }
       }
 
@@ -1794,24 +1971,25 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             .eq('status', 'approved')
             .then(({ data: approvedApps }) => {
               const approvedCount = approvedApps?.length || 0;
-              supabase
-                .from('application_cycles')
-                .select('slots_available, program:program_id(total_slots)')
-                .eq('id', cycleId)
-                .maybeSingle()
-                .then(({ data: cycData }) => {
-                  const slots = cycData?.slots_available || (cycData?.program as any)?.total_slots;
-                  if (slots && approvedCount >= Number(slots)) {
-                    supabase
-                      .from('application_cycles')
-                      .update({ status: 'closed', updated_at: new Date().toISOString() })
-                      .eq('id', cycleId)
-                      .then(() => {
-                        showToast(`Scholarship slot limit of ${slots} reached! Cycle automatically marked as Closed.`);
-                        fetchApplicantsAndScholars();
-                      });
-                  }
-                });
+               supabase
+                 .from('application_cycles')
+                 .select('status, slots_available, program:program_id(total_slots)')
+                 .eq('id', cycleId)
+                 .maybeSingle()
+                 .then(({ data: cycData }) => {
+                   const slots = cycData?.slots_available || (cycData?.program as any)?.total_slots;
+                   if (cycData?.status !== 'closed' && slots && approvedCount >= Number(slots)) {
+                     supabase
+                       .from('application_cycles')
+                       .update({ status: 'closed', updated_at: new Date().toISOString() })
+                       .eq('id', cycleId)
+                       .then(() => {
+                         showToast(`Scholarship slot limit of ${slots} reached! Cycle automatically marked as Closed.`);
+                         fetchApplicantsAndScholars();
+                         triggerQuotaFilledModal(cycleId, applicant.program, applicant.cycle, Number(slots), excludeAppIds || [id]);
+                       });
+                   }
+                 });
             });
         }
       } catch (slotCheckErr) {
@@ -2128,7 +2306,34 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
 
     try {
-      const cycleStatus = parseLocalMidnight(renewStartDate) > getTodayMidnight() ? 'upcoming' : 'open';
+      const todayMid = getTodayMidnight();
+      const startMid = parseLocalMidnight(renewStartDate);
+      const endMid = parseLocalMidnight(renewEndDate);
+
+      let cycleStatus = 'open';
+      if (startMid > todayMid) {
+        cycleStatus = 'upcoming';
+      } else if (endMid < todayMid) {
+        cycleStatus = 'closed';
+      }
+
+      if (cycleToEdit && cycleToEdit.id) {
+        const rawSlots = (renewSlots && renewSlots.trim() !== '') ? renewSlots : (selectedProgramForRenewal.totalSlots || selectedProgramForRenewal.total_slots || null);
+        const slots = (rawSlots !== undefined && rawSlots !== null && rawSlots !== '' && !isNaN(parseInt(String(rawSlots), 10)))
+          ? parseInt(String(rawSlots), 10)
+          : null;
+        if (slots && cycleStatus === 'open') {
+          const { count, error: countErr } = await supabase
+            .from('scholarship_applications')
+            .select('id', { count: 'exact', head: true })
+            .eq('cycle_id', cycleToEdit.id)
+            .eq('status', 'approved');
+
+          if (!countErr && count !== null && count >= slots) {
+            cycleStatus = 'closed';
+          }
+        }
+      }
       
       if (cycleToEdit && cycleToEdit.id) {
         // ─── Edit Existing Cycle ───
@@ -2410,6 +2615,33 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
+  const handleCloseCycle = async (cycleId: string, cycleName: string) => {
+    if (!window.confirm(`Are you sure you want to close the cycle "${cycleName}"? This will mark it as closed, which will let you open a new semester renewal or new academic year cycle. Any scholars who haven't completed their bank details or received their funds can still upload their info and be paid manually later.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('application_cycles')
+        .update({ status: 'closed', updated_at: new Date().toISOString() })
+        .eq('id', cycleId);
+
+      if (error) {
+        console.error('Error closing cycle:', error);
+        showToast('Error closing application cycle.');
+        return;
+      }
+
+      showToast(`Successfully closed cycle "${cycleName}".`);
+      await fetchPrograms();
+    } catch (err) {
+      console.error('Unexpected error closing cycle:', err);
+      showToast('An unexpected error occurred.');
+    }
+  };
+
+
+
 
 
   const filteredApplicants = applicantsList.filter(app => {
@@ -2422,10 +2654,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
     let matchesStatus = true;
     if (statusFilter === 'Renewals') {
-      matchesStatus = isRenewal;
+      matchesStatus = isRenewal && app.status !== 'Approved' && app.status !== 'Rejected';
     } else if (statusFilter === 'New Applicants') {
-      matchesStatus = !isRenewal;
-    } else if (statusFilter !== 'All') {
+      matchesStatus = !isRenewal && app.status !== 'Approved' && app.status !== 'Rejected';
+    } else if (statusFilter === 'All') {
+      matchesStatus = app.status !== 'Approved' && app.status !== 'Rejected'; // Exclude approved and rejected
+    } else {
       matchesStatus = app.status === statusFilter;
     }
 
@@ -2984,6 +3218,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               setActiveTab('view-application');
             }}
             handleUpdateStatus={handleUpdateStatus}
+            showToast={showToast}
+            triggerQuotaFilledModal={triggerQuotaFilledModal}
+            setQuotaPendingApproveIds={setQuotaPendingApproveIds}
           />
         )}
 
@@ -3117,13 +3354,31 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                     const todayMid = getTodayMidnight();
                     const endMid = parseLocalMidnight(formData.application_end_date);
                     const startMid = parseLocalMidnight(formData.application_start_date);
-                    const cycleStatus = endMid < todayMid ? 'closed' : (startMid > todayMid ? 'upcoming' : 'open');
+                    let cycleStatus = endMid < todayMid ? 'closed' : (startMid > todayMid ? 'upcoming' : 'open');
 
                     const cyclesList = selectedProgram.cycles || [];
                     const openCycles = cyclesList.filter((c: any) => (c.status || '').toLowerCase() === 'open');
                     const existingCycle = selectedCycleId
                       ? cyclesList.find((c: any) => c.id === selectedCycleId)
                       : (openCycles.length > 0 ? openCycles[0] : (cyclesList.length > 0 ? cyclesList[0] : null));
+
+                    if (existingCycle?.id && cycleStatus === 'open') {
+                      const rawSlots = formData.total_slots ?? formData.totalSlots ?? selectedProgram.total_slots ?? selectedProgram.totalSlots ?? null;
+                      const slots = (rawSlots !== undefined && rawSlots !== null && rawSlots !== '' && !isNaN(parseInt(String(rawSlots), 10)))
+                        ? parseInt(String(rawSlots), 10)
+                        : null;
+                      if (slots) {
+                        const { count, error: countErr } = await supabase
+                          .from('scholarship_applications')
+                          .select('id', { count: 'exact', head: true })
+                          .eq('cycle_id', existingCycle.id)
+                          .eq('status', 'approved');
+
+                        if (!countErr && count !== null && count >= slots) {
+                          cycleStatus = 'closed';
+                        }
+                      }
+                    }
                     if (existingCycle?.id) {
                       await supabase
                         .from('application_cycles')
@@ -3244,6 +3499,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             handleOpenRenewModal={handleOpenRenewModal}
             handleOpenEditCycle={handleOpenEditCycle}
             handleDeleteCycle={handleDeleteCycle}
+            handleCloseCycle={handleCloseCycle}
             setProgramToClose={setProgramToClose}
             setIsCloseConfirmOpen={setIsCloseConfirmOpen}
             fetchPrograms={fetchPrograms}
@@ -3612,6 +3868,26 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           setSelectedAppForReview(null);
         }}
         onUpdateStatus={handleUpdateStatus}
+      />
+
+      {/* ─── Quota-Filled Batch Resolution Modal ─── */}
+      <QuotaFilledModal
+        isOpen={isQuotaModalOpen}
+        onClose={() => {
+          setIsQuotaModalOpen(false);
+          setQuotaPendingApproveIds([]);
+        }}
+        programTitle={quotaProgramTitle}
+        cycleName={quotaCycleName}
+        cycleId={quotaCycleId}
+        totalSlots={quotaTotalSlots}
+        unselectedApplicants={quotaUnselectedApplicants}
+        providerName={providerDetails?.name || 'Scholarship Provider'}
+        onSuccess={() => {
+          fetchApplicantsAndScholars();
+        }}
+        showToast={showToast}
+        onConfirmApprove={handleConfirmApprove}
       />
 
     </div>

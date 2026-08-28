@@ -848,6 +848,8 @@ class DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (_qualifiedPrograms.isEmpty) {
+      final isProfileComplete = _isProfileComplete;
+
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -863,18 +865,19 @@ class DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               width: 46,
               height: 46,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE8F5E9),
+              decoration: BoxDecoration(
+                color: isProfileComplete ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
                 shape: BoxShape.circle,
               ),
-              child: const Center(
+              child: Center(
                 child: Icon(
-                  LucideIcons.graduationCap,
-                  color: Color(0xFF1E3D2F),
+                  isProfileComplete ? LucideIcons.graduationCap : LucideIcons.alertTriangle,
+                  color: isProfileComplete ? const Color(0xFF1E3D2F) : const Color(0xFFE65100),
                   size: 24,
                 ),
               ),
@@ -885,7 +888,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'No Matching Scholarships',
+                    isProfileComplete ? 'No Matching Scholarships' : 'Complete Your Profile',
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -894,22 +897,48 @@ class DashboardScreenState extends State<DashboardScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'We couldn\'t find any scholarships matching your course, year level, or location at the moment. We will notify you when a match is found!',
+                    isProfileComplete
+                        ? 'We couldn\'t find any scholarships matching your course, year level, or location at the moment. We will notify you when a match is found!'
+                        : 'Please complete all required profile fields and identity verification to browse and apply for matching scholarships.',
                     style: GoogleFonts.inter(
                       fontSize: 11.5,
                       color: const Color(0xFF6B7280),
                       height: 1.35,
                     ),
                   ),
+                  if (!isProfileComplete) ...[
+                    const SizedBox(height: 10),
+                    InkWell(
+                      onTap: () => _navigateToTab(4, '/profile'),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E3D2F),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Setup Profile Now',
+                          style: GoogleFonts.inter(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            const Icon(
-              LucideIcons.sparkles,
-              color: Color(0xFFEAB308),
-              size: 18,
-            ),
+            if (isProfileComplete) ...[
+              const SizedBox(width: 8),
+              const Icon(
+                LucideIcons.sparkles,
+                color: Color(0xFFEAB308),
+                size: 18,
+              ),
+            ],
           ],
         ),
       );
@@ -1081,6 +1110,11 @@ class DashboardScreenState extends State<DashboardScreen> {
           statusLabel = 'For Exam';
           bgCol = const Color(0xFFE0F2FE);
           txtCol = const Color(0xFF0369A1);
+        } else if (dbStatus == 'deferred') {
+          statusTitle = 'Disbursement Deferred ⚠️';
+          statusLabel = 'Deferred';
+          bgCol = const Color(0xFFFEF3C7);
+          txtCol = const Color(0xFFD97706);
         } else if (dbStatus == 'rejected' || dbStatus == 'withdrawn') {
           statusTitle = 'Application Evaluated';
           statusLabel = dbStatus == 'rejected' ? 'Rejected' : 'Withdrawn';

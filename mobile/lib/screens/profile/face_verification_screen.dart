@@ -53,6 +53,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   String? _customIdName;
   Uint8List? _idFrontBytes;
   Uint8List? _idBackBytes;
+  Uint8List? _tempCapturedBytes;
   String _regFirstName = '';
   String _regLastName = '';
   String _regBirthDate = '';
@@ -2348,8 +2349,11 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       final image = await _cameraController!.takePicture();
       final bytes = await image.readAsBytes();
 
-      // Show classifying spinner
-      setState(() => _isClassifyingPhoto = true);
+      // Show classifying spinner & captured photo immediately
+      setState(() {
+        _tempCapturedBytes = bytes;
+        _isClassifyingPhoto = true;
+      });
 
       final displayIdType = _selectedIdType == 'Other / Custom ID' ? (_customIdName ?? 'ID') : (_selectedIdType ?? 'ID');
 
@@ -2361,7 +2365,6 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       );
 
       if (!mounted) return;
-      setState(() => _isClassifyingPhoto = false);
 
       final expectedSide = isFront ? 'front' : 'back';
 
@@ -2370,6 +2373,8 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             ? 'ID Type Mismatch! You selected "$displayIdType". Please capture the front of your physical $displayIdType.'
             : 'Could not detect back of ID. Please ensure the reverse side of your $displayIdType is clearly in frame.';
         setState(() {
+          _tempCapturedBytes = null;
+          _isClassifyingPhoto = false;
           _cameraScanError = '❌ $errorMsg';
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2391,6 +2396,8 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         final wrongLabel = isFront ? 'back' : 'front';
         final expectedLabel = isFront ? 'front' : 'back';
         setState(() {
+          _tempCapturedBytes = null;
+          _isClassifyingPhoto = false;
           _cameraScanError = '❌ Wrong side detected! Found $wrongLabel side. Please align $expectedLabel side.';
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2408,6 +2415,8 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       }
 
       setState(() {
+        _tempCapturedBytes = null;
+        _isClassifyingPhoto = false;
         _cameraScanError = null;
         if (isFront) {
           _idFrontBytes = bytes;
@@ -2416,7 +2425,12 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         }
       });
     } catch (e) {
-      if (mounted) setState(() => _isClassifyingPhoto = false);
+      if (mounted) {
+        setState(() {
+          _tempCapturedBytes = null;
+          _isClassifyingPhoto = false;
+        });
+      }
       debugPrint('[FaceVerification] Shutter capture error: $e');
     }
   }
@@ -2427,7 +2441,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     required String idType,
     required Future<void> Function() onCapture,
   }) {
-    if (bytes != null) {
+    final displayBytes = bytes ?? _tempCapturedBytes;
+    if (displayBytes != null) {
+      final isSaving = _isClassifyingPhoto;
       return Column(
         children: [
           Container(
@@ -2435,13 +2451,30 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             height: 380,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.primary, width: 2),
+              border: Border.all(
+                color: isSaving ? AppColors.primary.withAlpha(150) : AppColors.primary,
+                width: 2,
+              ),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              child: Image.memory(
-                bytes,
-                fit: BoxFit.cover,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.memory(
+                    displayBytes,
+                    fit: BoxFit.cover,
+                  ),
+                  if (isSaving)
+                    Container(
+                      color: Colors.black.withAlpha(80),
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -2449,10 +2482,14 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(LucideIcons.checkCircle2, color: AppColors.primary, size: 18),
+              Icon(
+                isSaving ? LucideIcons.loader : LucideIcons.checkCircle2,
+                color: AppColors.primary,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Text(
-                'Photo captured successfully',
+                isSaving ? 'Analyzing ID card photo...' : 'Photo captured successfully',
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,

@@ -34,6 +34,14 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
 
   RealtimeChannel? _realtimeChannel;
 
+  void _navigateToProfileTab() {
+    if (widget.onSelectTab != null) {
+      widget.onSelectTab!(4);
+    } else {
+      Navigator.pushNamed(context, '/profile');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -406,51 +414,97 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const _EmptyScholarshipGraphic(),
-                                    const SizedBox(height: 20),
-                                    Text(
-                                      'No scholarships found',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800,
-                                        color: const Color(0xFF111827),
+                                    if (!_isProfileComplete) ...[
+                                      const Icon(
+                                        LucideIcons.alertTriangle,
+                                        size: 64,
+                                        color: Color(0xFFE65100),
                                       ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Try adjusting your search or filters to\nsee more results.',
-                                      textAlign: TextAlign.center,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        color: const Color(0xFF6B7280),
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 20),
-                                    GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          _searchController.clear();
-                                          _activeFilter = 0;
-                                          _applyFilters();
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF1E3D2F),
-                                          borderRadius: BorderRadius.circular(24),
+                                      const SizedBox(height: 20),
+                                      Text(
+                                        'Complete Your Profile',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                          color: const Color(0xFF111827),
                                         ),
-                                        child: Text(
-                                          'Clear Filters',
-                                          style: GoogleFonts.inter(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'To search and view matching scholarships, please complete all required profile fields and identity verification.',
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          color: const Color(0xFF6B7280),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      GestureDetector(
+                                        onTap: _navigateToProfileTab,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF1E3D2F),
+                                            borderRadius: BorderRadius.circular(24),
+                                          ),
+                                          child: Text(
+                                            'Go to Profile Setup',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.white,
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
+                                    ] else ...[
+                                      const _EmptyScholarshipGraphic(),
+                                      const SizedBox(height: 20),
+                                      Text(
+                                        'No scholarships found',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                          color: const Color(0xFF111827),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Try adjusting your search or filters to\nsee more results.',
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          color: const Color(0xFF6B7280),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _searchController.clear();
+                                            _activeFilter = 0;
+                                            _applyFilters();
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF1E3D2F),
+                                            borderRadius: BorderRadius.circular(24),
+                                          ),
+                                          child: Text(
+                                            'Clear Filters',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),

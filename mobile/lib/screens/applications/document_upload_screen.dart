@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/services/audit_log_service.dart';
+import 'package:iskoako/services/ai_extraction_service.dart';
+import 'package:iskoako/utils/eligibility_helper.dart';
 
 class DocumentUploadScreen extends StatefulWidget {
   const DocumentUploadScreen({super.key});
@@ -47,7 +50,10 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   }
 
   void _initializeRequirements() {
-    final reqs = _program?['application_requirements'];
+    final renewalReqs = _cycle?['renewal_requirements'] ?? _cycle?['renewalRequirements'];
+    final isRenewal = renewalReqs != null;
+    final reqs = renewalReqs ?? _program?['application_requirements'];
+
     if (reqs == null) {
       _docs = [
         const _DocItem(
@@ -89,12 +95,21 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     for (final r in parsedReqs) {
       if (r is Map) {
         final name = r['name']?.toString() ?? '';
-        final isRequired = r['required'] == true;
+        final isRequired = isRenewal || r['required'] == true;
         if (name.isNotEmpty) {
           loadedDocs.add(_DocItem(
             name: name,
             hint: isRequired ? 'Required · PDF or Image' : 'Optional',
             status: isRequired ? _DocStatus.notUploaded : _DocStatus.optional,
+          ));
+        }
+      } else if (r is String) {
+        final name = r.trim();
+        if (name.isNotEmpty) {
+          loadedDocs.add(_DocItem(
+            name: name,
+            hint: 'Required · PDF or Image',
+            status: _DocStatus.notUploaded,
           ));
         }
       }
@@ -244,6 +259,18 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     return _scholar;
   }
 
+  double _convertPercentToScale(double percent, String targetScale) {
+    switch (targetScale) {
+      case 'scale_4':
+        return (percent / 100.0) * 4.0;
+      case 'percentage':
+        return percent.clamp(0.0, 100.0);
+      case 'scale_5':
+      default:
+        return 5.0 - (percent / 100.0) * 4.0;
+    }
+  }
+
   Future<void> _handleUpload(_DocItem doc) async {
     if (doc.status == _DocStatus.uploaded) {
       showModalBottomSheet(
@@ -331,9 +358,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           docName: doc.name,
           pickedFileName: fileName,
           onComplete: () async {
+            final bytes = pickedFile.bytes;
             String? uploadedUrl;
             try {
-              final bytes = pickedFile.bytes;
               if (bytes != null) {
                 final scholar = await _ensureScholarProfile();
                 final scholarId = scholar?['id'] ?? 'guest';
@@ -399,6 +426,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   filename: fileName,
                   filesize: sizeStr,
                   fileUrl: uploadedUrl,
+                  fileBytes: bytes,
                 );
               }
             });
@@ -497,6 +525,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 
     final scholar = await _ensureScholarProfile();
     final scholarId = scholar?['id'];
+    final scholarGpaScale = scholar?['gpa_scale']?.toString() ?? 'scale_5';
 
     if (scholarId == null) {
       if (mounted) {
@@ -514,6 +543,99 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     final refNum = 'ISK-${DateTime.now().year}-${1000 + Random().nextInt(8999)}';
     bool submitSuccess = false;
     String? errorMessage;
+
+    // Look for academic documents: TOR, Transcript, Report Card, Grade Slip
+    final academicDoc = _docs.firstWhere(
+      (d) => d.status == _DocStatus.uploaded && d.fileBytes != null && (
+        d.name.toLowerCase().contains('tor') ||
+        d.name.toLowerCase().contains('transcript') ||
+        d.name.toLowerCase().contains('grade') ||
+        d.name.toLowerCase().contains('report card') ||
+        d.name.toLowerCase().contains('card')
+      ),
+      orElse: () => const _DocItem(name: '', hint: '', status: _DocStatus.notUploaded),
+    );
+
+    double? finalExtractedGpa;
+    String finalExtractedScale = scholarGpaScale;
+
+    if (academicDoc.name.isNotEmpty && academicDoc.fileBytes != null) {
+      try {
+        debugPrint('[AiExtraction] Extracting GPA and scale from ${academicDoc.filename}... expectedScale: $scholarGpaScale');
+        final extracted = await AiExtractionService.extractAcademicDetails(
+          fileBytes: academicDoc.fileBytes!,
+          fileName: academicDoc.filename!,
+          expectedScale: scholarGpaScale,
+        );
+        if (extracted != null && extracted.gpa != null) {
+          final extractedGpa = extracted.gpa!;
+          final extractedScale = extracted.gpaScale ?? scholarGpaScale;
+          debugPrint('[AiExtraction] Extracted GPA: $extractedGpa scale: $extractedScale');
+
+          // Check GWA requirement eligibility
+          final minGwaRaw = _program?['minimum_gwa'];
+          if (minGwaRaw != null) {
+            final minGwa = double.tryParse(minGwaRaw.toString());
+            if (minGwa != null) {
+              final programScale = _program?['grading_system']?.toString() ?? 'percentage';
+              final scholarPercent = EligibilityHelper.normalizeGpa(extractedGpa, extractedScale);
+              final requiredPercent = EligibilityHelper.normalizeGpa(minGwa, programScale);
+
+              debugPrint('[Eligibility] Scholar GWA: $scholarPercent%, Required GWA: $requiredPercent%');
+
+              if (scholarPercent < requiredPercent - 0.001) {
+                if (mounted) {
+                  setState(() => _isSubmitting = false);
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      title: Row(
+                        children: [
+                          const Icon(LucideIcons.alertTriangle, color: Color(0xFFB91C1C)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Grade Requirement',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
+                      content: Text(
+                        'Based on the document uploaded, your extracted GWA is $extractedGpa (${extractedScale == "percentage" ? "$extractedGpa%" : extractedScale == "scale_4" ? "$extractedGpa on 4.0 scale" : "$extractedGpa on 5.0 scale"}), which corresponds to a normalized percentage of ${scholarPercent.toStringAsFixed(1)}%.\n\nThis does not meet the minimum required grade of ${minGwa.toStringAsFixed(0)}% for this scholarship program.',
+                        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF374151), height: 1.45),
+                      ),
+                      actions: [
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1E3D2F),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return; // Block submission!
+              }
+            }
+          }
+
+          if (extractedScale == scholarGpaScale) {
+            finalExtractedGpa = extractedGpa;
+          } else {
+            // Convert to match scholar's profile scale
+            final percent = EligibilityHelper.normalizeGpa(extractedGpa, extractedScale);
+            final converted = _convertPercentToScale(percent, scholarGpaScale);
+            finalExtractedGpa = double.tryParse(converted.toStringAsFixed(3)) ?? converted;
+            debugPrint('[AiExtraction] Converted GPA $extractedGpa ($extractedScale) to $finalExtractedGpa ($scholarGpaScale)');
+          }
+        }
+      } catch (e) {
+        debugPrint('[AiExtraction] Failed to extract academic details: $e');
+      }
+    }
 
     try {
       final uploadedDocsList = _docs
@@ -537,9 +659,25 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           'documents': uploadedDocsList,
         },
         'remarks': 'Submitted via mobile app',
+        if (finalExtractedGpa != null) 'grade': finalExtractedGpa,
+        'gpa_scale': finalExtractedScale,
       };
 
       await Supabase.instance.client.from('scholarship_applications').insert(payload);
+
+      // Update scholar profile GWA and scale in the scholar table to stay in sync
+      if (finalExtractedGpa != null) {
+        try {
+          await Supabase.instance.client.from('scholar').update({
+            'gpa': finalExtractedGpa,
+            'gpa_scale': finalExtractedScale,
+          }).eq('id', scholarId);
+          debugPrint('[AiExtraction] Updated scholar profile table with GWA: $finalExtractedGpa ($finalExtractedScale)');
+        } catch (sUpdateErr) {
+          debugPrint('[AiExtraction] Scholar profile update error: $sUpdateErr');
+        }
+      }
+
       submitSuccess = true;
       AuditLogService.createAuditLog(
         action: 'SUBMITTED SCHOLARSHIP APPLICATION',
@@ -1167,6 +1305,7 @@ class _DocItem {
   final String? filename;
   final String? filesize;
   final String? fileUrl;
+  final Uint8List? fileBytes;
 
   const _DocItem({
     required this.name,
@@ -1175,6 +1314,7 @@ class _DocItem {
     this.filename,
     this.filesize,
     this.fileUrl,
+    this.fileBytes,
   });
 
   _DocItem copyWith({
@@ -1184,6 +1324,7 @@ class _DocItem {
     String? filename,
     String? filesize,
     String? fileUrl,
+    Uint8List? fileBytes,
   }) {
     return _DocItem(
       name: name ?? this.name,
@@ -1192,6 +1333,7 @@ class _DocItem {
       filename: filename ?? this.filename,
       filesize: filesize ?? this.filesize,
       fileUrl: fileUrl ?? this.fileUrl,
+      fileBytes: fileBytes ?? this.fileBytes,
     );
   }
 }
