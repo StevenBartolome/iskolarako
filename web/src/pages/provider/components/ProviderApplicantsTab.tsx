@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ScholarAward, ApplicantStatus } from '../types';
-import { normalizeGwa } from '../utils/gwaUtils';
+import { normalizeGwa, rankCandidates } from '../utils/gwaUtils';
+import { SelectTopCandidatesModal } from './SelectTopCandidatesModal';
 
 interface ProviderApplicantsTabProps {
   subTab: 'applicants' | 'scholars';
@@ -47,6 +48,111 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
   const [selectedBatchFilter, setSelectedBatchFilter] = useState<string>('All');
   const [sortBy, setSortBy] = useState<string>('gwa_asc');
   const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
+
+  // Top Candidates Auto-Selection Modal State
+  const [isTopCandidatesModalOpen, setIsTopCandidatesModalOpen] = useState(false);
+  const [topCandidatesModalData, setTopCandidatesModalData] = useState<{
+    programTitle: string;
+    cycleName?: string;
+    totalSlots: number;
+    alreadyApprovedCount: number;
+    remainingSlots: number;
+    topApplicants: any[];
+  }>({
+    programTitle: '',
+    totalSlots: 0,
+    alreadyApprovedCount: 0,
+    remainingSlots: 0,
+    topApplicants: [],
+  });
+
+  const handleSelectTopCandidates = () => {
+    let targetProgram = selectedProgramFilter;
+    if (targetProgram === 'All') {
+      const uniquePrograms = Array.from(new Set(applicantsList.map(a => a.program).filter(Boolean)));
+      if (uniquePrograms.length === 1) {
+        targetProgram = uniquePrograms[0];
+      } else if (uniquePrograms.length > 1) {
+        const msg = `Please select a specific Scholarship Program from the program dropdown filter first.`;
+        if (showToast) showToast(msg);
+        else alert(msg);
+        return;
+      } else {
+        const msg = `No scholarship programs available to evaluate.`;
+        if (showToast) showToast(msg);
+        else alert(msg);
+        return;
+      }
+    }
+
+    const programApps = applicantsList.filter(a => a.program === targetProgram);
+    if (programApps.length === 0) {
+      const msg = `No applicants found for program "${targetProgram}".`;
+      if (showToast) showToast(msg);
+      else alert(msg);
+      return;
+    }
+
+    const sampleApp = programApps[0];
+    const totalSlots = sampleApp.rawApplication?.cycle?.program?.total_slots ||
+                       sampleApp.rawApplication?.cycle?.slots_available || 0;
+
+    const alreadyApprovedCount = scholarsList.filter(sch => sch.programTitle === targetProgram).length;
+    const remainingSlots = Math.max(0, totalSlots - alreadyApprovedCount);
+
+    if (totalSlots === 0) {
+      const msg = `No maximum slot capacity set for "${targetProgram}".`;
+      if (showToast) showToast(msg);
+      else alert(msg);
+      return;
+    }
+
+    if (remainingSlots <= 0) {
+      const msg = `All ${totalSlots} available slots for "${targetProgram}" are already filled (${alreadyApprovedCount} approved).`;
+      if (showToast) showToast(msg);
+      else alert(msg);
+      return;
+    }
+
+    const eligiblePending = programApps.filter(app => {
+      const st = (app.status || '').toLowerCase();
+      const isExcluded = st === 'approved' || st === 'rejected' || st === 'barred';
+      const matchesBatch = selectedBatchFilter === 'All' || app.cycle === selectedBatchFilter;
+      return !isExcluded && matchesBatch;
+    });
+
+    if (eligiblePending.length === 0) {
+      const msg = `No eligible pending candidates available for selection in "${targetProgram}".`;
+      if (showToast) showToast(msg);
+      else alert(msg);
+      return;
+    }
+
+    const ranked = rankCandidates(eligiblePending);
+    const topSelected = ranked.slice(0, remainingSlots);
+    const topIds = topSelected.map(a => a.id);
+
+    setSelectedAppIds(topIds);
+    setTopCandidatesModalData({
+      programTitle: targetProgram,
+      cycleName: sampleApp.cycle,
+      totalSlots: totalSlots,
+      alreadyApprovedCount: alreadyApprovedCount,
+      remainingSlots: remainingSlots,
+      topApplicants: topSelected,
+    });
+    setIsTopCandidatesModalOpen(true);
+  };
+
+  const handleConfirmTopApproval = async (confirmedIds: string[]) => {
+    for (const id of confirmedIds) {
+      await handleUpdateStatus(id, 'Approved');
+    }
+    setSelectedAppIds([]);
+    if (showToast) {
+      showToast(`Successfully approved ${confirmedIds.length} top candidates!`);
+    }
+  };
 
   // Dynamic Options for Applicants
   const applicantProgramOptions = ['All', ...Array.from(new Set(applicantsList.map(a => a.program).filter(Boolean)))];
@@ -196,6 +302,16 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                 <option value="gwa_desc">GWA (Lowest First)</option>
               </select>
             </div>
+
+            {/* Select Top Candidates Button */}
+            <button
+              type="button"
+              onClick={handleSelectTopCandidates}
+              className="bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ml-auto"
+              title="Automatically rank and select top pending candidates up to maximum program slots"
+            >
+              <span>✨ Select Top Candidates</span>
+            </button>
           </div>
 
           {/* Needs Attention Alert Banner for AI Flags */}
@@ -782,6 +898,20 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
           </table>
         </div>
       )}
+
+      {/* Select Top Candidates Pre-Approval Confirmation Modal */}
+      <SelectTopCandidatesModal
+        isOpen={isTopCandidatesModalOpen}
+        onClose={() => setIsTopCandidatesModalOpen(false)}
+        programTitle={topCandidatesModalData.programTitle}
+        cycleName={topCandidatesModalData.cycleName}
+        totalSlots={topCandidatesModalData.totalSlots}
+        alreadyApprovedCount={topCandidatesModalData.alreadyApprovedCount}
+        remainingSlots={topCandidatesModalData.remainingSlots}
+        topApplicants={topCandidatesModalData.topApplicants}
+        onConfirmApprove={handleConfirmTopApproval}
+        showToast={showToast}
+      />
     </div>
   );
 };
