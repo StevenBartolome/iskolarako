@@ -46,6 +46,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       }
 
       _initializeRequirements();
+      _ensureScholarProfile();
       _isInitialized = true;
     }
   }
@@ -201,9 +202,15 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   }
 
   Future<Map<String, dynamic>?> _ensureScholarProfile() async {
-    if (_scholar != null && _scholar!['id'] != null) return _scholar;
+    if (_scholar != null &&
+        _scholar!['id'] != null &&
+        _scholar!['gpa_scale'] != null &&
+        _scholar!['gpa_scale'].toString().isNotEmpty &&
+        _scholar!['gpa_scale'].toString() != 'null') {
+      return _scholar;
+    }
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return null;
+    if (user == null) return _scholar;
 
     try {
       try {
@@ -237,8 +244,15 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           .maybeSingle();
 
       if (existingScholar != null) {
-        _scholar = existingScholar;
-        return existingScholar;
+        if (mounted) {
+          setState(() {
+            _scholar = {...(_scholar ?? {}), ...existingScholar};
+          });
+        } else {
+          _scholar = {...(_scholar ?? {}), ...existingScholar};
+        }
+        debugPrint('[DocumentUploadScreen] Resolved complete scholar profile: id=${_scholar!['id']}, gpa_scale=${_scholar!['gpa_scale']}');
+        return _scholar;
       }
 
       final firstName = user.userMetadata?['first_name']?.toString() ?? 'Scholar';
@@ -432,7 +446,11 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         if (minGwaRaw != null) {
           minimumGwa = double.tryParse(minGwaRaw.toString());
         }
-        final gradingSystem = _program?['grading_system']?.toString() ?? _program?['gpa_scale']?.toString();
+        final scholarScaleRaw = scholar?['gpa_scale']?.toString() ?? _scholar?['gpa_scale']?.toString() ?? '';
+        final scholarGpaScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
+            ? scholarScaleRaw
+            : 'scale_5';
+        final gradingSystem = scholarGpaScale;
 
         // STEP 1: FAST PRE-CHECK — Run AI Document Validation for Document Type, Name Match & Remarks Instructions FIRST!
         final validationRes = await DocumentValidationService.validateDocument(
@@ -533,7 +551,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               );
 
               if (minimumGwa != null) {
-                final programScale = gradingSystem ?? 'percentage';
+                final programScale = gradingSystem;
                 final requiredPercent = EligibilityHelper.normalizeGpa(minimumGwa, programScale);
 
                 debugPrint('[Eligibility Check] Scholar GWA: ${scholarPercent.toStringAsFixed(1)}%, Required: ${requiredPercent.toStringAsFixed(1)}%');
@@ -585,7 +603,10 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         }
 
         // STEP 3: SAVE DOCUMENT STATE (Clean Pass >=80% or Flagged 40-79%)
-        final combinedFlags = <String>[...extraGradeFlags, ...validationRes.flags];
+        final cleanValidationFlags = validationRes.flags
+            .where((f) => !f.toLowerCase().startsWith('extracted gwa:'))
+            .toList();
+        final combinedFlags = <String>[...extraGradeFlags, ...cleanValidationFlags];
 
         if (validationRes.confidenceScore < 0.80) {
           // Flagged / Under Review (40% to 79%)
@@ -885,7 +906,12 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                           final minGwaRaw = _program?['minimum_gwa'] ?? _program?['minimumGwa'] ?? _program?['renewal_gwa_requirement'];
                                           double? minimumGwa;
                                           if (minGwaRaw != null) minimumGwa = double.tryParse(minGwaRaw.toString());
-                                          final gradingSystem = _program?['grading_system']?.toString() ?? _program?['gpa_scale']?.toString();
+                                          
+                                          final scholarScaleRaw = _scholar?['gpa_scale']?.toString() ?? '';
+                                          final scholarGpaScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
+                                              ? scholarScaleRaw
+                                              : 'scale_5';
+                                          final gradingSystem = scholarGpaScale;
 
                                           final vRes = await DocumentValidationService.validateDocument(
                                             fileBytes: picked.bytes!,

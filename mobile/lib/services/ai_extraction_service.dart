@@ -878,7 +878,10 @@ If no grade or scale is found, return exactly:
       }
       final data = jsonDecode(clean);
       final gpaVal = double.tryParse(data['gpa']?.toString() ?? '');
-      final scale = data['gpa_scale']?.toString() ?? expectedScale ?? 'scale_5';
+      final rawScaleFromAi = data['gpa_scale']?.toString();
+      final scale = (expectedScale != null && expectedScale.isNotEmpty && expectedScale != 'unknown')
+          ? expectedScale
+          : (rawScaleFromAi ?? 'scale_5');
       final school = data['school_name']?.toString() ?? '';
       final conf = double.tryParse(data['confidence_score']?.toString() ?? '0.95') ?? 0.95;
 

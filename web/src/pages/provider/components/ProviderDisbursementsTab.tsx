@@ -788,50 +788,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
     }
   }
 
-  const handleDeferScholar = async (appId: string, scholarName: string) => {
-    if (!window.confirm(`Are you sure you want to defer the disbursement for ${scholarName} in this cycle? This will exclude them from the current payout requirements, allowing you to proceed with closing this cycle. They can be re-evaluated or approved in future cycles once they complete their details.`)) {
-      return;
-    }
 
-    setIsSubmitting(true);
-    try {
-      const { error } = await supabase
-        .from('scholarship_applications')
-        .update({
-          status: 'deferred',
-          remarks: 'Disbursement deferred due to incomplete bank account details. Cycle auto-close bypass enabled.'
-        })
-        .eq('id', appId);
-
-      if (error) throw error;
-
-      showToast?.(`✓ ${scholarName} deferred successfully.`);
-
-      const currentSelected = eligibleApplicants.find(a => a.applicationId === appId);
-      if (currentSelected?.userId) {
-        await supabase.from('notifications').insert({
-          user_id: currentSelected.userId,
-          title: '⚠️ Payout Deferred - Action Required',
-          message: `Your disbursement for this cycle has been deferred because you haven't completed your bank/e-wallet details. Please upload your bank details immediately to be eligible for future releases.`,
-          type: 'warning',
-          is_read: false,
-          created_at: new Date().toISOString(),
-        });
-      }
-
-      await fetchEligibleApplicants();
-      if (currentSelected?.cycleId && currentSelected?.programId) {
-        await checkAndAutoCloseCycle(currentSelected.cycleId, currentSelected.programId);
-      }
-      if (fetchPrograms) fetchPrograms();
-      setIsReleaseModalOpen(false);
-    } catch (err: any) {
-      console.error('Error deferring scholar:', err);
-      showToast?.(`Error deferring scholar: ${err.message || err}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleInitiateSingleRelease = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1823,14 +1780,6 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                             <span>🔔 Send Reminder</span>
                           </button>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeferScholar(currentSelectedApplicant.applicationId, currentSelectedApplicant.scholarName)}
-                          className="w-full py-2 bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-rose-200"
-                        >
-                          <span>⏭️ Defer Payout & Bypass Cycle Close Block</span>
-                        </button>
                       </div>
                     )}
                     </div>

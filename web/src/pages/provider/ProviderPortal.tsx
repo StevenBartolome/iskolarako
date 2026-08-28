@@ -4,6 +4,7 @@ import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-m
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
 import { CloseProgramConfirmModal } from './components/CloseProgramConfirmModal';
+import { ForceCloseCycleConfirmModal } from './components/ForceCloseCycleConfirmModal';
 import { DeleteCycleConfirmModal } from './components/DeleteCycleConfirmModal';
 import { RenewCycleModal } from './components/RenewCycleModal';
 import { QuotaFilledModal } from './components/QuotaFilledModal';
@@ -906,6 +907,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   // Review Application Modal states
   const [selectedAppForReview, setSelectedAppForReview] = useState<ApplicationDetail | null>(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  // Force Close Cycle Modal states
+  const [isForceCloseModalOpen, setIsForceCloseModalOpen] = useState(false);
+  const [cycleToForceClose, setCycleToForceClose] = useState<{ id: string; name: string } | null>(null);
+  const [isClosingCycle, setIsClosingCycle] = useState(false);
 
   const fetchApplicantsAndScholars = async () => {
     if (!providerDetails?.id) {
@@ -2631,16 +2637,20 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
-  const handleCloseCycle = async (cycleId: string, cycleName: string) => {
-    if (!window.confirm(`Are you sure you want to close the cycle "${cycleName}"? This will mark it as closed, which will let you open a new semester renewal or new academic year cycle. Any scholars who haven't completed their bank details or received their funds can still upload their info and be paid manually later.`)) {
-      return;
-    }
+  const handleCloseCycle = (cycleId: string, cycleName: string) => {
+    setCycleToForceClose({ id: cycleId, name: cycleName });
+    setIsForceCloseModalOpen(true);
+  };
+
+  const handleConfirmForceCloseCycle = async () => {
+    if (!cycleToForceClose) return;
+    setIsClosingCycle(true);
 
     try {
       const { error } = await supabase
         .from('application_cycles')
         .update({ status: 'closed', updated_at: new Date().toISOString() })
-        .eq('id', cycleId);
+        .eq('id', cycleToForceClose.id);
 
       if (error) {
         console.error('Error closing cycle:', error);
@@ -2648,11 +2658,15 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         return;
       }
 
-      showToast(`Successfully closed cycle "${cycleName}".`);
+      showToast(`Successfully closed cycle "${cycleToForceClose.name}".`);
+      setIsForceCloseModalOpen(false);
+      setCycleToForceClose(null);
       await fetchPrograms();
     } catch (err) {
       console.error('Unexpected error closing cycle:', err);
       showToast('An unexpected error occurred.');
+    } finally {
+      setIsClosingCycle(false);
     }
   };
 
@@ -3869,6 +3883,15 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         cycle={cycleToDelete}
         onClose={() => { setIsDeleteCycleConfirmOpen(false); setCycleToDelete(null); }}
         onConfirm={handleConfirmDeleteCycle}
+      />
+
+      {/* ─── Force Close Cycle Confirm Modal ─── */}
+      <ForceCloseCycleConfirmModal
+        isOpen={isForceCloseModalOpen}
+        cycleName={cycleToForceClose?.name || null}
+        onClose={() => { setIsForceCloseModalOpen(false); setCycleToForceClose(null); }}
+        onConfirm={handleConfirmForceCloseCycle}
+        isSubmitting={isClosingCycle}
       />
 
       {/* ─── Renew / Add Cycle Modal ─── */}
