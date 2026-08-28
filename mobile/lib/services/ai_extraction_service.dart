@@ -657,17 +657,17 @@ Your tasks are:
 1. Extract the overall GWA / GPA / General Average of the student if printed on the document (return null if no grade is printed on this document).
 2. Determine the grading scale used by the school ("scale_5", "scale_4", or "percentage").
 3. Identify the school name if visible.
-4. If this document is a Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, Billing Statement, or Enrollment Receipt, extract the total tuition amount or total matriculation fees (look for labels like "Total Assessment", "Total Tuition", "Gross Assessment", "Total Fees", "Net Payable", "Amount Due", "Amount Payable", "Tuition Fee", "Total Assessment Amount", "Assessment Balance").
+4. If this document is a Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, Billing Statement, or Enrollment Receipt, extract the total tuition amount or total matriculation fees (look for labels like "NET AMOUNT", "TOTAL AMOUNT", "Total Assessment", "Total Tuition", "Gross Assessment", "Total Fees", "Net Payable", "Amount Due", "Amount Payable", "Tuition Fee", "Total Assessment Amount", "Assessment Balance", "Full Payment"). If multiple payment options or discounts are shown (e.g., Full Payment Option vs Installment), extract the Net Amount or Total Amount (e.g., 35638.00).
 
 Return ONLY valid, raw JSON without markdown backticks or commentary in this exact format:
 {
   "gpa": 1.75,
   "gpa_scale": "scale_5",
   "school_name": "University of the Philippines",
-  "extracted_tuition_amount": 24500.00,
+  "extracted_tuition_amount": 35638.00,
   "confidence_score": 0.95
 }
-If a field is not present on the document, return null for that field. If neither grade nor tuition amount is found, return confidence_score of 0.3.
+If a field is not present on the document (for instance, a COR has tuition fees but no GPA/grade), set that specific field to null. Return confidence_score of at least 0.85 if either a GPA or a tuition amount is successfully identified.
 ''';
 
   static Future<ExtractedAcademicInfo?> extractAcademicDetails({
@@ -730,7 +730,7 @@ If a field is not present on the document, return null for that field. If neithe
         prompt: customPrompt,
         expectedScale: expectedScale,
       );
-      if (result != null && result.gpa != null) return result;
+      if (result != null && (result.gpa != null || result.extractedTuitionAmount != null)) return result;
     }
 
     if (openRouterKey.isNotEmpty) {
@@ -741,7 +741,7 @@ If a field is not present on the document, return null for that field. If neithe
         prompt: customPrompt,
         expectedScale: expectedScale,
       );
-      if (result != null && result.gpa != null) return result;
+      if (result != null && (result.gpa != null || result.extractedTuitionAmount != null)) return result;
     }
 
     return null;
@@ -796,7 +796,7 @@ If a field is not present on the document, return null for that field. If neithe
           final data = jsonDecode(response.body);
           final rawText = data['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString() ?? '';
           final parsed = _parseAcademicJsonResponse(rawText, 'Gemini $model', expectedScale);
-          if (parsed != null && parsed.gpa != null) return parsed;
+          if (parsed != null && (parsed.gpa != null || parsed.extractedTuitionAmount != null)) return parsed;
         }
       } catch (e) {
         debugPrint('Gemini $model academic error: $e');
@@ -857,7 +857,7 @@ If a field is not present on the document, return null for that field. If neithe
           final data = jsonDecode(response.body);
           final rawText = data['choices']?[0]?['message']?['content']?.toString() ?? '';
           final parsed = _parseAcademicJsonResponse(rawText, 'OpenRouter $model', expectedScale);
-          if (parsed != null && parsed.gpa != null) return parsed;
+          if (parsed != null && (parsed.gpa != null || parsed.extractedTuitionAmount != null)) return parsed;
         }
       } catch (e) {
         debugPrint('OpenRouter $model academic error: $e');

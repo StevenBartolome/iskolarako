@@ -22,6 +22,8 @@ interface ProviderDisbursementsTabProps {
 interface BenefitSummary {
   tuitionAmt: number;
   isTuitionDirectToSchool: boolean;
+  /** 'extracted' = came from student's actual matriculation form; 'cap' = fell back to program cap */
+  tuitionSource: 'extracted' | 'cap' | 'direct_to_school' | 'none';
   stipendAmt: number;
   allowanceAmt: number;
   customBenefitsTotal: number;
@@ -150,6 +152,9 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
   // State for AI Upload Modal on Behalf
   const [uploadModalScholar, setUploadModalScholar] = useState<{ id: string; name: string } | null>(null);
+
+  // Manual tuition override for actual_matriculation programs when AI extraction yields ₱0
+  const [manualTuitionAmt, setManualTuitionAmt] = useState<string>('');
 
   // Gross Budget Allocation Pool across all active programs
   const grossBudgetPool = useMemo(() => {
@@ -565,9 +570,11 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         new Set((appsData || []).map((a: any) => a.scholar_id).filter(Boolean))
       );
 
-      // 4. Fetch payment accounts & extracted tuition amounts for eligible scholars
+      // 4. Fetch payment accounts for eligible scholars
+      // NOTE: Tuition amounts are extracted directly from scholarship_applications.submitted_documents
+      // (populated by the mobile app during AI document scanning). The scholar_documents table does
+      // NOT have an extracted_tuition_amount column and is NOT queried here.
       let paymentAccountsMap: Record<string, any> = {};
-      let scholarTuitionMap: Record<string, number> = {};
       if (scholarIds.length > 0) {
         const { data: pAccounts } = await supabase
           .from('scholar_payment_accounts')
@@ -582,23 +589,6 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             }
             if (!paymentAccountsMap[acc.scholar_id]) {
               paymentAccountsMap[acc.scholar_id] = acc;
-            }
-          });
-        }
-
-        const { data: sDocs } = await supabase
-          .from('scholar_documents')
-          .select('scholar_id, ai_extracted_data, extracted_tuition_amount')
-          .in('scholar_id', scholarIds);
-
-        if (sDocs) {
-          sDocs.forEach((sd: any) => {
-            const amtVal = sd.extracted_tuition_amount || sd.ai_extracted_data?.extractedTuitionAmount || sd.ai_extracted_data?.extracted_tuition_amount;
-            if (amtVal) {
-              const parsed = parseFloat(String(amtVal).replace(/[^0-9.]/g, ''));
-              if (!isNaN(parsed) && parsed > 0) {
-                scholarTuitionMap[sd.scholar_id] = parsed;
-              }
             }
           });
         }
@@ -674,35 +664,54 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           // Calculate Itemized Program Benefit Summary
           let tuitionAmt = 0;
           let isTuitionDirectToSchool = false;
+          let tuitionSource: BenefitSummary['tuitionSource'] = 'none';
           if (progConfig.covers_tuition || progConfig.coverstuition) {
             if (progConfig.tuition_payout_mode === 'direct_to_school_off_system') {
               isTuitionDirectToSchool = true;
               tuitionAmt = 0;
+              tuitionSource = 'direct_to_school';
             } else if (progConfig.tuition_coverage_type === 'actual_matriculation') {
-              // Extract from the document's aiVerification
+              // Scan ALL documents in submitted_documents for an extracted matriculation fee.
+              // The mobile app saves the amount in multiple key paths (camelCase + snake_case +
+              // nested aiVerification), so we check them all and take the MAXIMUM found.
               let extractedTuition = 0;
-              const docsList = subDocs && typeof subDocs === 'object'
+              const docsList: any[] = subDocs && typeof subDocs === 'object'
                 ? (Array.isArray(subDocs.documents) ? subDocs.documents : (Array.isArray(subDocs) ? subDocs : []))
                 : [];
+
+              const parseTuitionVal = (v: any): number => {
+
+                if (!v) return 0;
+                const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
+                return isNaN(n) ? 0 : n;
+              };
+
               for (const doc of docsList) {
-                const aiVerify = doc.aiVerification || doc.ai_verification;
-                const amtVal = aiVerify?.extractedTuitionAmount || aiVerify?.ai_extracted_data?.extractedTuitionAmount || aiVerify?.extracted_tuition_amount || doc.extractedTuitionAmount || doc.extracted_tuition_amount;
-                if (amtVal) {
-                  const parsedAmt = parseFloat(String(amtVal).replace(/[^0-9.]/g, ''));
-                  if (!isNaN(parsedAmt) && parsedAmt > 0) {
-                    extractedTuition = parsedAmt;
-                    break;
-                  }
-                }
+                const aiVerify = doc.aiVerification || doc.ai_verification || {};
+                const candidates = [
+                  // Top-level document keys (set by mobile upload_screen.dart)
+                  parseTuitionVal(doc.extractedTuitionAmount),
+                  parseTuitionVal(doc.extracted_tuition_amount),
+                  // Nested aiVerification keys
+                  parseTuitionVal(aiVerify.extractedTuitionAmount),
+                  parseTuitionVal(aiVerify.extracted_tuition_amount),
+                  parseTuitionVal(aiVerify.ai_extracted_data?.extractedTuitionAmount),
+                  parseTuitionVal(aiVerify.ai_extracted_data?.extracted_tuition_amount),
+                ];
+                const docMax = Math.max(...candidates);
+                if (docMax > extractedTuition) extractedTuition = docMax;
               }
 
-              if (extractedTuition <= 0 && app.scholar_id && scholarTuitionMap[app.scholar_id]) {
-                extractedTuition = scholarTuitionMap[app.scholar_id];
+              if (extractedTuition > 0) {
+                tuitionAmt = extractedTuition;
+                tuitionSource = 'extracted';
+              } else {
+                tuitionAmt = Number(progConfig.tuition_max_amount || 0);
+                tuitionSource = 'cap';
               }
-
-              tuitionAmt = extractedTuition > 0 ? extractedTuition : Number(progConfig.tuition_max_amount || 0);
             } else {
               tuitionAmt = Number(progConfig.tuition_max_amount || 0);
+              tuitionSource = 'cap';
             }
           }
 
@@ -746,6 +755,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             benefitSummary: {
               tuitionAmt,
               isTuitionDirectToSchool,
+              tuitionSource,
               stipendAmt,
               allowanceAmt,
               customBenefitsTotal,
@@ -1092,6 +1102,26 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
   const currentSelectedApplicant = eligibleApplicants.find(
     (a) => a.applicationId === selectedApplicantId
   );
+
+  // When the selected applicant changes, reset the manual tuition override
+  useEffect(() => {
+    setManualTuitionAmt('');
+  }, [selectedApplicantId]);
+
+  // Effective tuition: manual override takes precedence over extracted/cap amount
+  const effectiveTuitionAmt = (() => {
+    if (!currentSelectedApplicant?.benefitSummary) return 0;
+    const parsed = parseFloat(manualTuitionAmt);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+    return currentSelectedApplicant.benefitSummary.tuitionAmt;
+  })();
+
+  // Effective total payout using the manual tuition override when set
+  const effectiveTotalPayout = (() => {
+    if (!currentSelectedApplicant?.benefitSummary) return 0;
+    const bs = currentSelectedApplicant.benefitSummary;
+    return effectiveTuitionAmt + bs.stipendAmt + bs.allowanceAmt + bs.customBenefitsTotal;
+  })();
 
   const displayList = liveLedger.length > 0 ? liveLedger : disbursementsList;
 
@@ -1649,7 +1679,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                         📊 Itemized Program Benefit Breakdown
                       </span>
                       <span className="text-xs font-mono font-bold text-[#2D5941] bg-white px-2.5 py-0.5 rounded-lg border border-[#2D5941]/30">
-                        Total Payout: ₱{currentSelectedApplicant.benefitSummary.totalCalculated.toLocaleString()}
+                        Total Payout: ₱{effectiveTotalPayout.toLocaleString()}
                       </span>
                     </div>
 
@@ -1659,11 +1689,43 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                         {currentSelectedApplicant.benefitSummary.isTuitionDirectToSchool ? (
                           <span className="text-[10px] font-bold text-[#C97B2E] block mt-0.5">Paid to School (Off-System)</span>
                         ) : (
-                          <span className="font-bold text-[#1A3C2E] block mt-0.5">
-                            ₱{currentSelectedApplicant.benefitSummary.tuitionAmt.toLocaleString()}
-                          </span>
+                          <>
+                            <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                              ₱{effectiveTuitionAmt.toLocaleString()}
+                            </span>
+                            {currentSelectedApplicant.benefitSummary.tuitionSource === 'extracted' && (
+                              <span className="text-[9px] font-semibold text-[#2D5941] block mt-0.5">
+                                ✔ From student's matriculation form
+                              </span>
+                            )}
+                            {currentSelectedApplicant.benefitSummary.tuitionSource === 'cap' && (
+                              <div className="mt-1">
+                                <span className="text-[9px] font-semibold text-[#C97B2E] block mb-1">
+                                  ⚠ AI did not extract amount — enter actual tuition:
+                                </span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="e.g. 15000"
+                                  value={manualTuitionAmt}
+                                  onChange={(e) => {
+                                    setManualTuitionAmt(e.target.value);
+                                    // Auto-sync the main amount field with the new total
+                                    const parsed = parseFloat(e.target.value);
+                                    const bs = currentSelectedApplicant?.benefitSummary;
+                                    const newTotal = (isNaN(parsed) ? (bs?.tuitionAmt ?? 0) : parsed)
+                                      + (bs?.stipendAmt ?? 0) + (bs?.allowanceAmt ?? 0) + (bs?.customBenefitsTotal ?? 0);
+                                    setAmount(String(newTotal));
+                                  }}
+                                  className="w-full px-2 py-1 text-[10px] font-bold border border-[#C97B2E]/60 rounded-lg bg-[#FFF8EE] text-[#1A3C2E] focus:outline-none focus:border-[#2D5941]"
+                                />
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
+
 
                       <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
                         <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🍱 Stipend / Allowance</span>

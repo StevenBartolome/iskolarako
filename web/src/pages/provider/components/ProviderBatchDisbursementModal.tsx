@@ -13,6 +13,7 @@ interface ProviderBatchDisbursementModalProps {
 interface ProgramBenefitBreakdown {
   tuitionAmt: number;
   isTuitionDirectToSchool: boolean;
+  tuitionCoverageType: 'fixed_cap' | 'actual_matriculation';
   stipendAmt: number;
   allowanceAmt: number;
   customBenefitsTotal: number;
@@ -40,6 +41,13 @@ interface BatchScholarRow {
     documentProofUrl?: string;
     aiModelUsed?: string;
   };
+  tuitionAmt: number;
+  extractedTuition: number;
+  tuitionSource: 'extracted' | 'cap' | 'manual' | 'direct_to_school' | 'none';
+  manualTuitionAmt: string;
+  stipendAmt: number;
+  allowanceAmt: number;
+  customBenefitsTotal: number;
   amount: number;
   isSelected: boolean;
   status: 'idle' | 'processing' | 'success' | 'failed';
@@ -93,6 +101,15 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
     const mode = prog.disbursement_mode || prog.disbursementMode || 'online';
     return mode === 'in_person_cash' || mode === 'cash' || String(mode).toLowerCase().includes('cash');
   }, [programsList, selectedProgramId]);
+
+  const isActualMatriculation = useMemo(() => {
+    const prog = (availablePrograms || []).find((p: any) => String(p.id) === String(selectedProgramId));
+    if (!prog) return false;
+    const coversTuition = prog.covers_tuition || prog.coverstuition;
+    const coverageType = prog.tuition_coverage_type || prog.tuitionCoverageType;
+    const payoutMode = prog.tuition_payout_mode || prog.tuitionPayoutMode;
+    return !!(coversTuition && coverageType === 'actual_matriculation' && payoutMode !== 'direct_to_school_off_system');
+  }, [availablePrograms, selectedProgramId]);
 
   // Initialize selected program with first program
   useEffect(() => {
@@ -202,6 +219,9 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       const p = progData as any;
       let tuitionAmt = 0;
       let isTuitionDirectToSchool = false;
+      const tuitionCoverageType: 'fixed_cap' | 'actual_matriculation' =
+        p?.tuition_coverage_type === 'actual_matriculation' ? 'actual_matriculation' : 'fixed_cap';
+
       if (p?.covers_tuition || p?.coverstuition) {
         if (p?.tuition_payout_mode === 'direct_to_school_off_system') {
           isTuitionDirectToSchool = true;
@@ -229,6 +249,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       setProgramBenefitBreakdown({
         tuitionAmt,
         isTuitionDirectToSchool,
+        tuitionCoverageType,
         stipendAmt,
         allowanceAmt,
         customBenefitsTotal,
@@ -245,7 +266,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
         disbursementMode === 'cash' ||
         (typeof disbursementMode === 'string' && disbursementMode.toLowerCase().includes('cash'));
 
-      // 2. Fetch approved applications for this cycle
+      // 2. Fetch approved applications for this cycle with submitted_documents
       const { data: apps, error: appsErr } = await supabase
         .from('scholarship_applications')
         .select(`
@@ -253,6 +274,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           cycle_id,
           scholar_id,
           status,
+          submitted_documents,
           scholar:scholar_id(id, first_name, last_name, school)
         `)
         .eq('cycle_id', cycId)
@@ -335,15 +357,65 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
         ? `${progTitle} • 2nd Sem Renewal (${cycleName})`
         : `${progTitle} (${cycleName})`;
 
+      const parseTuitionVal = (v: any): number => {
+        if (!v) return 0;
+        const n = parseFloat(String(v).replace(/[^0-9.]/g, ''));
+        return isNaN(n) ? 0 : n;
+      };
+
       // 5. Map into BatchScholarRow
       const rows: BatchScholarRow[] = pendingApps.map((app: any) => {
         const sObj = app.scholar;
         const scholarName = sObj
           ? `${sObj.first_name || ''} ${sObj.last_name || ''}`.trim()
           : 'Approved Scholar';
+
+        // Extract tuition amount from submitted_documents if program covers tuition
+        const subDocs = app.submitted_documents;
+        let extractedTuition = 0;
+        const docsList: any[] = subDocs && typeof subDocs === 'object'
+          ? (Array.isArray(subDocs.documents) ? subDocs.documents : (Array.isArray(subDocs) ? subDocs : []))
+          : [];
+
+        for (const doc of docsList) {
+          const aiVerify = doc.aiVerification || doc.ai_verification || {};
+          const candidates = [
+            parseTuitionVal(doc.extractedTuitionAmount),
+            parseTuitionVal(doc.extracted_tuition_amount),
+            parseTuitionVal(aiVerify.extractedTuitionAmount),
+            parseTuitionVal(aiVerify.extracted_tuition_amount),
+            parseTuitionVal(aiVerify.ai_extracted_data?.extractedTuitionAmount),
+            parseTuitionVal(aiVerify.ai_extracted_data?.extracted_tuition_amount),
+          ];
+          const docMax = Math.max(...candidates);
+          if (docMax > extractedTuition) extractedTuition = docMax;
+        }
+
+        let scholarTuition = 0;
+        let tuitionSource: BatchScholarRow['tuitionSource'] = 'none';
+
+        if (p?.covers_tuition || p?.coverstuition) {
+          if (p?.tuition_payout_mode === 'direct_to_school_off_system') {
+            scholarTuition = 0;
+            tuitionSource = 'direct_to_school';
+          } else if (p?.tuition_coverage_type === 'actual_matriculation') {
+            if (extractedTuition > 0) {
+              scholarTuition = extractedTuition;
+              tuitionSource = 'extracted';
+            } else {
+              scholarTuition = Number(p?.tuition_max_amount || 0);
+              tuitionSource = 'cap';
+            }
+          } else {
+            scholarTuition = Number(p?.tuition_max_amount || 0);
+            tuitionSource = 'cap';
+          }
+        }
+
+        const scholarRowTotal = scholarTuition + stipendAmt + allowanceAmt + customBenefitsTotal;
+
         // Check if scholar has attached/submitted bank account specifically for THIS application or program
         let pAcc = null;
-        const subDocs = app.submitted_documents;
         if (subDocs && typeof subDocs === 'object' && subDocs.bank_details) {
           pAcc = {
             bank_name: subDocs.bank_details.bank_name,
@@ -363,9 +435,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           }
         }
 
-
         const hasPayment = !!pAcc;
-        const isReady = hasPayment || isCash;
 
         return {
           applicationId: app.id,
@@ -389,8 +459,15 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                 aiModelUsed: pAcc.ai_model_used,
               }
             : undefined,
-          amount: effectiveDefaultAmount,
-          isSelected: isReady,
+          tuitionAmt: scholarTuition,
+          extractedTuition,
+          tuitionSource,
+          manualTuitionAmt: '',
+          stipendAmt,
+          allowanceAmt,
+          customBenefitsTotal,
+          amount: scholarRowTotal,
+          isSelected: false, // DONT preselect in batch release! User explicitly selects scholars
           status: 'idle',
         };
       });
@@ -407,9 +484,10 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
     setBatchScholars((prev) =>
       prev.map((row) => {
         const isEligible = row.hasPaymentAccount;
+        const hasTuition = !isActualMatriculation || programBenefitBreakdown?.isTuitionDirectToSchool || row.tuitionAmt > 0 || (row.manualTuitionAmt && parseFloat(row.manualTuitionAmt) > 0);
         return {
           ...row,
-          isSelected: isEligible ? select : false,
+          isSelected: (isEligible && hasTuition) ? select : false,
         };
       })
     );
@@ -418,6 +496,12 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
   const handleToggleScholar = (index: number) => {
     setBatchScholars((prev) => {
       const copy = [...prev];
+      const row = copy[index];
+      const hasTuition = !isActualMatriculation || programBenefitBreakdown?.isTuitionDirectToSchool || row.tuitionAmt > 0 || (row.manualTuitionAmt && parseFloat(row.manualTuitionAmt) > 0);
+      if (!hasTuition && !row.isSelected) {
+        setErrorMessage(`Please enter a tuition fee for ${row.scholarName} before selecting.`);
+        return prev;
+      }
       copy[index] = { ...copy[index], isSelected: !copy[index].isSelected };
       return copy;
     });
@@ -428,6 +512,27 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
     setBatchScholars((prev) => {
       const copy = [...prev];
       copy[index] = { ...copy[index], amount: parsed };
+      return copy;
+    });
+  };
+
+  const handleUpdateRowTuition = (index: number, newTuitionStr: string) => {
+    setBatchScholars((prev) => {
+      const copy = [...prev];
+      const r = copy[index];
+      const parsed = parseFloat(newTuitionStr);
+      const effectiveTuition = (!isNaN(parsed) && parsed >= 0)
+        ? parsed
+        : (r.extractedTuition > 0 ? r.extractedTuition : r.tuitionAmt);
+
+      const newTotal = effectiveTuition + r.stipendAmt + r.allowanceAmt + r.customBenefitsTotal;
+
+      copy[index] = {
+        ...r,
+        manualTuitionAmt: newTuitionStr,
+        amount: newTotal,
+        tuitionSource: (!isNaN(parsed) && parsed > 0) ? 'manual' : (r.extractedTuition > 0 ? 'extracted' : 'cap'),
+      };
       return copy;
     });
   };
@@ -443,10 +548,40 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
     );
   };
 
+  const handleApplyDefaultTuitionToMissing = (tuitionStr: string) => {
+    setDefaultAmount(tuitionStr);
+    const parsedTuition = parseFloat(tuitionStr) || 0;
+    setBatchScholars((prev) =>
+      prev.map((r) => {
+        // Only apply to rows where tuition wasn't extracted from OCR form
+        const effectiveTuition = r.extractedTuition > 0 ? r.extractedTuition : parsedTuition;
+        const newTotal = effectiveTuition + r.stipendAmt + r.allowanceAmt + r.customBenefitsTotal;
+        return {
+          ...r,
+          manualTuitionAmt: r.extractedTuition > 0 ? '' : tuitionStr,
+          amount: newTotal,
+          tuitionSource: r.extractedTuition > 0 ? 'extracted' : (parsedTuition > 0 ? 'manual' : 'cap'),
+        };
+      })
+    );
+  };
+
   const handleInitiateBatchRelease = () => {
     setErrorMessage(null);
     const selectedScholars = batchScholars.filter((r) => r.isSelected && r.amount > 0);
     if (selectedScholars.length === 0) return;
+
+    if (isActualMatriculation && !programBenefitBreakdown?.isTuitionDirectToSchool) {
+      const missingTuitionScholars = selectedScholars.filter(
+        (r) => r.tuitionAmt <= 0 && (!r.manualTuitionAmt || parseFloat(r.manualTuitionAmt) <= 0)
+      );
+      if (missingTuitionScholars.length > 0) {
+        setErrorMessage(
+          `Cannot initiate batch payout: ${missingTuitionScholars.length} selected scholar(s) do not have a tuition fee entered. Please fill in their tuition fee or use "Fill Missing Tuitions".`
+        );
+        return;
+      }
+    }
 
     // Over-disbursement safeguard against remaining program budget
     const selectedProgram = (programsList || []).find((p: any) => p.id === selectedProgramId);
@@ -940,28 +1075,60 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">
-                  3. Default Amount Per Scholar (₱)
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    value={defaultAmount}
-                    onChange={(e) => handleApplyDefaultAmountToAll(e.target.value)}
-                    disabled={isProcessingBatch}
-                    placeholder="1000"
-                    className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#2D5941] focus:outline-none focus:border-[#2D5941]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleApplyDefaultAmountToAll(defaultAmount)}
-                    disabled={isProcessingBatch}
-                    className="px-3 py-2 bg-[#EDE8DE] hover:bg-[#D9D2C5] rounded-xl text-xs font-bold text-[#1C1C1E] cursor-pointer"
-                  >
-                    Apply All
-                  </button>
-                </div>
+                {isActualMatriculation ? (
+                  <>
+                    <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">
+                      3. Fill Missing Tuitions (₱)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        value={defaultAmount}
+                        onChange={(e) => setDefaultAmount(e.target.value)}
+                        disabled={isProcessingBatch}
+                        placeholder="e.g. 15000"
+                        className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#2D5941] focus:outline-none focus:border-[#2D5941]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyDefaultTuitionToMissing(defaultAmount)}
+                        disabled={isProcessingBatch}
+                        className="px-3 py-2 bg-[#2D5941] hover:bg-[#1A3C2E] text-white rounded-xl text-xs font-bold cursor-pointer transition-all shrink-0"
+                      >
+                        Fill Missing
+                      </button>
+                    </div>
+                    <span className="text-[9px] font-semibold text-[#C97B2E] block mt-1">
+                      Fills ₱{defaultAmount || '0'} only for scholars without OCR forms.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">
+                      3. Default Amount Per Scholar (₱)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={defaultAmount}
+                        onChange={(e) => handleApplyDefaultAmountToAll(e.target.value)}
+                        disabled={isProcessingBatch}
+                        placeholder="1000"
+                        className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#2D5941] focus:outline-none focus:border-[#2D5941]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyDefaultAmountToAll(defaultAmount)}
+                        disabled={isProcessingBatch}
+                        className="px-3 py-2 bg-[#EDE8DE] hover:bg-[#D9D2C5] rounded-xl text-xs font-bold text-[#1C1C1E] cursor-pointer"
+                      >
+                        Apply All
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -982,10 +1149,24 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                     <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🏫 Tuition Subsidy</span>
                     {programBenefitBreakdown.isTuitionDirectToSchool ? (
                       <span className="text-[10px] font-bold text-[#C97B2E] block mt-0.5">Paid to School (Off-System)</span>
+                    ) : programBenefitBreakdown.tuitionCoverageType === 'actual_matriculation' ? (
+                      <>
+                        <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                          Actual Matriculation Fee
+                        </span>
+                        <span className="text-[9px] font-semibold text-[#C97B2E] block mt-0.5">
+                          Extracted per scholar or manual entry
+                        </span>
+                      </>
                     ) : (
-                      <span className="font-bold text-[#1A3C2E] block mt-0.5">
-                        ₱{programBenefitBreakdown.tuitionAmt.toLocaleString()}
-                      </span>
+                      <>
+                        <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                          ₱{programBenefitBreakdown.tuitionAmt.toLocaleString()}
+                        </span>
+                        <span className="text-[9px] font-semibold text-[#2D5941] block mt-0.5">
+                          Fixed Program Cap
+                        </span>
+                      </>
                     )}
                   </div>
 
@@ -1010,6 +1191,15 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                     </span>
                   </div>
                 </div>
+
+                {isActualMatriculation && !programBenefitBreakdown.isTuitionDirectToSchool && (
+                  <div className="bg-[#FFF8EE] p-2.5 rounded-xl border border-[#C97B2E]/40 flex items-center gap-2 text-xs font-bold text-[#C97B2E] mt-2">
+                    <span className="text-sm">🎓</span>
+                    <span>
+                      Formula: <strong>Scholar's Individual Tuition Fee</strong> + <strong>₱{(programBenefitBreakdown.stipendAmt + programBenefitBreakdown.allowanceAmt + programBenefitBreakdown.customBenefitsTotal).toLocaleString()} (Fixed Allowances)</strong> = Total Scholar Payout
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1080,12 +1270,24 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                         <th className="py-2.5 px-4">
                           {isSelectedProgramCash ? 'Disbursement Channel' : 'Verified Bank Account'}
                         </th>
-                        <th className="py-2.5 px-4 w-36 text-right">Amount (₱)</th>
+                        {isActualMatriculation && !programBenefitBreakdown?.isTuitionDirectToSchool && (
+                          <>
+                            <th className="py-2.5 px-4 w-36 text-center">🏫 Tuition Fee (₱)</th>
+                            <th className="py-2.5 px-4 w-28 text-center">🍱 Allowances</th>
+                          </>
+                        )}
+                        <th className="py-2.5 px-4 w-36 text-right">
+                          {isActualMatriculation ? '💰 Total Payout (₱)' : 'Amount (₱)'}
+                        </th>
                         <th className="py-2.5 px-4 w-24 text-center">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#D9D2C5]/40 text-[#1C1C1E]">
-                      {batchScholars.map((row, idx) => (
+                      {batchScholars.map((row, idx) => {
+                        const hasTuitionEntered = !isActualMatriculation || programBenefitBreakdown?.isTuitionDirectToSchool || row.tuitionAmt > 0 || (row.manualTuitionAmt && parseFloat(row.manualTuitionAmt) > 0);
+                        const isRowCheckboxDisabled = (!isSelectedProgramCash && !row.hasPaymentAccount) || !hasTuitionEntered || isProcessingBatch;
+
+                        return (
                         <tr
                           key={row.scholarId}
                           className={`hover:bg-[#F9F5EF]/40 transition-colors ${
@@ -1096,9 +1298,10 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                             <input
                               type="checkbox"
                               checked={row.isSelected}
-                              disabled={(!isSelectedProgramCash && !row.hasPaymentAccount) || isProcessingBatch}
+                              disabled={isRowCheckboxDisabled}
                               onChange={() => handleToggleScholar(idx)}
                               className="w-4 h-4 text-[#2D5941] rounded cursor-pointer disabled:opacity-30"
+                              title={!hasTuitionEntered ? "Enter tuition fee first to enable selection" : undefined}
                             />
                           </td>
                           <td className="py-2.5 px-4">
@@ -1140,6 +1343,48 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                               </div>
                             )}
                           </td>
+                          {isActualMatriculation && !programBenefitBreakdown?.isTuitionDirectToSchool && (
+                            <>
+                              {/* Dedicated Column: Tuition Fee */}
+                              <td className="py-2.5 px-4 text-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  {row.tuitionSource === 'extracted' ? (
+                                    <span className="text-[9px] font-extrabold text-[#15803D] bg-[#DCFCE7] px-2 py-0.5 rounded-full border border-[#15803D]/20">
+                                      ✔ OCR ₱{row.extractedTuition.toLocaleString()}
+                                    </span>
+                                  ) : row.tuitionSource === 'manual' ? (
+                                    <span className="text-[9px] font-extrabold text-[#7C3AED] bg-[#EDE9FE] px-2 py-0.5 rounded-full border border-[#7C3AED]/20">
+                                      ✏ Manual ₱{parseFloat(row.manualTuitionAmt || '0').toLocaleString()}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-extrabold text-[#D97706] bg-[#FEF3C7] px-2 py-0.5 rounded-full border border-[#D97706]/20">
+                                      ⚠ Enter Tuition
+                                    </span>
+                                  )}
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="Tuition ₱"
+                                    value={row.manualTuitionAmt || (row.extractedTuition > 0 ? String(row.extractedTuition) : '')}
+                                    onChange={(e) => handleUpdateRowTuition(idx, e.target.value)}
+                                    disabled={!row.isSelected || isProcessingBatch}
+                                    className="w-28 px-2 py-1 border border-[#C97B2E]/60 rounded-lg text-center font-bold text-xs text-[#1A3C2E] bg-[#FFF8EE] disabled:bg-gray-100 focus:outline-none focus:border-[#2D5941]"
+                                    title="Tuition Fee for this scholar"
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Dedicated Column: Fixed Allowances */}
+                              <td className="py-2.5 px-4 text-center">
+                                <span className="font-bold text-xs text-[#2D5941] bg-[#EBF5EE] px-2.5 py-1 rounded-lg border border-[#2D5941]/20 inline-block">
+                                  + ₱{(row.stipendAmt + row.allowanceAmt + row.customBenefitsTotal).toLocaleString()}
+                                </span>
+                              </td>
+                            </>
+                          )}
+
+                          {/* Final Total Payout Column */}
                           <td className="py-2.5 px-4 text-right">
                             <input
                               type="number"
@@ -1147,7 +1392,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                               value={row.amount}
                               onChange={(e) => handleUpdateRowAmount(idx, e.target.value)}
                               disabled={!row.isSelected || isProcessingBatch}
-                              className="w-28 px-2 py-1 border border-[#D9D2C5] rounded-lg text-right font-bold text-xs text-[#2D5941] bg-white disabled:bg-gray-100"
+                              className="w-28 px-2.5 py-1 border border-[#D9D2C5] rounded-lg text-right font-extrabold text-xs text-[#2D5941] bg-white disabled:bg-gray-100 focus:outline-none focus:border-[#2D5941]"
                             />
                           </td>
                           <td className="py-2.5 px-4 text-center font-bold text-[10px]">
@@ -1179,7 +1424,8 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                             )}
                           </td>
                         </tr>
-                      ))}
+                      );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1213,22 +1459,38 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  onClick={handleInitiateBatchRelease}
-                  disabled={isProcessingBatch || selectedCount === 0}
-                  className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center gap-2 ${
-                    isProcessingBatch || selectedCount === 0
-                      ? 'bg-gray-300 cursor-not-allowed'
-                      : 'bg-[#2D5941] hover:bg-[#1A3C2E] cursor-pointer'
-                  }`}
-                >
-                  {isProcessingBatch ? (
-                    <span>Processing Batch ({batchProgress.current}/{batchProgress.total})...</span>
-                  ) : (
-                    <span>🚀 Execute Batch Payout ({selectedCount})</span>
-                  )}
-                </button>
+                {(() => {
+                  const hasSelectedMissingTuition = batchScholars.some(
+                    (r) =>
+                      r.isSelected &&
+                      isActualMatriculation &&
+                      !programBenefitBreakdown?.isTuitionDirectToSchool &&
+                      r.tuitionAmt <= 0 &&
+                      (!r.manualTuitionAmt || parseFloat(r.manualTuitionAmt) <= 0)
+                  );
+                  const isExecuteDisabled = isProcessingBatch || selectedCount === 0 || hasSelectedMissingTuition;
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={handleInitiateBatchRelease}
+                      disabled={isExecuteDisabled}
+                      className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center gap-2 ${
+                        isExecuteDisabled
+                          ? 'bg-gray-300 cursor-not-allowed'
+                          : 'bg-[#2D5941] hover:bg-[#1A3C2E] cursor-pointer'
+                      }`}
+                    >
+                      {isProcessingBatch ? (
+                        <span>Processing Batch ({batchProgress.current}/{batchProgress.total})...</span>
+                      ) : hasSelectedMissingTuition ? (
+                        <span>⚠️ Enter Missing Tuitions to Release ({selectedCount})</span>
+                      ) : (
+                        <span>🚀 Execute Batch Payout ({selectedCount})</span>
+                      )}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>

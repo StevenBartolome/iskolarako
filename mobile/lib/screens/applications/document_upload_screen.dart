@@ -542,7 +542,6 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             if (extracted != null) {
               if (extracted.extractedTuitionAmount != null && extracted.extractedTuitionAmount! > 0) {
                 tempExtractedTuition = extracted.extractedTuitionAmount;
-                extraGradeFlags.add('Extracted Matriculation Fee: ₱${tempExtractedTuition!.toStringAsFixed(2)}');
               }
 
               if (extracted.gpa != null) {
@@ -619,7 +618,12 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 
         // STEP 3: SAVE DOCUMENT STATE (Clean Pass >=80% or Flagged 40-79%)
         final cleanValidationFlags = validationRes.flags
-            .where((f) => !f.toLowerCase().startsWith('extracted gwa:'))
+            .where((f) {
+              final lower = f.toLowerCase();
+              return !lower.startsWith('extracted gwa:') &&
+                  !lower.startsWith('extracted matriculation fee:') &&
+                  !lower.startsWith('extracted fee:');
+            })
             .toList();
         final combinedFlags = <String>[...extraGradeFlags, ...cleanValidationFlags];
 
@@ -950,7 +954,15 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                               docNameLower.contains('grade') ||
                                               docNameLower.contains('report card') ||
                                               docNameLower.contains('card') ||
+                                              docNameLower.contains('cor') ||
+                                              docNameLower.contains('enrollment') ||
+                                              docNameLower.contains('registration') ||
+                                              docNameLower.contains('assessment') ||
+                                              docNameLower.contains('billing') ||
+                                              docNameLower.contains('soa') ||
                                               docNameLower.contains('tcg');
+
+                                          double? tempModalTuition;
 
                                           if (isAcademicDoc) {
                                             final scholarScaleRaw = _scholar?['gpa_scale']?.toString() ?? '';
@@ -962,11 +974,16 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                               fileName: name,
                                               expectedScale: scholarGpaScale,
                                             );
-                                            if (ex != null && ex.gpa != null) {
-                                              extractedGpaVal = ex.gpa!;
-                                              extractedScaleVal = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
-                                                  ? scholarScaleRaw
-                                                  : (ex.gpaScale ?? scholarGpaScale);
+                                            if (ex != null) {
+                                              if (ex.gpa != null) {
+                                                extractedGpaVal = ex.gpa!;
+                                                extractedScaleVal = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
+                                                    ? scholarScaleRaw
+                                                    : (ex.gpaScale ?? scholarGpaScale);
+                                              }
+                                              if (ex.extractedTuitionAmount != null && ex.extractedTuitionAmount! > 0) {
+                                                tempModalTuition = ex.extractedTuitionAmount;
+                                              }
                                             }
                                           }
 
@@ -981,6 +998,16 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                             newExtractedGpa = extractedGpaVal;
                                             newExtractedGpaScale = extractedScaleVal;
                                           });
+
+                                          // Save extracted tuition if found
+                                          if (tempModalTuition != null) {
+                                            final idx = _docs.indexWhere((d) => d.name == doc.name);
+                                            if (idx != -1) {
+                                              _docs[idx] = _docs[idx].copyWith(
+                                                extractedTuitionAmount: tempModalTuition,
+                                              );
+                                            }
+                                          }
                                         }
                                       }
                                     } catch (e) {
@@ -1821,8 +1848,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       tileBorder = const Color(0xFFDCFCE7);
       badgeBg = const Color(0xFFDCFCE7);
       badgeText = const Color(0xFF15803D);
-      final scoreStr = doc.aiConfidence != null ? ' (${(doc.aiConfidence! * 100).toInt()}%)' : '';
-      badgeLabel = 'AI Verified$scoreStr';
+      badgeLabel = 'AI Verified';
       leadingIcon = LucideIcons.checkCircle2;
     } else if (isFlagged) {
       tileBg = const Color(0xFFFFFBEB);
