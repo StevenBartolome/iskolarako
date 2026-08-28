@@ -1415,6 +1415,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                   const docStatus = doc.status || 'Pending';
                   const aiRes = doc.aiVerification;
                   const isExpanded = !!expandedDocIndices[idx];
+                  const isApprovedScholar = application.status === 'Approved' || (application as any).status === 'Maintaining' || (application as any).status === 'Graduated';
 
                   return (
                     <div
@@ -1833,30 +1834,32 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             </p>
                           </div>
                           
-                          {/* Quick action buttons for this report */}
-                          <div className="flex justify-end gap-2 pt-1 border-t border-[#D9D2C5]/60">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                toggleDocStatus(idx, 'Verified');
-                                setDocumentsList(prev => prev.map((d, i) => i === idx ? { ...d, remarks: '' } : d));
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] text-xs font-bold transition-all cursor-pointer border-0"
-                            >
-                              ✓ Accept as Verified
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                toggleDocStatus(idx, 'Flagged');
-                                const flagReason = aiRes.flags.length > 0 ? getFlagString(aiRes.flags[0]) : aiRes.summary;
-                                setDocumentsList(prev => prev.map((d, i) => i === idx ? { ...d, remarks: `AI Flag: ${flagReason}` } : d));
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-[#B34040] hover:text-white text-[#B34040] text-xs font-bold transition-all cursor-pointer border-0"
-                            >
-                              🚩 Flag Issue with AI Reason
-                            </button>
-                          </div>
+                          {/* Quick action buttons for this report (Hidden for Scholars) */}
+                          {!isApprovedScholar && (
+                            <div className="flex justify-end gap-2 pt-1 border-t border-[#D9D2C5]/60">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  toggleDocStatus(idx, 'Verified');
+                                  setDocumentsList(prev => prev.map((d, i) => i === idx ? { ...d, remarks: '' } : d));
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] text-xs font-bold transition-all cursor-pointer border-0"
+                              >
+                                ✓ Accept as Verified
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  toggleDocStatus(idx, 'Flagged');
+                                  const flagReason = aiRes.flags && aiRes.flags.length > 0 ? getFlagString(aiRes.flags[0]) : aiRes.summary;
+                                  setDocumentsList(prev => prev.map((d, i) => i === idx ? { ...d, remarks: `AI Flag: ${flagReason}` } : d));
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-[#B34040] hover:text-white text-[#B34040] text-xs font-bold transition-all cursor-pointer border-0"
+                              >
+                                🚩 Flag Issue with AI Reason
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )
                     })()}
