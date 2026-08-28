@@ -21,8 +21,20 @@ class PushNotificationService {
 
       debugPrint('[PushNotificationService]: Permission status: ${settings.authorizationStatus}');
 
-      // 2. Fetch current FCM device token
-      final token = await messaging.getToken();
+      // 2. Fetch current FCM device token with retry logic for Google Play Services connection
+      String? token;
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        try {
+          token = await messaging.getToken();
+          if (token != null) break;
+        } catch (tokErr) {
+          debugPrint('[PushNotificationService Token Fetch Attempt $attempt Error]: $tokErr');
+          if (attempt < 3) {
+            await Future.delayed(Duration(milliseconds: 1500 * attempt));
+          }
+        }
+      }
+
       if (token != null) {
         await registerDeviceToken(fcmToken: token);
       }
@@ -141,6 +153,28 @@ class PushNotificationService {
       return data != null;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Send in-app notification & log to notifications table
+  static Future<void> sendNotificationToUser({
+    required String userId,
+    required String title,
+    required String body,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      await _supabase.from('notifications').insert({
+        'user_id': userId,
+        'title': title,
+        'body': body,
+        'data': data ?? {},
+        'is_read': false,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      debugPrint('[PushNotificationService]: In-app notification created for user $userId');
+    } catch (e) {
+      debugPrint('[PushNotificationService Error]: $e');
     }
   }
 }

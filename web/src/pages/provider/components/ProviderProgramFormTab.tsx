@@ -623,6 +623,12 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   const [newRequirementDesc, setNewRequirementDesc] = useState('');
   const [newRequirementRequired, setNewRequirementRequired] = useState(true);
 
+  // Edit Requirement State
+  const [editingReqIdx, setEditingReqIdx] = useState<number | null>(null);
+  const [editingReqName, setEditingReqName] = useState('');
+  const [editingReqDesc, setEditingReqDesc] = useState('');
+  const [editingReqRequired, setEditingReqRequired] = useState(true);
+
   const handleAddRequirement = () => {
     if (!newRequirementName.trim()) return;
     setRequirementsList(prev => [
@@ -636,6 +642,33 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
     setNewRequirementName('');
     setNewRequirementDesc('');
     setNewRequirementRequired(true);
+  };
+
+  const handleStartEditRequirement = (idx: number) => {
+    const req = requirementsList[idx];
+    setEditingReqIdx(idx);
+    setEditingReqName(typeof req === 'string' ? req : req.name);
+    setEditingReqDesc(typeof req === 'string' ? '' : req.description || '');
+    setEditingReqRequired(typeof req === 'string' ? true : req.required !== false);
+  };
+
+  const handleSaveEditRequirement = (idx: number) => {
+    if (!editingReqName.trim()) return;
+    setRequirementsList(prev => prev.map((item, i) => {
+      if (i === idx) {
+        return {
+          name: editingReqName.trim(),
+          description: editingReqDesc.trim(),
+          required: editingReqRequired,
+        };
+      }
+      return item;
+    }));
+    setEditingReqIdx(null);
+  };
+
+  const handleCancelEditRequirement = () => {
+    setEditingReqIdx(null);
   };
 
   const handleRemoveRequirement = (idx: number) => {
@@ -2362,9 +2395,70 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
 
               <div className="space-y-2 pt-2">
                 {requirementsList.map((req, idx) => {
+                  const isEditing = editingReqIdx === idx;
                   const reqName = typeof req === 'string' ? req : req.name;
                   const reqDesc = typeof req === 'string' ? '' : req.description;
                   const isRequired = typeof req === 'string' ? true : req.required !== false;
+
+                  if (isEditing) {
+                    return (
+                      <div key={idx} className="p-4 rounded-2xl bg-white border-2 border-[#1A3C2E] shadow-sm space-y-3 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[#1A3C2E] text-xs uppercase tracking-wider">✏️ Edit Requirement #{idx + 1}</span>
+                          <span className="text-[10px] text-[#6C6C70]">Editing Document Rules</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">Requirement Name *</label>
+                            <input
+                              type="text"
+                              value={editingReqName}
+                              onChange={(e) => setEditingReqName(e.target.value)}
+                              placeholder="e.g. Official Transcript of Records (TOR)"
+                              className="w-full px-3.5 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-[#F9F5EF] focus:bg-white focus:outline-none font-bold text-[#1A3C2E]"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-1">Instructions / Note for Scholar</label>
+                            <input
+                              type="text"
+                              value={editingReqDesc}
+                              onChange={(e) => setEditingReqDesc(e.target.value)}
+                              placeholder="e.g. Must be signed by University Registrar"
+                              className="w-full px-3.5 py-2 rounded-xl border border-[#D9D2C5] text-xs bg-[#F9F5EF] focus:bg-white focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-[#EDE8DE]">
+                          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[#1A3C2E]">
+                            <input
+                              type="checkbox"
+                              checked={editingReqRequired}
+                              onChange={(e) => setEditingReqRequired(e.target.checked)}
+                              className="w-4 h-4 text-[#1A3C2E] rounded cursor-pointer"
+                            />
+                            <span>Mandatory (Required for submission)</span>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleCancelEditRequirement}
+                              className="px-3.5 py-1.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] font-bold text-xs cursor-pointer border-0 transition-all"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditRequirement(idx)}
+                              className="px-4 py-1.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white font-bold text-xs cursor-pointer border-0 shadow-sm transition-all"
+                            >
+                              Save Changes
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-[#F9F5EF] border border-[#D9D2C5]/60 text-xs hover:border-[#1A3C2E]/30 transition-all">
@@ -2382,13 +2476,23 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                           )}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRequirement(idx)}
-                        className="text-rose-600 font-bold hover:underline border-0 bg-transparent cursor-pointer text-xs"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditRequirement(idx)}
+                          className="text-[#1A3C2E] font-extrabold hover:underline border-0 bg-transparent cursor-pointer text-xs flex items-center gap-1"
+                        >
+                          ✏️ Edit
+                        </button>
+                        <span className="text-[#D9D2C5]">|</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRequirement(idx)}
+                          className="text-rose-600 font-bold hover:underline border-0 bg-transparent cursor-pointer text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

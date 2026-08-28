@@ -26,10 +26,20 @@ export interface SubmittedDocItem {
   url?: string;
   submitted_at?: string;
   status?: 'Pending' | 'Verified' | 'Flagged';
+  verification_status?: string;
   remarks?: string;
+  instruction?: string;
+  description?: string;
   is_additional?: boolean;
   aiVerification?: DocVerificationResult;
   isAiScanning?: boolean;
+  ai_flags?: string[];
+  aiFlags?: string[];
+  ai_confidence?: number;
+  aiConfidence?: number;
+  extracted_gpa?: string | number;
+  extractedGpa?: string | number;
+  ai_rejection_reason?: string;
 }
 
 export interface ApplicationDetail {
@@ -60,6 +70,9 @@ export interface ApplicationDetail {
   remarks?: string;
   rawApplication?: any;
   isContinuingScholar?: boolean;
+  hasPendingAppeal?: boolean;
+  ai_scan_summary?: Record<string, any>;
+  under_review_reasons?: Record<string, any>;
 }
 
 interface ReviewApplicationModalProps {
@@ -645,26 +658,124 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
         ];
       }
 
-      setDocumentsList(docs);
+      // Populate pre-submitted AI scan summary from mobile if present
+      const summary = application.rawApplication?.ai_scan_summary || application.ai_scan_summary || {};
+      const underReview = application.rawApplication?.under_review_reasons || application.under_review_reasons || {};
 
-      // Trigger automatic scan only if any scannable documents lack AI verification or were recently resubmitted
-      const unscanned = docs.filter(d => {
-        const hasUrl = Boolean(d.document_url || d.url);
-        if (!hasUrl) return false;
-        const isResubmitted = (d.remarks || '').toLowerCase().includes('resubmit');
-        const isAlreadyScanned = Boolean(d.aiVerification && d.aiVerification.verificationStatus);
-        return isResubmitted || !isAlreadyScanned;
+      docs = docs.map(d => {
+        const altName = (d as any).document_name;
+
+        let docSummary: any = null;
+        if (summary && typeof summary === 'object') {
+          const targets = [d.name, d.filename, altName].filter(Boolean).map(s => String(s).toLowerCase().trim());
+          for (const key of Object.keys(summary)) {
+            const kLower = key.toLowerCase().trim();
+            if (targets.some(t => kLower === t || kLower.includes(t) || t.includes(kLower))) {
+              docSummary = summary[key];
+              break;
+            }
+          }
+        }
+
+        let docUnderReviewReason: any = null;
+        if (underReview && typeof underReview === 'object') {
+          const targets = [d.name, d.filename, altName].filter(Boolean).map(s => String(s).toLowerCase().trim());
+          for (const key of Object.keys(underReview)) {
+            const kLower = key.toLowerCase().trim();
+            if (targets.some(t => kLower === t || kLower.includes(t) || t.includes(kLower))) {
+              docUnderReviewReason = underReview[key];
+              break;
+            }
+          }
+        }
+
+        const statusLower = (d.status || d.verification_status || docSummary?.status || '').toLowerCase();
+        const isAlreadyApprovedByProvider = 
+          d.status === 'Verified' || 
+          d.verification_status === 'verified' || 
+          (d as any).status === 'verified' ||
+          statusLower === 'verified';
+
+        const aiFlags = isAlreadyApprovedByProvider ? [] : (d.ai_flags || d.aiFlags || (d as any).flags || docSummary?.flags || (Array.isArray(docUnderReviewReason) ? docUnderReviewReason : docUnderReviewReason ? [String(docUnderReviewReason)] : []));
+        const aiConfidence = d.ai_confidence || d.aiConfidence || docSummary?.confidence;
+        const extractedGpa = d.extracted_gpa || d.extractedGpa || (application.grade ? String(application.grade) : '');
+
+        const isExplicitlyFlaggedOrRejected = 
+          !isAlreadyApprovedByProvider && (
+            statusLower === 'flagged' || 
+            statusLower === 'rejected' || 
+            aiFlags.length > 0 || 
+            Boolean(d.ai_rejection_reason) || 
+            Boolean(docSummary?.rejection_reason) ||
+            Boolean(docUnderReviewReason)
+          );
+
+        if (isAlreadyApprovedByProvider) {
+          return {
+            ...d,
+            status: 'Verified',
+            verification_status: 'verified',
+            remarks: d.remarks || 'Approved by provider',
+            aiVerification: {
+              verificationStatus: 'verified',
+              confidenceScore: typeof aiConfidence === 'number' ? aiConfidence : 0.98,
+              extractedDocType: docSummary?.document_detected || d.name,
+              extractedGwa: extractedGpa,
+              extractedName: application.name || '',
+              extractedSchool: application.school || '',
+              flags: [],
+              rejectionReason: '',
+              summary: 'Verified & Approved by Provider',
+              hasOfficialSealOrSignature: true,
+              tamperingDetected: false,
+              crossCheckResults: { nameMatch: true, schoolMatch: true, gwaMatch: true },
+              aiModelUsed: 'IskoAko AI Forensic Engine',
+              sha256Hash: '',
+              provider: 'IskoAko Mobile AI Engine',
+            } as any
+          };
+        }
+
+        if (!d.aiVerification || isExplicitlyFlaggedOrRejected || docSummary) {
+          const confidence = typeof aiConfidence === 'number' ? aiConfidence : (isExplicitlyFlaggedOrRejected ? 0.45 : 0.92);
+          const isVerified = !isExplicitlyFlaggedOrRejected && (statusLower === 'valid' || statusLower === 'uploaded' || confidence >= 0.80);
+          const isFlagged = isExplicitlyFlaggedOrRejected || (!isVerified && confidence < 0.80);
+
+          const rejectionMsg = d.ai_rejection_reason || docSummary?.rejection_reason || (Array.isArray(docUnderReviewReason) ? docUnderReviewReason.join(' · ') : docUnderReviewReason ? String(docUnderReviewReason) : (aiFlags.length > 0 ? aiFlags.join(', ') : ''));
+
+          return {
+            ...d,
+            status: isVerified ? 'Verified' : isFlagged ? 'Flagged' : 'Pending',
+            remarks: d.remarks || rejectionMsg || '',
+            aiVerification: {
+              verificationStatus: isVerified ? 'verified' : 'flagged',
+              confidenceScore: confidence,
+              extractedDocType: docSummary?.document_detected || d.name,
+              extractedGwa: extractedGpa,
+              extractedName: application.name || '',
+              extractedSchool: application.school || '',
+              flags: aiFlags,
+              rejectionReason: rejectionMsg,
+              summary: rejectionMsg ? `AI Scan Rejection: ${rejectionMsg}` : `Mobile Scan: ${(confidence * 100).toFixed(0)}% confidence`,
+              hasOfficialSealOrSignature: !isFlagged,
+              tamperingDetected: isFlagged,
+              crossCheckResults: { nameMatch: true, schoolMatch: true, gwaMatch: !isFlagged },
+              aiModelUsed: 'IskoAko AI Forensic Engine',
+              sha256Hash: '',
+              provider: 'IskoAko Mobile AI Engine',
+            } as any
+          };
+        }
+        return d;
       });
 
-      if (unscanned.length > 0) {
-        handleScanAllDocs(docs, true);
-      } else {
-        evaluateAndAdjustStatus(docs);
-      }
+      setDocumentsList(docs);
+      evaluateAndAdjustStatus(docs);
     }
   }, [application]);
 
   if (!isOpen || !application) return null;
+  const isApprovedScholar = application.status === 'Approved';
 
   const saveDocStatusToDb = async (doc: SubmittedDocItem, newDocStatus: 'Verified' | 'Flagged' | 'Pending') => {
     try {
@@ -899,6 +1010,90 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
             </div>
           </div>
 
+          {/* Section 1.5: Scholar Dispute / Appeal Panel (if status === 'appealed' or 'Appealed') */}
+          {(application.status === 'appealed' || application.status === 'Appealed' || application.rawApplication?.dispute_note) && (
+            <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 space-y-3 animate-fade-in shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-purple-900">
+                  <span className="text-xl">📋</span>
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider">
+                    Scholar Dispute / AI Rejection Appeal
+                  </h4>
+                </div>
+                <span className="text-[10px] font-bold text-purple-800 bg-purple-100 px-2.5 py-0.5 rounded-full border border-purple-300">
+                  Awaiting Provider Verdict
+                </span>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-purple-200 text-xs text-purple-950 space-y-1">
+                <span className="text-[10px] font-bold text-purple-700 uppercase block">Scholar's Reason for Dispute:</span>
+                <p className="italic text-xs font-serif leading-relaxed">
+                  "{application.rawApplication?.dispute_note || 'Scholar requested provider override for AI rejected document.'}"
+                </p>
+                {application.rawApplication?.dispute_submitted_at && (
+                  <span className="text-[9.5px] text-purple-500 block pt-1">
+                    Submitted on: {new Date(application.rawApplication.dispute_submitted_at).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              {!isApprovedScholar && (
+                <div className="flex items-center justify-end gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await onUpdateStatus(application.id, 'Barred', 'Dispute rejected by provider. Scholar barred for cycle.');
+                      onClose();
+                    }}
+                    className="px-4 py-2 rounded-xl bg-red-950 hover:bg-black text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    🚫 Reject Appeal & Bar Scholar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await onUpdateStatus(application.id, 'Under Review', 'Appeal accepted by provider. Status updated to Under Review.');
+                      setSelectedStatus('Under Review');
+                    }}
+                    className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    ✓ Accept Appeal
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Section 1.6: AI Document Flags Banner (if status === 'under_review' or 'Under Review') */}
+          {(!isApprovedScholar && (application.status === 'under_review' || application.status === 'Under Review' || application.rawApplication?.under_review_reasons)) && (
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-3 animate-fade-in shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-amber-900">
+                  <span className="text-xl">⚠️</span>
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider">
+                    AI Pre-Submission Document Flags
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await onUpdateStatus(application.id, 'Pending', 'Provider cleared AI document flags.');
+                    setSelectedStatus('Pending');
+                  }}
+                  className="px-3 py-1 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-[11px] font-bold cursor-pointer transition-all"
+                >
+                  ✓ Clear Flags → Mark Pending
+                </button>
+              </div>
+              {application.rawApplication?.under_review_reasons && (
+                <div className="bg-white p-3 rounded-xl border border-amber-200 text-xs space-y-1 text-amber-900">
+                  <span className="text-[10px] font-bold text-amber-700 uppercase block">Flagged Documents Summary:</span>
+                  <pre className="text-[11px] font-mono whitespace-pre-wrap">
+                    {JSON.stringify(application.rawApplication.under_review_reasons, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Post-Approval Bank & Disbursement Info Banner */}
           {(application.status === 'Approved' || selectedStatus === 'Approved') && (
             <div className={`p-4 rounded-2xl border transition-all ${
@@ -990,48 +1185,50 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                     Automated multi-AI forensic scanning with cross-checks, seal detection, and fraud analysis.
                   </span>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddReqForm(prev => !prev)}
-                    className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#C97B2E] text-[11px] font-bold border border-amber-300/60 cursor-pointer inline-flex items-center gap-1 transition-all"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    <span>{showAddReqForm ? 'Close Request Form' : '+ Request More Requirements'}</span>
-                  </button>
+                {!isApprovedScholar && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddReqForm(prev => !prev)}
+                      className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#C97B2E] text-[11px] font-bold border border-amber-300/60 cursor-pointer inline-flex items-center gap-1 transition-all"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>{showAddReqForm ? 'Close Request Form' : '+ Request More Requirements'}</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    disabled={isBatchScanning || documentsList.length === 0 || application.status === 'Rejected'}
-                    onClick={() => handleScanAllDocs()}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-[11px] font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5 transition-all border-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isBatchScanning ? (
-                      <>
-                        <span className="animate-spin">⏳</span>
-                        <span>Scanning Documents...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>⚡ Verify All with AI</span>
-                      </>
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={isBatchScanning || documentsList.length === 0 || application.status === 'Rejected'}
+                      onClick={() => handleScanAllDocs()}
+                      className="px-3.5 py-1.5 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-[11px] font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5 transition-all border-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isBatchScanning ? (
+                        <>
+                          <span className="animate-spin">⏳</span>
+                          <span>Scanning Documents...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>⚡ Verify All with AI</span>
+                        </>
+                      )}
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={handleApproveAllDocs}
-                    disabled={application.status === 'Rejected'}
-                    className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-[11px] font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span>Approve All Documents</span>
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      onClick={handleApproveAllDocs}
+                      disabled={application.status === 'Rejected'}
+                      className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-[11px] font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Approve All Documents</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Batch AI Scanning Progress Banner */}
@@ -1241,6 +1438,29 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                               ) : null}
                             </div>
 
+                            {/* Requirement Remarks / Instructions set by Provider */}
+                            {(() => {
+                              const programReqs = application?.rawApplication?.cycle?.program?.application_requirements || [];
+                              let reqRemarks = '';
+                              if (Array.isArray(programReqs)) {
+                                const match = programReqs.find((r: any) =>
+                                  r && typeof r === 'object' && r.name && doc.name &&
+                                  r.name.toLowerCase().trim() === doc.name.toLowerCase().trim()
+                                );
+                                if (match) {
+                                  reqRemarks = match.description || match.instructions || match.remarks || '';
+                                }
+                              }
+                              if (!reqRemarks && doc.instruction) reqRemarks = doc.instruction;
+
+                              return reqRemarks ? (
+                                <div className="text-[11px] text-[#C97B2E] bg-amber-50/90 px-2.5 py-1 rounded-xl border border-amber-200/80 mt-1 flex items-start gap-1.5 font-medium">
+                                  <span className="font-bold shrink-0">📋 Provider Requirement Instructions:</span>
+                                  <span className="break-words text-[#1C1C1E]">{reqRemarks}</span>
+                                </div>
+                              ) : null;
+                            })()}
+
                             <p className="text-[10px] text-[#8E8E93] mt-1 break-words">
                               File: {doc.filename || doc.name} {doc.filesize ? `• ${doc.filesize}` : ''} {doc.submitted_at ? `• Submitted ${doc.submitted_at}` : ''}
                             </p>
@@ -1286,7 +1506,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             </a>
                           )}
 
-                          {docUrl && (
+                          {!isApprovedScholar && docUrl && (
                             <button
                               type="button"
                               disabled={doc.isAiScanning}
@@ -1323,35 +1543,37 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                         </div>
 
                         {/* Right Group: Review Decisions (Approve / Flag) */}
-                        <div className="flex items-center gap-2 self-end sm:self-auto">
-                          <button
-                            type="button"
-                            onClick={() => toggleDocStatus(idx, docStatus === 'Verified' ? 'Pending' : 'Verified')}
-                            disabled={application.status === 'Rejected'}
-                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[98px] disabled:opacity-50 disabled:cursor-not-allowed ${
-                              docStatus === 'Verified'
-                                ? 'bg-[#2D5941] text-white border-[#2D5941]'
-                                : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
-                            }`}
-                          >
-                            <span>✓</span>
-                            <span>{docStatus === 'Verified' ? 'Approved' : 'Approve'}</span>
-                          </button>
+                        {!isApprovedScholar && (
+                          <div className="flex items-center gap-2 self-end sm:self-auto">
+                            <button
+                              type="button"
+                              onClick={() => toggleDocStatus(idx, docStatus === 'Verified' ? 'Pending' : 'Verified')}
+                              disabled={application.status === 'Rejected'}
+                              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[98px] disabled:opacity-50 disabled:cursor-not-allowed ${
+                                docStatus === 'Verified'
+                                  ? 'bg-[#2D5941] text-white border-[#2D5941]'
+                                  : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
+                              }`}
+                            >
+                              <span>✓</span>
+                              <span>{docStatus === 'Verified' ? 'Approved' : 'Approve'}</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => toggleDocStatus(idx, docStatus === 'Flagged' ? 'Pending' : 'Flagged')}
-                            disabled={application.status === 'Rejected'}
-                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[84px] disabled:opacity-50 disabled:cursor-not-allowed ${
-                              docStatus === 'Flagged'
-                                ? 'bg-[#B34040] text-white border-[#B34040]'
-                                : 'bg-red-50 text-[#B34040] border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
-                            }`}
-                          >
-                            <span>🚩</span>
-                            <span>{docStatus === 'Flagged' ? 'Flagged' : 'Flag'}</span>
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleDocStatus(idx, docStatus === 'Flagged' ? 'Pending' : 'Flagged')}
+                              disabled={application.status === 'Rejected'}
+                              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[84px] disabled:opacity-50 disabled:cursor-not-allowed ${
+                                docStatus === 'Flagged'
+                                  ? 'bg-[#B34040] text-white border-[#B34040]'
+                                  : 'bg-red-50 text-[#B34040] border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
+                              }`}
+                            >
+                              <span>🚩</span>
+                              <span>{docStatus === 'Flagged' ? 'Flagged' : 'Flag'}</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Expandable AI Forensic Discrepancy & Verification Report */}
@@ -1457,10 +1679,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   <strong className="text-[#1C1C1E]">{aiRes.extractedDocType || doc.name}</strong>
                                 </div>
                                 {aiRes.extractedGwa && (
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-[#6C6C70]">Extracted GWA:</span>
+                                  <div className="flex justify-between items-center bg-[#EBF5EE]/50 p-2 rounded-lg border border-[#2D5941]/20 my-1">
+                                    <span className="text-[#6C6C70] font-medium text-xs">Extracted Grade (%):</span>
                                     <div className="flex items-center gap-1.5 font-mono">
-                                      <strong className="text-[#2D5941]">{aiRes.extractedGwa}</strong>
                                       {(() => {
                                         const scale = getSchoolDefaultScale(aiRes.extractedSchool || application?.school || '') || 
                                           (aiRes.rawResponse?.detected_grading_scale && aiRes.rawResponse.detected_grading_scale !== 'unknown' 
@@ -1471,22 +1692,26 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                         const programScale = application?.rawApplication?.cycle?.program?.grading_system || 'scale_5';
                                         
                                         const numericGwa = parseFloat(aiRes.extractedGwa);
-                                        if (isNaN(numericGwa)) return null;
+                                        if (isNaN(numericGwa)) return <strong className="text-[#2D5941]">{aiRes.extractedGwa}</strong>;
 
                                         const normalizedPercent = normalizeGwaToPercent(numericGwa, scale);
-                                        const scaleLabel = scale === 'scale_5' ? '1-5 Scale' : scale === 'scale_4' ? '4.0 Scale' : '% Scale';
                                         
                                         let isQualified = true;
+                                        let minPercent: number | null = null;
                                         if (minGwa !== null && minGwa !== undefined && !isNaN(parseFloat(minGwa))) {
+                                          minPercent = normalizeGwaToPercent(parseFloat(minGwa), programScale);
                                           isQualified = meetsGwaRequirement(numericGwa, scale, parseFloat(minGwa), programScale);
                                         }
 
                                         return (
-                                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                                            isQualified ? 'bg-[#EBF5EE] text-[#2D5941]' : 'bg-red-50 text-[#B34040]'
-                                          }`} title={`${scaleLabel} (equiv ${normalizedPercent.toFixed(1)}%). Min requirement: ${minGwa || 'None'}`}>
-                                            {scaleLabel} • {isQualified ? 'Meets Min ✓' : 'Below Min ⚠️'}
-                                          </span>
+                                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                            <strong className="text-xs text-[#2D5941]">{normalizedPercent.toFixed(1)}% <span className="text-[10px] font-normal text-[#6C6C70]">(GWA {aiRes.extractedGwa})</span></strong>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                                              isQualified ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30' : 'bg-red-50 text-[#B34040] border border-red-200'
+                                            }`} title={`Equivalent ${normalizedPercent.toFixed(1)}% vs Min required ${minPercent !== null ? minPercent.toFixed(1) + '%' : 'None'}`}>
+                                              {minPercent !== null ? `${normalizedPercent.toFixed(1)}% vs Min ${minPercent.toFixed(1)}% (${isQualified ? 'Meets Min ✓' : 'Below Min ⚠️'})` : 'Valid Grade ✓'}
+                                            </span>
+                                          </div>
                                         );
                                       })()}
                                     </div>

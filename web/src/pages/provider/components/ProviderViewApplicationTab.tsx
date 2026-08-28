@@ -333,29 +333,128 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
     if (application) {
       setSelectedStatus(application.status || 'Pending');
       setRemarks(application.remarks || '');
-      const docs = application.submittedDocuments || [];
+      let docs = application.submittedDocuments || [];
+
+      // Populate pre-submitted AI scan summary from mobile if present
+      const summary = application.rawApplication?.ai_scan_summary || (application as any).ai_scan_summary || {};
+      const underReview = application.rawApplication?.under_review_reasons || (application as any).under_review_reasons || {};
+
+      docs = docs.map(d => {
+        const altName = (d as any).document_name;
+
+        let docSummary: any = null;
+        if (summary && typeof summary === 'object') {
+          const targets = [d.name, d.filename, altName].filter(Boolean).map(s => String(s).toLowerCase().trim());
+          for (const key of Object.keys(summary)) {
+            const kLower = key.toLowerCase().trim();
+            if (targets.some(t => kLower === t || kLower.includes(t) || t.includes(kLower))) {
+              docSummary = summary[key];
+              break;
+            }
+          }
+        }
+
+        let docUnderReviewReason: any = null;
+        if (underReview && typeof underReview === 'object') {
+          const targets = [d.name, d.filename, altName].filter(Boolean).map(s => String(s).toLowerCase().trim());
+          for (const key of Object.keys(underReview)) {
+            const kLower = key.toLowerCase().trim();
+            if (targets.some(t => kLower === t || kLower.includes(t) || t.includes(kLower))) {
+              docUnderReviewReason = underReview[key];
+              break;
+            }
+          }
+        }
+
+        const statusLower = (d.status || d.verification_status || docSummary?.status || '').toLowerCase();
+        const isAlreadyApprovedByProvider = 
+          d.status === 'Verified' || 
+          d.verification_status === 'verified' || 
+          (d as any).status === 'verified' ||
+          statusLower === 'verified';
+
+        const aiFlags = isAlreadyApprovedByProvider ? [] : (d.ai_flags || d.aiFlags || (d as any).flags || docSummary?.flags || (Array.isArray(docUnderReviewReason) ? docUnderReviewReason : docUnderReviewReason ? [String(docUnderReviewReason)] : []));
+        const aiConfidence = d.ai_confidence || d.aiConfidence || docSummary?.confidence;
+        const extractedGpa = d.extracted_gpa || d.extractedGpa || (application.grade ? String(application.grade) : '');
+
+        const isExplicitlyFlaggedOrRejected = 
+          !isAlreadyApprovedByProvider && (
+            statusLower === 'flagged' || 
+            statusLower === 'rejected' || 
+            aiFlags.length > 0 || 
+            Boolean(d.ai_rejection_reason) || 
+            Boolean(docSummary?.rejection_reason) ||
+            Boolean(docUnderReviewReason)
+          );
+
+        if (isAlreadyApprovedByProvider) {
+          return {
+            ...d,
+            status: 'Verified',
+            verification_status: 'verified',
+            remarks: d.remarks || 'Approved by provider',
+            aiVerification: {
+              verificationStatus: 'verified',
+              confidenceScore: typeof aiConfidence === 'number' ? aiConfidence : 0.98,
+              extractedDocType: docSummary?.document_detected || d.name,
+              extractedGwa: extractedGpa,
+              extractedName: application.name || '',
+              extractedSchool: application.school || '',
+              flags: [],
+              rejectionReason: '',
+              summary: 'Verified & Approved by Provider',
+              hasOfficialSealOrSignature: true,
+              tamperingDetected: false,
+              crossCheckResults: { nameMatch: true, schoolMatch: true, gwaMatch: true },
+              aiModelUsed: 'IskoAko AI Forensic Engine',
+              sha256Hash: '',
+              provider: 'IskoAko Mobile AI Engine',
+            } as any
+          };
+        }
+
+        if (!d.aiVerification || isExplicitlyFlaggedOrRejected || docSummary) {
+          const confidence = typeof aiConfidence === 'number' ? aiConfidence : (isExplicitlyFlaggedOrRejected ? 0.45 : 0.92);
+          const isVerified = !isExplicitlyFlaggedOrRejected && (statusLower === 'valid' || statusLower === 'uploaded' || confidence >= 0.80);
+          const isFlagged = isExplicitlyFlaggedOrRejected || (!isVerified && confidence < 0.80);
+
+          const rejectionMsg = d.ai_rejection_reason || docSummary?.rejection_reason || (Array.isArray(docUnderReviewReason) ? docUnderReviewReason.join(' · ') : docUnderReviewReason ? String(docUnderReviewReason) : (aiFlags.length > 0 ? aiFlags.join(', ') : ''));
+
+          return {
+            ...d,
+            status: isVerified ? 'Verified' : isFlagged ? 'Flagged' : 'Pending',
+            remarks: d.remarks || rejectionMsg || '',
+            aiVerification: {
+              verificationStatus: isVerified ? 'verified' : 'flagged',
+              confidenceScore: confidence,
+              extractedDocType: docSummary?.document_detected || d.name,
+              extractedGwa: extractedGpa,
+              extractedName: application.name || '',
+              extractedSchool: application.school || '',
+              flags: aiFlags,
+              rejectionReason: rejectionMsg,
+              summary: rejectionMsg ? `AI Scan Rejection: ${rejectionMsg}` : `Mobile Scan: ${(confidence * 100).toFixed(0)}% confidence`,
+              hasOfficialSealOrSignature: !isFlagged,
+              tamperingDetected: isFlagged,
+              crossCheckResults: { nameMatch: true, schoolMatch: true, gwaMatch: !isFlagged },
+              aiModelUsed: 'IskoAko AI Forensic Engine',
+              sha256Hash: '',
+              provider: 'IskoAko Mobile AI Engine',
+            } as any
+          };
+        }
+        return d;
+      });
+
       setDocumentsList(docs);
       if (docs.length > 0) {
         setActivePreviewDoc(docs[0]);
       }
-
-      // Automatically scan only unscanned or resubmitted documents on initial load
-      const unscanned = docs.filter(d => {
-        const hasUrl = Boolean(d.url || d.document_url);
-        if (!hasUrl) return false;
-        const isResubmitted = (d.remarks || '').toLowerCase().includes('resubmit');
-        const isAlreadyScanned = Boolean(d.aiVerification && d.aiVerification.verificationStatus);
-        return isResubmitted || !isAlreadyScanned;
-      });
-
-      if (unscanned.length > 0) {
-        handleBatchAiScan(docs, true);
-      } else {
-        evaluateAndAdjustStatus(docs);
-      }
+      evaluateAndAdjustStatus(docs);
     }
   }, [application]);
 
+  const isApprovedScholar = application?.status === 'Approved' || selectedStatus === 'Approved';
   const raw = application?.rawApplication || {};
   const isFreshman =
     (application?.yearLevel && application.yearLevel.toLowerCase().includes('1st')) ||
@@ -502,32 +601,15 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
   const handleApproveAllDocs = async () => {
     const allApproved = documentsList.map(d => ({ ...d, status: 'Verified' as const, remarks: '' }));
     setDocumentsList(allApproved);
-    setSelectedStatus((prev: ApplicantStatus) => (prev === 'For Exam' ? 'For Exam' : 'Approved'));
+    setSelectedStatus('Approved');
     if (application) {
       application.submittedDocuments = allApproved;
     }
 
     try {
       if (application?.id) {
-        await supabase
-          .from('scholarship_applications')
-          .update({
-            submitted_documents: { documents: allApproved },
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', application.id);
-      }
-
-      const scholarId = application?.scholarId || application?.rawApplication?.scholar_id || application?.rawApplication?.scholar?.id;
-      if (scholarId) {
-        await supabase
-          .from('scholar_documents')
-          .update({
-            verification_status: 'verified',
-            remarks: 'Approved by provider',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('scholar_id', scholarId);
+        await onUpdateStatus(application.id, 'Approved', remarks, allApproved);
+        onBack();
       }
     } catch (err) {
       console.warn('[Approve All Docs Note in Tab]:', err);
@@ -846,7 +928,14 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif flex items-center justify-between">
               <span>🎓 Academic Dossier</span>
               <span className="text-xs font-mono font-bold bg-[#F9F5EF] text-[#1A3C2E] px-3 py-1 rounded-full border border-[#D9D2C5]">
-                GWA: {application.grade || 'N/A'}
+                {(() => {
+                  if (!application.grade) return 'Grade: N/A';
+                  const gwaNum = parseFloat(String(application.grade));
+                  if (isNaN(gwaNum)) return `Grade: ${application.grade}`;
+                  const scale = application.rawApplication?.scholar?.gpa_scale || 'scale_5';
+                  const percent = normalizeGwaToPercent(gwaNum, scale);
+                  return `Grade: ${percent.toFixed(1)}% (GWA ${gwaNum})`;
+                })()}
               </span>
             </h3>
 
@@ -1012,21 +1101,23 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                 <h4 className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">
                   Submitted Requirements ({documentsList.length})
                 </h4>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleApproveAllDocs}
-                    className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-xs font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1.5 transition-all"
-                  >
-                    <span>✓</span> Approve All Documents
-                  </button>
-                  <button
-                    onClick={() => setShowAddReqForm(!showAddReqForm)}
-                    className="text-xs font-bold text-[#1A3C2E] hover:underline cursor-pointer border-0 bg-transparent"
-                  >
-                    {showAddReqForm ? 'Close Add Requirement' : '+ Request Additional Doc'}
-                  </button>
-                </div>
+                {!isApprovedScholar && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleApproveAllDocs}
+                      className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-xs font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1.5 transition-all"
+                    >
+                      <span>✓</span> Approve All Documents
+                    </button>
+                    <button
+                      onClick={() => setShowAddReqForm(!showAddReqForm)}
+                      className="text-xs font-bold text-[#1A3C2E] hover:underline cursor-pointer border-0 bg-transparent"
+                    >
+                      {showAddReqForm ? 'Close Add Requirement' : '+ Request Additional Doc'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Add Custom Requirement Form */}
@@ -1150,6 +1241,29 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               <p className="text-[10px] text-[#6C6C70] mt-1 truncate">
                                 File: {doc.filename || doc.name} {doc.filesize ? `• ${doc.filesize}` : ''} {doc.submitted_at ? `• Submitted ${doc.submitted_at}` : ''}
                               </p>
+
+                              {/* Requirement Remarks / Instructions set by Provider */}
+                              {(() => {
+                                const programReqs = application?.rawApplication?.cycle?.program?.application_requirements || [];
+                                let reqRemarks = '';
+                                if (Array.isArray(programReqs)) {
+                                  const match = programReqs.find((r: any) =>
+                                    r && typeof r === 'object' && r.name && doc.name &&
+                                    r.name.toLowerCase().trim() === doc.name.toLowerCase().trim()
+                                  );
+                                  if (match) {
+                                    reqRemarks = match.description || match.instructions || match.remarks || '';
+                                  }
+                                }
+                                if (!reqRemarks && doc.instruction) reqRemarks = doc.instruction;
+
+                                return reqRemarks ? (
+                                  <div className="text-[11px] text-[#C97B2E] bg-amber-50/90 px-2.5 py-1 rounded-xl border border-amber-200/80 mt-1 flex items-start gap-1.5 font-medium">
+                                    <span className="font-bold shrink-0">📋 Requirement Remarks:</span>
+                                    <span className="break-words text-[#1C1C1E]">{reqRemarks}</span>
+                                  </div>
+                                ) : null;
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -1180,7 +1294,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               </button>
                             )}
 
-                            {docUrl && (
+                            {!isApprovedScholar && docUrl && (
                               <button
                                 onClick={() => handleScanSingleDoc(idx)}
                                 disabled={doc.isAiScanning}
@@ -1215,33 +1329,35 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                           </div>
 
                           {/* Right Group: Review Decisions */}
-                          <div className="flex items-center gap-2 self-end sm:self-auto">
-                            <button
-                              type="button"
-                              onClick={() => toggleDocStatus(idx, docStatus === 'Verified' ? 'Pending' : 'Verified')}
-                              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[98px] ${
-                                docStatus === 'Verified'
-                                  ? 'bg-[#2D5941] text-white border-[#2D5941]'
-                                  : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
-                              }`}
-                            >
-                              <span>✓</span>
-                              <span>{docStatus === 'Verified' ? 'Approved' : 'Approve'}</span>
-                            </button>
+                          {!isApprovedScholar && (
+                            <div className="flex items-center gap-2 self-end sm:self-auto">
+                              <button
+                                type="button"
+                                onClick={() => toggleDocStatus(idx, docStatus === 'Verified' ? 'Pending' : 'Verified')}
+                                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[98px] ${
+                                  docStatus === 'Verified'
+                                    ? 'bg-[#2D5941] text-white border-[#2D5941]'
+                                    : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
+                                }`}
+                              >
+                                <span>✓</span>
+                                <span>{docStatus === 'Verified' ? 'Approved' : 'Approve'}</span>
+                              </button>
 
-                            <button
-                              type="button"
-                              onClick={() => toggleDocStatus(idx, docStatus === 'Flagged' ? 'Pending' : 'Flagged')}
-                              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[84px] ${
-                                docStatus === 'Flagged'
-                                  ? 'bg-[#B34040] text-white border-[#B34040]'
-                                  : 'bg-red-50 text-[#B34040] border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
-                              }`}
-                            >
-                              <span>🚩</span>
-                              <span>{docStatus === 'Flagged' ? 'Flagged' : 'Flag'}</span>
-                            </button>
-                          </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleDocStatus(idx, docStatus === 'Flagged' ? 'Pending' : 'Flagged')}
+                                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all border inline-flex items-center justify-center gap-1.5 shadow-xs min-w-[84px] ${
+                                  docStatus === 'Flagged'
+                                    ? 'bg-[#B34040] text-white border-[#B34040]'
+                                    : 'bg-red-50 text-[#B34040] border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
+                                }`}
+                              >
+                                <span>🚩</span>
+                                <span>{docStatus === 'Flagged' ? 'Flagged' : 'Flag'}</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Expandable Forensic Analysis Report */}

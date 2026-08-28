@@ -8,6 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/services/audit_log_service.dart';
 import 'package:iskoako/services/ai_extraction_service.dart';
+import 'package:iskoako/services/document_validation_service.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
 
 class DocumentUploadScreen extends StatefulWidget {
@@ -95,10 +96,12 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     for (final r in parsedReqs) {
       if (r is Map) {
         final name = r['name']?.toString() ?? '';
+        final desc = r['description']?.toString() ?? r['instructions']?.toString() ?? r['remarks']?.toString() ?? '';
         final isRequired = isRenewal || r['required'] == true;
         if (name.isNotEmpty) {
           loadedDocs.add(_DocItem(
             name: name,
+            description: desc.isNotEmpty ? desc : null,
             hint: isRequired ? 'Required · PDF or Image' : 'Optional',
             status: isRequired ? _DocStatus.notUploaded : _DocStatus.optional,
           ));
@@ -179,10 +182,22 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   }
 
   int get _requiredCount => _docs.where((d) => d.status != _DocStatus.optional).length;
-  int get _uploadedCount => _docs.where((d) => d.status == _DocStatus.uploaded).length;
+  int get _uploadedCount => _docs.where((d) =>
+      d.status == _DocStatus.valid ||
+      d.status == _DocStatus.flagged ||
+      d.isDisputeSubmitted).length;
+
+  bool get _hasRejectedDoc => _docs.any((d) => d.status == _DocStatus.rejected && !d.isDisputeSubmitted);
+  bool get _hasDisputedDoc => _docs.any((d) => d.isDisputeSubmitted);
+  bool get _hasMaxRejections => _docs.any((d) => d.status == _DocStatus.rejected && d.attemptCount >= 3);
+  bool get _isForAppeal => _hasDisputedDoc || _hasMaxRejections;
 
   bool get _canSubmit {
-    return _docs.where((d) => d.status != _DocStatus.optional).every((d) => d.status == _DocStatus.uploaded);
+    if (_hasRejectedDoc) return false;
+    return _docs.where((d) => d.status != _DocStatus.optional).every((d) =>
+        d.status == _DocStatus.valid ||
+        d.status == _DocStatus.flagged ||
+        d.isDisputeSubmitted);
   }
 
   Future<Map<String, dynamic>?> _ensureScholarProfile() async {
@@ -259,20 +274,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     return _scholar;
   }
 
-  double _convertPercentToScale(double percent, String targetScale) {
-    switch (targetScale) {
-      case 'scale_4':
-        return (percent / 100.0) * 4.0;
-      case 'percentage':
-        return percent.clamp(0.0, 100.0);
-      case 'scale_5':
-      default:
-        return 5.0 - (percent / 100.0) * 4.0;
-    }
-  }
-
   Future<void> _handleUpload(_DocItem doc) async {
-    if (doc.status == _DocStatus.uploaded) {
+    // If already uploaded cleanly or flagged, allow removing or viewing
+    if (doc.status == _DocStatus.valid || doc.status == _DocStatus.flagged) {
       showModalBottomSheet(
         context: context,
         shape: const RoundedRectangleBorder(
@@ -333,6 +337,27 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       return;
     }
 
+    // Check attempts & cooldowns first!
+    final scholar = await _ensureScholarProfile();
+    final scholarId = scholar?['id'] ?? '';
+    final cycleId = _cycle?['id']?.toString();
+
+    final attemptStatus = await DocumentValidationService.checkAttemptStatus(
+      scholarId: scholarId,
+      cycleId: cycleId,
+      docSlotName: doc.name,
+    );
+
+    if (attemptStatus.isDisputeEligible && !doc.isDisputeSubmitted) {
+      _showDisputeDialog(doc, attemptStatus.attemptCount);
+      return;
+    }
+
+    if (attemptStatus.isCooldownActive) {
+      _showCooldownDialog(doc, attemptStatus.remainingCooldownSeconds);
+      return;
+    }
+
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -350,102 +375,685 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           : '${sizeInKb.toStringAsFixed(0)} KB';
 
       if (!mounted) return;
+
+      // Update UI state to scanning
+      setState(() {
+        final idx = _docs.indexOf(doc);
+        if (idx != -1) {
+          _docs[idx] = doc.copyWith(
+            status: _DocStatus.scanning,
+            filename: fileName,
+            filesize: sizeStr,
+          );
+        }
+      });
+
       final messenger = ScaffoldMessenger.of(context);
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => _UploadProgressDialog(
-          docName: doc.name,
-          pickedFileName: fileName,
-          onComplete: () async {
-            final bytes = pickedFile.bytes;
-            String? uploadedUrl;
-            try {
-              if (bytes != null) {
-                final scholar = await _ensureScholarProfile();
-                final scholarId = scholar?['id'] ?? 'guest';
-                final cycleId = _cycle?['id'] ?? 'cycle';
-                final timeStamp = DateTime.now().millisecondsSinceEpoch;
-                final storagePath = '$scholarId/${cycleId}_${timeStamp}_$fileName';
+      final bytes = pickedFile.bytes;
+      String? uploadedUrl;
 
-                try {
-                  try {
-                    await Supabase.instance.client.storage.createBucket(
-                      'scholar-documents',
-                      const BucketOptions(public: true),
-                    );
-                  } catch (bErr) {
-                    debugPrint('Bucket auto-create info: $bErr');
-                  }
+      if (bytes != null) {
+        final sId = scholarId.isNotEmpty ? scholarId : 'guest';
+        final cId = cycleId ?? 'cycle';
+        final timeStamp = DateTime.now().millisecondsSinceEpoch;
+        final storagePath = '$sId/${cId}_${timeStamp}_$fileName';
 
-                  await Supabase.instance.client.storage
-                      .from('scholar-documents')
-                      .uploadBinary(storagePath, bytes);
+        try {
+          try {
+            await Supabase.instance.client.storage.createBucket(
+              'scholar-documents',
+              const BucketOptions(public: true),
+            );
+          } catch (_) {}
 
-                  uploadedUrl = Supabase.instance.client.storage
-                      .from('scholar-documents')
-                      .getPublicUrl(storagePath);
-                } catch (_) {
-                  final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
-                  String mimeType = 'application/pdf';
-                  if (ext == 'jpg' || ext == 'jpeg') {
-                    mimeType = 'image/jpeg';
-                  } else if (ext == 'png') {
-                    mimeType = 'image/png';
-                  } else if (ext == 'doc' || ext == 'docx') {
-                    mimeType = 'application/msword';
-                  }
+          await Supabase.instance.client.storage
+              .from('scholar-documents')
+              .uploadBinary(storagePath, bytes);
 
-                  final base64Content = base64Encode(bytes);
-                  uploadedUrl = 'data:$mimeType;base64,$base64Content';
-                }
+          uploadedUrl = Supabase.instance.client.storage
+              .from('scholar-documents')
+              .getPublicUrl(storagePath);
+        } catch (_) {
+          final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
+          String mimeType = 'application/pdf';
+          if (ext == 'jpg' || ext == 'jpeg') mimeType = 'image/jpeg';
+          if (ext == 'png') mimeType = 'image/png';
+          if (ext == 'doc' || ext == 'docx') mimeType = 'application/msword';
+          uploadedUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
+        }
 
-                if (scholarId != null && scholarId != 'guest') {
-                  try {
-                    await Supabase.instance.client.from('scholar_documents').insert({
-                      'scholar_id': scholarId,
-                      'document_name': doc.name,
-                      'document_url': uploadedUrl,
-                      'verification_status': 'pending',
-                    });
-                  } catch (docErr) {
-                    debugPrint('Scholar documents table insert note: $docErr');
-                  }
-                }
-              }
-            } catch (e) {
-              debugPrint('Upload processing error: $e');
+        final scholarFirstName = scholar?['first_name']?.toString() ?? '';
+        final scholarLastName = scholar?['last_name']?.toString() ?? '';
+        final scholarFullName = '$scholarFirstName $scholarLastName'.trim();
+
+        // Extract Minimum GWA and Grading System from scholarship program
+        final minGwaRaw = _program?['minimum_gwa'] ?? _program?['minimumGwa'] ?? _program?['renewal_gwa_requirement'];
+        double? minimumGwa;
+        if (minGwaRaw != null) {
+          minimumGwa = double.tryParse(minGwaRaw.toString());
+        }
+        final gradingSystem = _program?['grading_system']?.toString() ?? _program?['gpa_scale']?.toString();
+
+        // STEP 1: FAST PRE-CHECK — Run AI Document Validation for Document Type, Name Match & Remarks Instructions FIRST!
+        final validationRes = await DocumentValidationService.validateDocument(
+          fileBytes: bytes,
+          fileName: fileName,
+          requiredDocName: doc.name,
+          requirementDescription: doc.description,
+          scholarName: scholarFullName,
+          minimumGwa: minimumGwa,
+          gradingSystem: gradingSystem,
+        );
+
+        if (!mounted) return;
+
+        // If Step 1 fails (<40%), REJECT IMMEDIATELY and stop (do not waste time extracting/converting grades)!
+        if (validationRes.confidenceScore < 0.40) {
+          final newAttemptCount = attemptStatus.attemptCount + 1;
+          final reason = validationRes.rejectionReason.isNotEmpty
+              ? validationRes.rejectionReason
+              : 'Uploaded document does not match ${doc.name}. Detected: ${validationRes.documentDetected}.';
+
+          await DocumentValidationService.logRejection(
+            scholarId: scholarId,
+            cycleId: cycleId,
+            docSlotName: doc.name,
+            filename: fileName,
+            confidenceScore: validationRes.confidenceScore,
+            rejectionReason: reason,
+            attemptNumber: newAttemptCount,
+          );
+
+          setState(() {
+            final idx = _docs.indexWhere((d) => d.name == doc.name);
+            if (idx != -1) {
+              _docs[idx] = doc.copyWith(
+                status: _DocStatus.rejected,
+                filename: fileName,
+                filesize: sizeStr,
+                fileUrl: uploadedUrl,
+                fileBytes: bytes,
+                aiConfidence: validationRes.confidenceScore,
+                aiRejectionReason: reason,
+                aiDocumentDetected: validationRes.documentDetected,
+                aiFlags: validationRes.flags,
+                attemptCount: newAttemptCount,
+              );
             }
+          });
 
-            if (!mounted) return;
-            setState(() {
-              final idx = _docs.indexOf(doc);
-              if (idx != -1) {
-                _docs[idx] = doc.copyWith(
-                  status: _DocStatus.uploaded,
-                  filename: fileName,
-                  filesize: sizeStr,
-                  fileUrl: uploadedUrl,
-                  fileBytes: bytes,
-                );
+          _showRejectionDialog(doc.name, reason, newAttemptCount);
+          return; // Stop immediately, do not proceed to grade extraction!
+        }
+
+        // STEP 2: IF STEP 1 PASSED — Check if document is about grades, then proceed to grade extraction & minimum GWA check!
+        final docNameLower = doc.name.toLowerCase();
+        final isAcademicDoc = docNameLower.contains('tor') ||
+            docNameLower.contains('transcript') ||
+            docNameLower.contains('grade') ||
+            docNameLower.contains('report card') ||
+            docNameLower.contains('card') ||
+            docNameLower.contains('tcg');
+
+        final extraGradeFlags = <String>[];
+        double? tempExtractedGpa;
+        String? tempExtractedScale;
+
+        if (isAcademicDoc) {
+          try {
+            final scholarScaleRaw = scholar?['gpa_scale']?.toString() ?? _scholar?['gpa_scale']?.toString() ?? '';
+            final scholarGpaScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
+                ? scholarScaleRaw
+                : 'scale_5';
+
+            debugPrint('[AiExtraction] Step 1 Passed. Extracting academic details for ${doc.name}... scholar scale: "$scholarGpaScale"');
+
+            final extracted = await AiExtractionService.extractAcademicDetails(
+              fileBytes: bytes,
+              fileName: fileName,
+              expectedScale: scholarGpaScale,
+            );
+
+            if (extracted != null && extracted.gpa != null) {
+              tempExtractedGpa = extracted.gpa!;
+
+              // PRIORITIZE scale from scholars table if present!
+              if (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown') {
+                tempExtractedScale = scholarScaleRaw;
+              } else {
+                tempExtractedScale = extracted.gpaScale ?? scholarGpaScale;
               }
-            });
 
-            messenger.showSnackBar(
-              SnackBar(
-                content: Text('Successfully attached $fileName for ${doc.name}!'),
-                backgroundColor: const Color(0xFF1E3D2F),
+              final scholarPercent = EligibilityHelper.normalizeGpa(tempExtractedGpa, tempExtractedScale);
+
+              debugPrint('[Eligibility Check] Scholar GWA: $tempExtractedGpa, Scale: $tempExtractedScale, Equivalent Percent: ${scholarPercent.toStringAsFixed(1)}%');
+
+              extraGradeFlags.add(
+                'Extracted GWA: $tempExtractedGpa (${tempExtractedScale == "percentage" ? "$tempExtractedGpa%" : tempExtractedScale == "scale_4" ? "$tempExtractedGpa on 4.0 scale" : "$tempExtractedGpa on 5.0 scale"}, equivalent: ${scholarPercent.toStringAsFixed(1)}%)',
+              );
+
+              if (minimumGwa != null) {
+                final programScale = gradingSystem ?? 'percentage';
+                final requiredPercent = EligibilityHelper.normalizeGpa(minimumGwa, programScale);
+
+                debugPrint('[Eligibility Check] Scholar GWA: ${scholarPercent.toStringAsFixed(1)}%, Required: ${requiredPercent.toStringAsFixed(1)}%');
+
+                if (scholarPercent < requiredPercent - 0.001) {
+                  // REJECT IMMEDIATELY (below program grade requirement)
+                  final newAttemptCount = attemptStatus.attemptCount + 1;
+                  final reason = 'Extracted GWA $tempExtractedGpa (${scholarPercent.toStringAsFixed(1)}%) does not meet the minimum required grade of ${minimumGwa.toStringAsFixed(0)}% for this scholarship program.';
+
+                  await DocumentValidationService.logRejection(
+                    scholarId: scholarId,
+                    cycleId: cycleId,
+                    docSlotName: doc.name,
+                    filename: fileName,
+                    confidenceScore: 0.30,
+                    rejectionReason: reason,
+                    attemptNumber: newAttemptCount,
+                  );
+
+                  if (mounted) {
+                    setState(() {
+                      final idx = _docs.indexWhere((d) => d.name == doc.name);
+                      if (idx != -1) {
+                        _docs[idx] = doc.copyWith(
+                          status: _DocStatus.rejected,
+                          filename: fileName,
+                          filesize: sizeStr,
+                          fileUrl: uploadedUrl,
+                          fileBytes: bytes,
+                          aiConfidence: 0.30,
+                          aiRejectionReason: reason,
+                          aiDocumentDetected: 'Grade Document',
+                          aiFlags: [...extraGradeFlags, ...validationRes.flags],
+                          extractedGpa: tempExtractedGpa,
+                          extractedGpaScale: tempExtractedScale,
+                          attemptCount: newAttemptCount,
+                        );
+                      }
+                    });
+                    _showRejectionDialog(doc.name, reason, newAttemptCount);
+                  }
+                  return; // Stop execution, document is rejected due to below minimum grade!
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('[AiExtraction] Error extracting academic details during upload: $e');
+          }
+        }
+
+        // STEP 3: SAVE DOCUMENT STATE (Clean Pass >=80% or Flagged 40-79%)
+        final combinedFlags = <String>[...extraGradeFlags, ...validationRes.flags];
+
+        if (validationRes.confidenceScore < 0.80) {
+          // Flagged / Under Review (40% to 79%)
+          setState(() {
+            final idx = _docs.indexWhere((d) => d.name == doc.name);
+            if (idx != -1) {
+              _docs[idx] = doc.copyWith(
+                status: _DocStatus.flagged,
+                filename: fileName,
+                filesize: sizeStr,
+                fileUrl: uploadedUrl,
+                fileBytes: bytes,
+                aiConfidence: validationRes.confidenceScore,
+                aiDocumentDetected: validationRes.documentDetected,
+                aiFlags: combinedFlags,
+                extractedGpa: tempExtractedGpa,
+                extractedGpaScale: tempExtractedScale,
+              );
+            }
+          });
+
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Attached $fileName for ${doc.name} (Flagged for Review).'),
+              backgroundColor: const Color(0xFFD97706),
+            ),
+          );
+        } else {
+          // Clean Pass (>=80%)
+          setState(() {
+            final idx = _docs.indexWhere((d) => d.name == doc.name);
+            if (idx != -1) {
+              _docs[idx] = doc.copyWith(
+                status: _DocStatus.valid,
+                filename: fileName,
+                filesize: sizeStr,
+                fileUrl: uploadedUrl,
+                fileBytes: bytes,
+                aiConfidence: validationRes.confidenceScore,
+                aiDocumentDetected: validationRes.documentDetected,
+                aiFlags: combinedFlags,
+                extractedGpa: tempExtractedGpa,
+                extractedGpaScale: tempExtractedScale,
+              );
+            }
+          });
+
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Successfully verified and attached $fileName!'),
+              backgroundColor: const Color(0xFF1E3D2F),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('File picker or validation error: $e');
+      if (mounted) {
+        setState(() {
+          final idx = _docs.indexOf(doc);
+          if (idx != -1) {
+            _docs[idx] = doc.copyWith(status: _DocStatus.notUploaded);
+          }
+        });
+      }
+    }
+  }
+
+  void _showCooldownDialog(_DocItem doc, int remainingSeconds) {
+    final minutes = (remainingSeconds / 60).ceil();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(LucideIcons.clock, color: Color(0xFFD97706)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Cooldown Active',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 16),
               ),
+            ),
+          ],
+        ),
+        content: Text(
+          'You have had 2 consecutive AI rejections for "${doc.name}". To prevent submission spam, please wait ~$minutes minute(s) before attempting your 3rd upload.',
+          style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF374151), height: 1.4),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E3D2F),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: Text('Got It', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRejectionDialog(String docName, String reason, int attemptCount) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(LucideIcons.xCircle, color: Color(0xFFB91C1C)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'AI Validation Failed',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'The uploaded file for "$docName" was rejected by AI verification.',
+              style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF374151), fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: Text(
+                reason,
+                style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF991B1B)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              attemptCount >= 3
+                  ? '⚠️ Maximum 3 attempts reached. You may now submit an Appeal / Dispute to the scholarship provider.'
+                  : (attemptCount == 2
+                      ? '⚠️ Attempt $attemptCount of 3 used. Next attempt will trigger a 15-minute cooldown if rejected.'
+                      : 'Attempt $attemptCount of 3 used. Please upload a valid copy of $docName.'),
+              style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF6B7280)),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E3D2F),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDisputeDialog(_DocItem doc, int attemptCount) {
+    final textController = TextEditingController();
+    String? currentFileName = doc.filename;
+    String? currentFileSize = doc.filesize;
+    String? currentFileUrl = doc.fileUrl;
+    Uint8List? currentFileBytes = doc.fileBytes;
+    bool isPickingFile = false;
+    bool isScanningFile = false;
+    double? newAiConfidence = doc.aiConfidence;
+    List<String>? newAiFlags = doc.aiFlags;
+    String? newAiDetected = doc.aiDocumentDetected;
+    double? newExtractedGpa = doc.extractedGpa;
+    String? newExtractedGpaScale = doc.extractedGpaScale;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  const Icon(LucideIcons.helpCircle, color: Color(0xFF7C3AED)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Dispute AI Rejection',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'You have reached the 3-attempt limit for "${doc.name}". If you believe your document is authentic and the AI made an error, you can submit an appeal directly to the provider.',
+                      style: GoogleFonts.inter(fontSize: 12.5, color: const Color(0xFF4B5563), height: 1.4),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Attached Document Card
+                    Text(
+                      'Attached Appeal Document File:',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F3FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFDDD6FE)),
+                      ),
+                      child: Row(
+                        children: [
+                          isScanningFile
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF7C3AED)),
+                                )
+                              : const Icon(LucideIcons.fileText, color: Color(0xFF7C3AED), size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isScanningFile ? 'AI Scanning Document...' : (currentFileName ?? 'No file attached'),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: currentFileName != null ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (currentFileSize != null)
+                                  Text(
+                                    currentFileSize!,
+                                    style: GoogleFonts.inter(fontSize: 10.5, color: const Color(0xFF6B7280)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: (isPickingFile || isScanningFile)
+                                ? null
+                                : () async {
+                                    setModalState(() {
+                                      isPickingFile = true;
+                                      isScanningFile = true;
+                                    });
+                                    try {
+                                      final result = await FilePicker.pickFiles(
+                                        type: FileType.custom,
+                                        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+                                        withData: true,
+                                      );
+                                      if (result != null && result.files.isNotEmpty) {
+                                        final picked = result.files.first;
+                                        final name = picked.name;
+                                        final sizeKb = picked.size / 1024;
+                                        final sizeText = sizeKb > 1024
+                                            ? '${(sizeKb / 1024).toStringAsFixed(1)} MB'
+                                            : '${sizeKb.toStringAsFixed(0)} KB';
+
+                                        String? url;
+                                        if (picked.bytes != null) {
+                                          final sId = _scholar?['id'] ?? 'guest';
+                                          final cId = _cycle?['id']?.toString() ?? 'cycle';
+                                          final timeStamp = DateTime.now().millisecondsSinceEpoch;
+                                          final path = '$sId/${cId}_dispute_${timeStamp}_$name';
+                                          try {
+                                            await Supabase.instance.client.storage
+                                                .from('scholar-documents')
+                                                .uploadBinary(path, picked.bytes!);
+                                            url = Supabase.instance.client.storage
+                                                .from('scholar-documents')
+                                                .getPublicUrl(path);
+                                          } catch (_) {}
+
+                                          // Run 2-step AI Scan on newly attached file!
+                                          final scholarFirstName = _scholar?['first_name']?.toString() ?? '';
+                                          final scholarLastName = _scholar?['last_name']?.toString() ?? '';
+                                          final scholarFullName = '$scholarFirstName $scholarLastName'.trim();
+                                          final minGwaRaw = _program?['minimum_gwa'] ?? _program?['minimumGwa'] ?? _program?['renewal_gwa_requirement'];
+                                          double? minimumGwa;
+                                          if (minGwaRaw != null) minimumGwa = double.tryParse(minGwaRaw.toString());
+                                          final gradingSystem = _program?['grading_system']?.toString() ?? _program?['gpa_scale']?.toString();
+
+                                          final vRes = await DocumentValidationService.validateDocument(
+                                            fileBytes: picked.bytes!,
+                                            fileName: name,
+                                            requiredDocName: doc.name,
+                                            requirementDescription: doc.description,
+                                            scholarName: scholarFullName,
+                                            minimumGwa: minimumGwa,
+                                            gradingSystem: gradingSystem,
+                                          );
+
+                                          double? extractedGpaVal;
+                                          String? extractedScaleVal;
+                                          final modalFlags = <String>[...vRes.flags];
+
+                                          final docNameLower = doc.name.toLowerCase();
+                                          final isAcademicDoc = docNameLower.contains('tor') ||
+                                              docNameLower.contains('transcript') ||
+                                              docNameLower.contains('grade') ||
+                                              docNameLower.contains('report card') ||
+                                              docNameLower.contains('card') ||
+                                              docNameLower.contains('tcg');
+
+                                          if (isAcademicDoc) {
+                                            final scholarScaleRaw = _scholar?['gpa_scale']?.toString() ?? '';
+                                            final scholarGpaScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
+                                                ? scholarScaleRaw
+                                                : 'scale_5';
+                                            final ex = await AiExtractionService.extractAcademicDetails(
+                                              fileBytes: picked.bytes!,
+                                              fileName: name,
+                                              expectedScale: scholarGpaScale,
+                                            );
+                                            if (ex != null && ex.gpa != null) {
+                                              extractedGpaVal = ex.gpa!;
+                                              extractedScaleVal = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
+                                                  ? scholarScaleRaw
+                                                  : (ex.gpaScale ?? scholarGpaScale);
+                                              final percent = EligibilityHelper.normalizeGpa(extractedGpaVal, extractedScaleVal);
+                                              modalFlags.add('Extracted GWA: $extractedGpaVal (${extractedScaleVal == "percentage" ? "$extractedGpaVal%" : extractedScaleVal == "scale_4" ? "$extractedGpaVal on 4.0 scale" : "$extractedGpaVal on 5.0 scale"}, equivalent: ${percent.toStringAsFixed(1)}%)');
+                                            }
+                                          }
+
+                                          setModalState(() {
+                                            currentFileName = name;
+                                            currentFileSize = sizeText;
+                                            currentFileBytes = picked.bytes;
+                                            currentFileUrl = url;
+                                            newAiConfidence = vRes.confidenceScore;
+                                            newAiFlags = modalFlags;
+                                            newAiDetected = vRes.documentDetected;
+                                            newExtractedGpa = extractedGpaVal;
+                                            newExtractedGpaScale = extractedScaleVal;
+                                          });
+                                        }
+                                      }
+                                    } catch (e) {
+                                      debugPrint('Error picking dispute file: $e');
+                                    } finally {
+                                      setModalState(() {
+                                        isPickingFile = false;
+                                        isScanningFile = false;
+                                      });
+                                    }
+                                  },
+                            icon: const Icon(LucideIcons.paperclip, size: 14, color: Color(0xFF7C3AED)),
+                            label: Text(
+                              currentFileName != null ? 'Change' : 'Attach File',
+                              style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFF7C3AED)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    if (newAiFlags != null && newAiFlags!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: Text(
+                          'AI Note: ${newAiFlags!.join(', ')}',
+                          style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF92400E)),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 14),
+
+                    Text(
+                      'Reason for Appeal / Statement:',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: textController,
+                      maxLines: 3,
+                      style: GoogleFonts.inter(fontSize: 12.5),
+                      decoration: InputDecoration(
+                        hintText: 'e.g. This is an official document signed with Dean signature and school dry seal...',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Cancel', style: GoogleFonts.inter(color: const Color(0xFF6B7280))),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final note = textController.text.trim();
+                    if (note.isEmpty) return;
+                    if (currentFileName == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please attach a document file for your appeal.'),
+                          backgroundColor: Color(0xFFB91C1C),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.pop(context);
+                    setState(() {
+                      final idx = _docs.indexWhere((d) => d.name == doc.name);
+                      if (idx != -1) {
+                        _docs[idx] = _docs[idx].copyWith(
+                          filename: currentFileName,
+                          filesize: currentFileSize,
+                          fileUrl: currentFileUrl ?? _docs[idx].fileUrl,
+                          fileBytes: currentFileBytes ?? _docs[idx].fileBytes,
+                          aiConfidence: newAiConfidence ?? _docs[idx].aiConfidence,
+                          aiFlags: newAiFlags ?? _docs[idx].aiFlags,
+                          aiDocumentDetected: newAiDetected ?? _docs[idx].aiDocumentDetected,
+                          extractedGpa: newExtractedGpa ?? _docs[idx].extractedGpa,
+                          extractedGpaScale: newExtractedGpaScale ?? _docs[idx].extractedGpaScale,
+                          isDisputeSubmitted: true,
+                          disputeNote: note,
+                          status: _DocStatus.flagged,
+                        );
+                      }
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Appeal recorded for this document! You can now submit your application.'),
+                        backgroundColor: Color(0xFF7C3AED),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7C3AED),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text('Submit Dispute', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+                ),
+              ],
             );
           },
-        ),
-      );
-    } catch (e) {
-      debugPrint('File picker error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open file picker: $e')),
-      );
-    }
+        );
+      },
+    );
   }
 
   Future<void> _submitApplication() async {
@@ -460,15 +1068,53 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             children: [
               const Icon(LucideIcons.alertTriangle, color: Color(0xFFB91C1C)),
               const SizedBox(width: 8),
-              Text(
-                'No Active Cycle',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+              Expanded(
+                child: Text(
+                  'No Active Cycle',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                ),
               ),
             ],
           ),
           content: Text(
             'This scholarship program currently has no active application cycle open.',
             style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF6B7280)),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3D2F),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    if (_hasRejectedDoc) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(LucideIcons.xCircle, color: Color(0xFFB91C1C)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Rejected Document',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'One or more uploaded documents were rejected by AI document validation. Please replace the rejected document file or submit an appeal before submitting your application.',
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF374151), height: 1.45),
           ),
           actions: [
             ElevatedButton(
@@ -494,9 +1140,11 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             children: [
               const Icon(LucideIcons.alertTriangle, color: Color(0xFFD97706)),
               const SizedBox(width: 8),
-              Text(
-                'Incomplete Requirements',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+              Expanded(
+                child: Text(
+                  'Incomplete Requirements',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                ),
               ),
             ],
           ),
@@ -544,102 +1192,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     bool submitSuccess = false;
     String? errorMessage;
 
-    // Look for academic documents: TOR, Transcript, Report Card, Grade Slip
-    final academicDoc = _docs.firstWhere(
-      (d) => d.status == _DocStatus.uploaded && d.fileBytes != null && (
-        d.name.toLowerCase().contains('tor') ||
-        d.name.toLowerCase().contains('transcript') ||
-        d.name.toLowerCase().contains('grade') ||
-        d.name.toLowerCase().contains('report card') ||
-        d.name.toLowerCase().contains('card')
-      ),
-      orElse: () => const _DocItem(name: '', hint: '', status: _DocStatus.notUploaded),
-    );
-
-    double? finalExtractedGpa;
-    String finalExtractedScale = scholarGpaScale;
-
-    if (academicDoc.name.isNotEmpty && academicDoc.fileBytes != null) {
-      try {
-        debugPrint('[AiExtraction] Extracting GPA and scale from ${academicDoc.filename}... expectedScale: $scholarGpaScale');
-        final extracted = await AiExtractionService.extractAcademicDetails(
-          fileBytes: academicDoc.fileBytes!,
-          fileName: academicDoc.filename!,
-          expectedScale: scholarGpaScale,
-        );
-        if (extracted != null && extracted.gpa != null) {
-          final extractedGpa = extracted.gpa!;
-          final extractedScale = extracted.gpaScale ?? scholarGpaScale;
-          debugPrint('[AiExtraction] Extracted GPA: $extractedGpa scale: $extractedScale');
-
-          // Check GWA requirement eligibility
-          final minGwaRaw = _program?['minimum_gwa'];
-          if (minGwaRaw != null) {
-            final minGwa = double.tryParse(minGwaRaw.toString());
-            if (minGwa != null) {
-              final programScale = _program?['grading_system']?.toString() ?? 'percentage';
-              final scholarPercent = EligibilityHelper.normalizeGpa(extractedGpa, extractedScale);
-              final requiredPercent = EligibilityHelper.normalizeGpa(minGwa, programScale);
-
-              debugPrint('[Eligibility] Scholar GWA: $scholarPercent%, Required GWA: $requiredPercent%');
-
-              if (scholarPercent < requiredPercent - 0.001) {
-                if (mounted) {
-                  setState(() => _isSubmitting = false);
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      title: Row(
-                        children: [
-                          const Icon(LucideIcons.alertTriangle, color: Color(0xFFB91C1C)),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Grade Requirement',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w800),
-                          ),
-                        ],
-                      ),
-                      content: Text(
-                        'Based on the document uploaded, your extracted GWA is $extractedGpa (${extractedScale == "percentage" ? "$extractedGpa%" : extractedScale == "scale_4" ? "$extractedGpa on 4.0 scale" : "$extractedGpa on 5.0 scale"}), which corresponds to a normalized percentage of ${scholarPercent.toStringAsFixed(1)}%.\n\nThis does not meet the minimum required grade of ${minGwa.toStringAsFixed(0)}% for this scholarship program.',
-                        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF374151), height: 1.45),
-                      ),
-                      actions: [
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1E3D2F),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          child: Text('OK', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return; // Block submission!
-              }
-            }
-          }
-
-          if (extractedScale == scholarGpaScale) {
-            finalExtractedGpa = extractedGpa;
-          } else {
-            // Convert to match scholar's profile scale
-            final percent = EligibilityHelper.normalizeGpa(extractedGpa, extractedScale);
-            final converted = _convertPercentToScale(percent, scholarGpaScale);
-            finalExtractedGpa = double.tryParse(converted.toStringAsFixed(3)) ?? converted;
-            debugPrint('[AiExtraction] Converted GPA $extractedGpa ($extractedScale) to $finalExtractedGpa ($scholarGpaScale)');
-          }
-        }
-      } catch (e) {
-        debugPrint('[AiExtraction] Failed to extract academic details: $e');
-      }
-    }
-
     try {
       final uploadedDocsList = _docs
-          .where((d) => d.status == _DocStatus.uploaded)
+          .where((d) => d.status == _DocStatus.valid || d.status == _DocStatus.flagged || d.isDisputeSubmitted)
           .map((d) => {
                 'name': d.name,
                 'document_name': d.name,
@@ -647,18 +1202,68 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                 'filesize': d.filesize,
                 'document_url': d.fileUrl ?? '',
                 'submitted_at': DateTime.now().toIso8601String(),
+                'ai_confidence': d.aiConfidence,
+                'ai_flags': d.aiFlags,
+                'is_disputed': d.isDisputeSubmitted,
               })
           .toList();
+
+      String appStatus = 'pending';
+      final underReviewReasons = <String, dynamic>{};
+      final aiScanSummary = <String, dynamic>{};
+      bool hasDispute = false;
+      String? disputeNoteText;
+
+      for (final doc in _docs) {
+        if (doc.status == _DocStatus.valid || doc.status == _DocStatus.flagged || doc.status == _DocStatus.rejected) {
+          aiScanSummary[doc.name] = {
+            'status': doc.status.name,
+            'confidence': doc.aiConfidence,
+            'document_detected': doc.aiDocumentDetected,
+            'flags': doc.aiFlags,
+            'rejection_reason': doc.aiRejectionReason,
+          };
+        }
+
+        if (doc.status == _DocStatus.flagged && appStatus != 'appealed') {
+          appStatus = 'under_review';
+          underReviewReasons[doc.name] = doc.aiFlags ?? ['Flagged by AI verification'];
+        }
+
+        if (doc.isDisputeSubmitted) {
+          appStatus = 'appealed';
+          hasDispute = true;
+          disputeNoteText = doc.disputeNote;
+        }
+      }
+
+      double? finalExtractedGpa;
+      String finalExtractedScale = scholarGpaScale;
+
+      for (final doc in _docs) {
+        if (doc.extractedGpa != null) {
+          finalExtractedGpa = doc.extractedGpa;
+          if (doc.extractedGpaScale != null) {
+            finalExtractedScale = doc.extractedGpaScale!;
+          }
+        }
+      }
 
       final payload = {
         'cycle_id': cycleId,
         'scholar_id': scholarId,
-        'status': 'pending',
+        'status': appStatus,
         'submitted_documents': {
           'reference_number': refNum,
           'documents': uploadedDocsList,
         },
-        'remarks': 'Submitted via mobile app',
+        'ai_scan_summary': aiScanSummary,
+        'under_review_reasons': underReviewReasons,
+        if (hasDispute && disputeNoteText != null) 'dispute_note': disputeNoteText,
+        if (hasDispute) 'dispute_submitted_at': DateTime.now().toUtc().toIso8601String(),
+        'remarks': appStatus == 'under_review'
+            ? 'Under review due to AI document flags'
+            : (appStatus == 'appealed' ? 'Dispute submitted by scholar' : 'Submitted via mobile app'),
         if (finalExtractedGpa != null) 'grade': finalExtractedGpa,
         'gpa_scale': finalExtractedScale,
       };
@@ -905,16 +1510,29 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Icon(LucideIcons.send, size: 16),
+                      : Icon(
+                          _isForAppeal
+                              ? LucideIcons.helpCircle
+                              : (_hasRejectedDoc ? LucideIcons.xCircle : LucideIcons.send),
+                          size: 16,
+                        ),
                   label: Text(
-                    _isSubmitting ? 'Submitting Application...' : 'Submit Application',
+                    _isSubmitting
+                        ? (_isForAppeal ? 'Submitting Appeal...' : 'Submitting Application...')
+                        : (_isForAppeal
+                            ? 'Submit Appeal'
+                            : (_hasRejectedDoc
+                                ? 'Fix Rejected Document to Submit'
+                                : 'Submit Application')),
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E3D2F),
+                    backgroundColor: _isForAppeal
+                        ? const Color(0xFF7C3AED)
+                        : (_hasRejectedDoc ? const Color(0xFFDC2626) : const Color(0xFF1E3D2F)),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
@@ -1119,19 +1737,70 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 
   // ─── Document Tile Component ───────────────────────────────────────────────
   Widget _buildDocTile(_DocItem doc) {
-    final isUploaded = doc.status == _DocStatus.uploaded;
+    final isValid = doc.status == _DocStatus.valid;
+    final isFlagged = doc.status == _DocStatus.flagged;
+    final isRejected = doc.status == _DocStatus.rejected;
+    final isScanning = doc.status == _DocStatus.scanning;
     final isOptional = doc.status == _DocStatus.optional;
+    final isDisputed = doc.isDisputeSubmitted;
+
+    Color tileBg = Colors.white;
+    Color tileBorder = const Color(0xFFE5E7EB);
+    Color badgeBg = const Color(0xFFFEF3C7);
+    Color badgeText = const Color(0xFFD97706);
+    String badgeLabel = 'Required';
+    IconData leadingIcon = LucideIcons.fileUp;
+
+    if (isScanning) {
+      tileBg = const Color(0xFFF0F9FF);
+      tileBorder = const Color(0xFFBAE6FD);
+      badgeBg = const Color(0xFFE0F2FE);
+      badgeText = const Color(0xFF0284C7);
+      badgeLabel = 'AI Scanning...';
+      leadingIcon = LucideIcons.search;
+    } else if (isDisputed) {
+      tileBg = const Color(0xFFF5F3FF);
+      tileBorder = const Color(0xFFDDD6FE);
+      badgeBg = const Color(0xFFEDE9FE);
+      badgeText = const Color(0xFF7C3AED);
+      badgeLabel = 'Dispute Recorded';
+      leadingIcon = LucideIcons.helpCircle;
+    } else if (isValid) {
+      tileBg = const Color(0xFFF0FDF4);
+      tileBorder = const Color(0xFFDCFCE7);
+      badgeBg = const Color(0xFFDCFCE7);
+      badgeText = const Color(0xFF15803D);
+      final scoreStr = doc.aiConfidence != null ? ' (${(doc.aiConfidence! * 100).toInt()}%)' : '';
+      badgeLabel = 'AI Verified$scoreStr';
+      leadingIcon = LucideIcons.checkCircle2;
+    } else if (isFlagged) {
+      tileBg = const Color(0xFFFFFBEB);
+      tileBorder = const Color(0xFFFDE68A);
+      badgeBg = const Color(0xFFFEF3C7);
+      badgeText = const Color(0xFFD97706);
+      badgeLabel = 'Needs Review';
+      leadingIcon = LucideIcons.alertTriangle;
+    } else if (isRejected) {
+      tileBg = const Color(0xFFFEF2F2);
+      tileBorder = const Color(0xFFFCA5A5);
+      badgeBg = const Color(0xFFFEE2E2);
+      badgeText = const Color(0xFFB91C1C);
+      badgeLabel = 'AI Rejected (${doc.attemptCount}/3)';
+      leadingIcon = LucideIcons.xCircle;
+    } else if (isOptional) {
+      badgeBg = const Color(0xFFF3F4F6);
+      badgeText = const Color(0xFF6B7280);
+      badgeLabel = 'Optional';
+      leadingIcon = LucideIcons.fileText;
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isUploaded ? const Color(0xFFF0FDF4) : Colors.white,
+        color: tileBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isUploaded ? const Color(0xFFDCFCE7) : const Color(0xFFE5E7EB),
-          width: 1,
-        ),
+        border: Border.all(color: tileBorder, width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.02),
@@ -1149,14 +1818,15 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: isUploaded ? const Color(0xFFDCFCE7) : (isOptional ? const Color(0xFFF3F4F6) : const Color(0xFFFEF3C7)),
+                  color: badgeBg,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  isUploaded ? LucideIcons.checkCircle2 : (isOptional ? LucideIcons.fileText : LucideIcons.fileUp),
-                  size: 18,
-                  color: isUploaded ? const Color(0xFF16A34A) : (isOptional ? const Color(0xFF6B7280) : const Color(0xFFD97706)),
-                ),
+                child: isScanning
+                    ? const Padding(
+                        padding: EdgeInsets.all(10),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0284C7)),
+                      )
+                    : Icon(leadingIcon, size: 18, color: badgeText),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1172,10 +1842,12 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                       ),
                     ),
                     Text(
-                      isUploaded ? '${doc.filename} · ${doc.filesize}' : doc.hint,
+                      (isValid || isFlagged || isRejected) && doc.filename != null
+                          ? '${doc.filename} · ${doc.filesize}'
+                          : doc.hint,
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: isUploaded ? const Color(0xFF15803D) : const Color(0xFF6B7280),
+                        color: isValid ? const Color(0xFF15803D) : const Color(0xFF6B7280),
                       ),
                     ),
                   ],
@@ -1184,31 +1856,80 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: isUploaded ? const Color(0xFFDCFCE7) : (isOptional ? const Color(0xFFF3F4F6) : const Color(0xFFFEF3C7)),
+                  color: badgeBg,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  isUploaded ? 'Attached' : (isOptional ? 'Optional' : 'Required'),
+                  badgeLabel,
                   style: GoogleFonts.inter(
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
-                    color: isUploaded ? const Color(0xFF15803D) : (isOptional ? const Color(0xFF6B7280) : const Color(0xFFD97706)),
+                    color: badgeText,
                   ),
                 ),
               ),
             ],
           ),
+          if (isRejected && doc.aiRejectionReason != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: Text(
+                'Reason: ${doc.aiRejectionReason}',
+                style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF991B1B), height: 1.3),
+              ),
+            ),
+          ],
+          if (doc.aiFlags != null && doc.aiFlags!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Text(
+                'AI Note: ${doc.aiFlags!.join(', ')}',
+                style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF92400E), height: 1.3),
+              ),
+            ),
+          ],
+          if (isDisputed && doc.disputeNote != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F3FF),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFDDD6FE)),
+              ),
+              child: Text(
+                'Dispute Reason: ${doc.disputeNote}',
+                style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF5B21B6), height: 1.3),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () => _handleUpload(doc),
+            onTap: isScanning ? null : () => _handleUpload(doc),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: isUploaded ? Colors.white : const Color(0xFFFAFCFA),
+                color: isRejected && doc.attemptCount >= 3 && !isDisputed
+                    ? const Color(0xFFF5F3FF)
+                    : ((isValid || isFlagged) ? Colors.white : const Color(0xFFFAFCFA)),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: isUploaded ? const Color(0xFFDCFCE7) : const Color(0xFFD1D5DB),
+                  color: isRejected && doc.attemptCount >= 3 && !isDisputed
+                      ? const Color(0xFF7C3AED)
+                      : ((isValid || isFlagged) ? const Color(0xFFDCFCE7) : const Color(0xFFD1D5DB)),
                   width: 1,
                 ),
               ),
@@ -1217,17 +1938,29 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isUploaded ? LucideIcons.rotateCcw : LucideIcons.plusCircle,
+                      isRejected && doc.attemptCount >= 3 && !isDisputed
+                          ? LucideIcons.helpCircle
+                          : ((isValid || isFlagged) ? LucideIcons.rotateCcw : LucideIcons.plusCircle),
                       size: 14,
-                      color: const Color(0xFF1E3D2F),
+                      color: isRejected && doc.attemptCount >= 3 && !isDisputed
+                          ? const Color(0xFF7C3AED)
+                          : const Color(0xFF1E3D2F),
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      isUploaded ? 'Change Document File' : 'Select & Attach File (PDF / Image)',
+                      isScanning
+                          ? 'AI Verifying...'
+                          : (isRejected && doc.attemptCount >= 3 && !isDisputed
+                              ? 'Submit Appeal / Dispute'
+                              : (isRejected
+                                  ? 'Try Upload Again (Attempt ${doc.attemptCount}/3)'
+                                  : ((isValid || isFlagged) ? 'Change Document File' : 'Select & Attach File (PDF / Image)'))),
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1E3D2F),
+                        color: isRejected && doc.attemptCount >= 3 && !isDisputed
+                            ? const Color(0xFF7C3AED)
+                            : const Color(0xFF1E3D2F),
                       ),
                     ),
                   ],
@@ -1296,44 +2029,84 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 }
 
 // ─── Doc Item Model ───────────────────────────────────────────────────────────
-enum _DocStatus { notUploaded, uploaded, optional }
+enum _DocStatus { notUploaded, scanning, valid, flagged, rejected, optional }
 
 class _DocItem {
   final String name;
+  final String? description;
   final String hint;
   final _DocStatus status;
   final String? filename;
   final String? filesize;
   final String? fileUrl;
   final Uint8List? fileBytes;
+  final double? aiConfidence;
+  final String? aiRejectionReason;
+  final String? aiDocumentDetected;
+  final List<String>? aiFlags;
+  final double? extractedGpa;
+  final String? extractedGpaScale;
+  final int attemptCount;
+  final bool isDisputeSubmitted;
+  final String? disputeNote;
 
   const _DocItem({
     required this.name,
+    this.description,
     required this.hint,
     required this.status,
     this.filename,
     this.filesize,
     this.fileUrl,
     this.fileBytes,
+    this.aiConfidence,
+    this.aiRejectionReason,
+    this.aiDocumentDetected,
+    this.aiFlags,
+    this.extractedGpa,
+    this.extractedGpaScale,
+    this.attemptCount = 0,
+    this.isDisputeSubmitted = false,
+    this.disputeNote,
   });
 
   _DocItem copyWith({
     String? name,
+    String? description,
     String? hint,
     _DocStatus? status,
     String? filename,
     String? filesize,
     String? fileUrl,
     Uint8List? fileBytes,
+    double? aiConfidence,
+    String? aiRejectionReason,
+    String? aiDocumentDetected,
+    List<String>? aiFlags,
+    double? extractedGpa,
+    String? extractedGpaScale,
+    int? attemptCount,
+    bool? isDisputeSubmitted,
+    String? disputeNote,
   }) {
     return _DocItem(
       name: name ?? this.name,
+      description: description ?? this.description,
       hint: hint ?? this.hint,
       status: status ?? this.status,
       filename: filename ?? this.filename,
       filesize: filesize ?? this.filesize,
       fileUrl: fileUrl ?? this.fileUrl,
       fileBytes: fileBytes ?? this.fileBytes,
+      aiConfidence: aiConfidence ?? this.aiConfidence,
+      aiRejectionReason: aiRejectionReason ?? this.aiRejectionReason,
+      aiDocumentDetected: aiDocumentDetected ?? this.aiDocumentDetected,
+      aiFlags: aiFlags ?? this.aiFlags,
+      extractedGpa: extractedGpa ?? this.extractedGpa,
+      extractedGpaScale: extractedGpaScale ?? this.extractedGpaScale,
+      attemptCount: attemptCount ?? this.attemptCount,
+      isDisputeSubmitted: isDisputeSubmitted ?? this.isDisputeSubmitted,
+      disputeNote: disputeNote ?? this.disputeNote,
     );
   }
 }

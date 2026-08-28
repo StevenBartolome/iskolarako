@@ -26,6 +26,14 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
   }, 0);
   const netRemainingCashAllocation = Math.max(0, grossBudgetPool - totalCredited);
 
+  const needsAttentionCount = (_applicantsList || []).filter(
+    (a: any) =>
+      a.status === 'under_review' ||
+      a.status === 'Under Review' ||
+      a.status === 'appealed' ||
+      a.status === 'Appealed'
+  ).length;
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
@@ -33,7 +41,7 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
         <p className="text-sm text-[#6C6C70] mt-1 font-medium">Real-time Scholarship Monitoring</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
           <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Permanent Programs</span>
           <h3 className="text-3xl font-bold text-[#1A3C2E] font-serif mt-1">{programsList.length}</h3>
@@ -41,6 +49,11 @@ export const ProviderDashboardTab: React.FC<ProviderDashboardTabProps> = ({
         <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
           <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Active Scholars</span>
           <h3 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">{scholarsList.length}</h3>
+        </div>
+        <div className="bg-amber-50/80 rounded-2xl border border-amber-200 p-6 shadow-sm">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-amber-800">Needs Attention</span>
+          <h3 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">{needsAttentionCount}</h3>
+          <p className="text-[10px] text-amber-700 font-medium mt-0.5">AI Flags & Appeals</p>
         </div>
         <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
           <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Net Remaining Budget</span>

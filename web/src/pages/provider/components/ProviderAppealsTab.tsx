@@ -21,7 +21,68 @@ export interface AppealRecord {
   program_title?: string;
   original_rejection_remarks?: string;
   application_status?: string;
+  ai_rejection_reasons?: string[];
 }
+
+const parseAiRejectionRemarks = (app: any): string[] => {
+  const reasons: string[] = [];
+  if (!app) return reasons;
+
+  // 1. Parse under_review_reasons
+  if (app.under_review_reasons && typeof app.under_review_reasons === 'object') {
+    Object.entries(app.under_review_reasons).forEach(([docName, val]) => {
+      if (Array.isArray(val) && val.length > 0) {
+        reasons.push(`${docName}: ${val.join(' · ')}`);
+      } else if (typeof val === 'string' && val.trim()) {
+        reasons.push(`${docName}: ${val.trim()}`);
+      }
+    });
+  }
+
+  // 2. Parse ai_scan_summary
+  if (app.ai_scan_summary && typeof app.ai_scan_summary === 'object') {
+    Object.entries(app.ai_scan_summary).forEach(([docName, summary]: [string, any]) => {
+      if (summary && typeof summary === 'object') {
+        const flags = Array.isArray(summary.flags) ? summary.flags.join(' · ') : null;
+        const rejReason = summary.rejection_reason;
+        const statusStr = summary.status ? `[${String(summary.status).toUpperCase()}]` : '';
+        const combined = [rejReason, flags].filter(Boolean).join(' · ');
+        if (combined && !reasons.some(r => r.includes(docName))) {
+          reasons.push(`${docName} ${statusStr}: ${combined}`);
+        }
+      }
+    });
+  }
+
+  // 3. Parse submitted_documents
+  if (app.submitted_documents) {
+    const docs = Array.isArray(app.submitted_documents)
+      ? app.submitted_documents
+      : app.submitted_documents.documents;
+
+    if (Array.isArray(docs)) {
+      docs.forEach((d: any) => {
+        const name = d.document_name || d.name || d.filename || 'Document';
+        const flags = Array.isArray(d.ai_flags) ? d.ai_flags.join(' · ') : d.ai_flags;
+        const rejReason = d.rejection_reason || d.remarks;
+        const text = [flags, rejReason].filter(Boolean).join(' · ');
+        if (text && !reasons.some(r => r.includes(name))) {
+          reasons.push(`${name}: ${text}`);
+        }
+      });
+    }
+  }
+
+  // 4. Fallback if remarks contain useful AI information
+  if (reasons.length === 0 && app.remarks && typeof app.remarks === 'string') {
+    const rem = app.remarks.trim();
+    if (rem && !rem.startsWith('Formal Appeal Filed') && !rem.startsWith('Dispute submitted')) {
+      reasons.push(`System Evaluation Note: ${rem}`);
+    }
+  }
+
+  return reasons;
+};
 
 interface ProviderAppealsTabProps {
   providerId?: string;
@@ -58,6 +119,9 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
               scholar_id,
               status,
               remarks,
+              under_review_reasons,
+              ai_scan_summary,
+              submitted_documents,
               cycle:application_cycles (
                 program:scholarship_programs (
                   title,
@@ -94,6 +158,7 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
               program_title: prog.title || 'Scholarship Program',
               original_rejection_remarks: app.remarks || 'No rejection notes recorded.',
               application_status: app.status || 'rejected',
+              ai_rejection_reasons: parseAiRejectionRemarks(app),
             };
           });
         }
@@ -101,57 +166,66 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
         console.warn('Note fetching application_appeals table:', dbErr);
       }
 
-      // 2. Fallback: Parse scholarship_applications where remarks contains 'Formal Appeal Filed'
-      if (fetchedAppeals.length === 0) {
-        try {
-          const { data: appsData } = await supabase
-            .from('scholarship_applications')
-            .select(`
-              id,
-              scholar_id,
-              status,
-              remarks,
-              created_at,
-              submitted_documents,
-              cycle:application_cycles (
-                program:scholarship_programs (
-                  title,
-                  provider_id
-                )
+      // 2. Query scholarship_applications where status = 'appealed' or 'Appealed' or remarks contains appeal/dispute
+      try {
+        const { data: appsData } = await supabase
+          .from('scholarship_applications')
+          .select(`
+            id,
+            scholar_id,
+            status,
+            remarks,
+            dispute_note,
+            dispute_submitted_at,
+            created_at,
+            submitted_documents,
+            under_review_reasons,
+            ai_scan_summary,
+            cycle:application_cycles (
+              program:scholarship_programs (
+                title,
+                provider_id
               )
-            `)
-            .ilike('remarks', '%Formal Appeal Filed%');
+            )
+          `)
+          .or('status.eq.appealed,status.eq.Appealed,remarks.ilike.%Formal Appeal Filed%,remarks.ilike.%dispute%');
 
-          if (appsData && appsData.length > 0) {
-            const filteredApps = appsData.filter((app: any) => {
-              if (!providerId) return true;
-              const prog = app.cycle?.program || {};
-              return prog.provider_id === providerId;
-            });
+        if (appsData && appsData.length > 0) {
+          const filteredApps = appsData.filter((app: any) => {
+            if (!providerId) return true;
+            const cycleObj = Array.isArray(app.cycle) ? app.cycle[0] : app.cycle;
+            const prog = (Array.isArray(cycleObj?.program) ? cycleObj?.program[0] : cycleObj?.program) || {};
+            return prog.provider_id === providerId;
+          });
 
-            fetchedAppeals = filteredApps.map((app: any) => {
-              const prog = app.cycle?.program || {};
+          const existingAppIds = new Set(fetchedAppeals.map(a => a.application_id));
+
+          for (const app of filteredApps) {
+            if (!existingAppIds.has(app.id)) {
+              const cycleObj = Array.isArray(app.cycle) ? app.cycle[0] : app.cycle;
+              const prog = (Array.isArray(cycleObj?.program) ? cycleObj?.program[0] : cycleObj?.program) || {};
               const remarkStr = app.remarks || '';
-              const statementMatch = remarkStr.replace('Formal Appeal Filed:', '').trim();
-              return {
-                id: `fallback_${app.id}`,
+              const statementMatch = app.dispute_note || remarkStr.replace('Formal Appeal Filed:', '').trim();
+              fetchedAppeals.push({
+                id: `app_${app.id}`,
                 application_id: app.id,
                 scholar_id: app.scholar_id,
-                reason_category: 'Grade / Requirement Dispute',
-                statement: statementMatch || 'Student submitted formal appeal for re-evaluation.',
-                supporting_documents: [],
+                reason_category: 'AI Document Rejection Dispute',
+                statement: statementMatch || 'Student submitted formal appeal / dispute for re-evaluation.',
+                supporting_documents: app.submitted_documents?.documents || [],
                 status: 'pending',
-                created_at: app.created_at,
+                created_at: app.dispute_submitted_at || app.created_at,
                 scholar_name: `Scholar (${app.scholar_id.substring(0, 8)})`,
                 program_title: prog.title || 'Scholarship Program',
-                original_rejection_remarks: 'Application rejected by committee.',
-                application_status: app.status || 'rejected',
-              };
-            });
+                original_rejection_remarks: app.remarks || 'Document flagged or rejected by AI.',
+                application_status: app.status || 'appealed',
+                ai_rejection_reasons: parseAiRejectionRemarks(app),
+              });
+            }
           }
-        } catch (fErr) {
-          console.warn('Note parsing fallback appeals:', fErr);
         }
+      } catch (fErr) {
+        console.warn('Note parsing appealed applications:', fErr);
       }
 
       // Fetch scholar names and emails
@@ -219,34 +293,37 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
         console.warn('Appeal record update note:', aErr);
       }
 
-      // 2. Update scholarship_applications status if approved
+      // 2. Update scholarship_applications status
       if (newStatus === 'approved') {
         await supabase
           .from('scholarship_applications')
           .update({
             status: 'under_review',
-            remarks: `Appeal Approved: ${resolutionRemarks || 'Re-opened for committee review.'}`,
+            remarks: `Appeal Approved: ${resolutionRemarks || 'Status updated to Under Review.'}`,
           })
           .eq('id', appeal.application_id);
       } else {
         await supabase
           .from('scholarship_applications')
           .update({
-            remarks: `Appeal Upheld Rejection: ${resolutionRemarks || 'Decision finalized by committee.'}`,
+            status: 'rejected',
+            remarks: `Appeal Rejected: ${resolutionRemarks || 'Decision finalized by provider.'}`,
           })
           .eq('id', appeal.application_id);
       }
 
-      // 3. Trigger Push Notification to student
+      // 3. Trigger Email and Push Notification to student
       try {
         await sendDecisionNotification({
+          toEmail: appeal.scholar_email,
           userId: appeal.scholar_id,
+          scholarId: appeal.scholar_id,
           toName: appeal.scholar_name || 'Scholar',
           programTitle: appeal.program_title || 'Scholarship',
           status: newStatus === 'approved' ? 'Under Review' : 'Rejected',
           remarks: newStatus === 'approved'
-            ? `Your appeal was ACCEPTED! ${resolutionRemarks}`
-            : `Your appeal decision was finalized: ${resolutionRemarks}`,
+            ? `Your appeal was ACCEPTED! ${resolutionRemarks || 'Your application status has been changed to Under Review.'}`
+            : `Your appeal decision was finalized: ${resolutionRemarks || 'Previous rejection decision upheld.'}`,
         });
       } catch (nErr) {
         console.warn('Notification send note:', nErr);
@@ -254,7 +331,7 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
 
       showToast?.(
         newStatus === 'approved'
-          ? `Appeal Accepted! Application re-opened for ${appeal.scholar_name}.`
+          ? `Appeal Accepted! Status set to Under Review for ${appeal.scholar_name}.`
           : `Appeal decision recorded. Rejection upheld for ${appeal.scholar_name}.`
       );
 
@@ -413,6 +490,24 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
                 </div>
               </div>
 
+              {/* AI Rejection Remarks Banner */}
+              {appeal.ai_rejection_reasons && appeal.ai_rejection_reasons.length > 0 && (
+                <div className="bg-amber-50/90 p-3.5 rounded-xl border border-amber-200/80 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900">
+                    <span className="text-base">🤖</span>
+                    <span>AI Document Scan & Rejection Remarks:</span>
+                  </div>
+                  <div className="space-y-1 text-xs text-amber-900 font-medium pl-1">
+                    {appeal.ai_rejection_reasons.map((reason, idx) => (
+                      <div key={idx} className="flex items-start gap-1.5">
+                        <span className="text-amber-600 font-bold">•</span>
+                        <span className="leading-relaxed">{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Category & Reason Banner */}
               <div className="bg-[#F9F5EF] p-3.5 rounded-xl border border-[#EDE8DE] space-y-1.5">
                 <div className="flex items-center gap-2 text-xs font-bold text-[#1A3C2E]">
@@ -481,7 +576,7 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
                       disabled={isSubmitting}
                       className="px-4 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-sm disabled:opacity-50"
                     >
-                      ✓ Accept Appeal & Re-open
+                      ✓ Accept Appeal
                     </button>
                   </div>
                 </div>

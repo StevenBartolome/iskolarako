@@ -987,7 +987,22 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       console.log(`[Provider Portal Debug]: Found ${data?.length || 0} applications for provider ${providerDetails.name}`);
 
-        if (data && data.length > 0) {
+      let pendingAppealAppIdsSet = new Set<string>();
+      try {
+        const { data: appealsData } = await supabase
+          .from('application_appeals')
+          .select('application_id, status')
+          .eq('status', 'pending');
+        if (appealsData) {
+          appealsData.forEach((a: any) => {
+            if (a.application_id) pendingAppealAppIdsSet.add(String(a.application_id));
+          });
+        }
+      } catch (aErr) {
+        console.warn('[Provider Portal Appeals Fetch Note]:', aErr);
+      }
+
+      if (data && data.length > 0) {
           // Fetch scholar_documents for the scholars in these applications
           const scholarIds = data.map((a: any) => a.scholar_id).filter(Boolean);
           let scholarDocsMap: Record<string, SubmittedDocItem[]> = {};
@@ -1380,6 +1395,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               date: createdDate,
               submittedDocuments: docs,
               remarks: app.remarks || '',
+              hasPendingAppeal: pendingAppealAppIdsSet.has(String(app.id)),
               rawApplication: app
             };
           });
@@ -2645,6 +2661,18 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
 
   const filteredApplicants = applicantsList.filter(app => {
+    // Exclude appealed scholars from applicants listing (they belong in Appeals & Disputes tab)
+    const isAppealed = 
+      app.hasPendingAppeal === true ||
+      app.status === 'Appealed' || 
+      app.status === 'appealed' || 
+      app.status === 'Appeals' ||
+      (Boolean(app.rawApplication?.dispute_note) && app.status !== 'under_review' && app.status !== 'Under Review' && app.status !== 'Approved' && app.status !== 'Rejected') ||
+      (Boolean(app.remarks && (app.remarks.includes('Formal Appeal Filed') || app.remarks.toLowerCase().includes('dispute'))) && app.status !== 'under_review' && app.status !== 'Under Review' && app.status !== 'Approved' && app.status !== 'Rejected');
+    if (isAppealed) {
+      return false;
+    }
+
     const matchesSearch = app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.program.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -2667,6 +2695,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   });
 
   const filteredScholars = scholarsList.filter(sch => {
+    // Exclude appealed scholars from active scholars listing (they belong in Appeals & Disputes tab)
+    const isAppealed = (sch as any).status === 'Appealed' || (sch as any).status === 'appealed';
+    if (isAppealed) {
+      return false;
+    }
+
     const matchesSearch = sch.scholarName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       sch.programTitle.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
@@ -3217,6 +3251,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               setSelectedAppForReview(app);
               setActiveTab('view-application');
             }}
+            onNavigateToAppeals={() => setActiveTab('appeals')}
             handleUpdateStatus={handleUpdateStatus}
             showToast={showToast}
             triggerQuotaFilledModal={triggerQuotaFilledModal}

@@ -24,4 +24,20 @@ class AuditLogService {
       debugPrint('⚠️ [Audit Log Error]: $e');
     }
   }
+
+  static Future<void> logDocumentValidationEvent({
+    required String scholarId,
+    required String docSlotName,
+    required double confidenceScore,
+    required String outcome,
+    String? rejectionReason,
+    List<String>? flags,
+  }) async {
+    final String action = 'AI_DOC_VALIDATION_${outcome.toUpperCase()}';
+    final String target = 'Slot: $docSlotName | Score: ${(confidenceScore * 100).toStringAsFixed(0)}%'
+        '${rejectionReason != null ? " | Reason: $rejectionReason" : ""}'
+        '${flags != null && flags.isNotEmpty ? " | Flags: ${flags.join(', ')}" : ""}';
+
+    await createAuditLog(action: action, target: target);
+  }
 }

@@ -20,6 +20,7 @@ interface ProviderApplicantsTabProps {
   showToast?: (message: string) => void;
   triggerQuotaFilledModal?: (cycleId: string, programTitle: string, cycleName: string, totalSlots: number, excludeAppIds: (string | number)[]) => Promise<void>;
   setQuotaPendingApproveIds?: (ids: string[]) => void;
+  onNavigateToAppeals?: () => void;
 }
 
 export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
@@ -40,6 +41,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
   showToast,
   triggerQuotaFilledModal,
   setQuotaPendingApproveIds,
+  onNavigateToAppeals: _onNavigateToAppeals,
 }) => {
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>('All');
   const [selectedBatchFilter, setSelectedBatchFilter] = useState<string>('All');
@@ -196,9 +198,38 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
             </div>
           </div>
 
+          {/* Needs Attention Alert Banner for AI Flags */}
+          {(() => {
+            const flaggedCount = applicantsList.filter(a => a.status === 'under_review' || a.status === 'Under Review').length;
+            if (flaggedCount === 0) return null;
+
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-wrap items-center justify-between shadow-sm gap-3 mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center text-xl font-bold">⚠️</div>
+                  <div>
+                    <h4 className="text-sm font-bold text-amber-900">Needs Provider Attention ({flaggedCount})</h4>
+                    <p className="text-xs text-amber-700">
+                      {flaggedCount} flagged doc(s) under review
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('Under Review')}
+                    className="bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all cursor-pointer"
+                  >
+                    Review Flags ({flaggedCount})
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Status Filter Buttons */}
           <div className="flex flex-wrap gap-1 bg-[#EDE8DE]/45 p-1 rounded-lg text-[10px] font-bold">
-            {['All', 'New Applicants', 'Renewals', 'Pending', 'Under Review', 'For Exam', 'Waitlisted', 'Rejected'].map(st => (
+            {['All', 'New Applicants', 'Renewals', 'Pending', 'Under Review', 'For Exam', 'Waitlisted', 'Rejected', 'Barred'].map(st => (
               <button
                 key={st} onClick={() => setStatusFilter(st)}
                 className={`px-3 py-1.5 rounded cursor-pointer transition-colors ${statusFilter === st ? 'bg-[#1A3C2E] text-white' : 'text-[#6C6C70] hover:text-[#1A3C2E]'}`}
@@ -478,10 +509,14 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                             app.status === 'Approved'
                               ? 'bg-[#EBF5EE] text-[#2D5941]'
+                              : (app.status === 'Under Review' || app.status === 'under_review')
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                              : (app.status === 'Appealed' || app.status === 'appealed' || app.status === 'Appeals')
+                              ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                              : (app.status === 'Barred' || app.status === 'barred')
+                              ? 'bg-red-950 text-white font-extrabold'
                               : app.status === 'Pending'
                               ? 'bg-[#F9F0E0] text-[#C97B2E]'
-                              : app.status === 'Under Review'
-                              ? 'bg-[#EAF3FA] text-[#2A6BA8]'
                               : app.status === 'For Exam'
                               ? 'bg-purple-100 text-purple-700'
                               : app.status === 'Waitlisted'
@@ -490,7 +525,17 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                           }`}
                           title={app.remarks ? `Remarks: ${app.remarks}` : undefined}
                         >
-                          {app.status === 'Rejected' ? '✕ Rejected' : app.status === 'Waitlisted' ? '⏳ Waitlisted' : app.status}
+                          {app.status === 'Rejected'
+                            ? '✕ Rejected'
+                            : app.status === 'Waitlisted'
+                            ? '⏳ Waitlisted'
+                            : (app.status === 'Under Review' || app.status === 'under_review')
+                            ? '⚠️ Under Review'
+                            : (app.status === 'Appealed' || app.status === 'appealed' || app.status === 'Appeals')
+                            ? '📋 Appealed'
+                            : (app.status === 'Barred' || app.status === 'barred')
+                            ? '🚫 Barred'
+                            : app.status}
                         </span>
 
                         {(app.status === 'Rejected' || app.status === 'Waitlisted') && app.remarks && (
