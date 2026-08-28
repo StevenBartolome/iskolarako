@@ -1810,9 +1810,27 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                           )}
 
                           {/* AI Forensic Summary */}
-                          <div className="p-2.5 bg-white rounded-xl border border-[#D9D2C5]/60 text-xs text-[#1C1C1E]">
-                            <span className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-0.5">Forensic Summary:</span>
-                            <p className="text-xs text-[#1C1C1E]">{aiRes.summary}</p>
+                          <div className="p-3 bg-white rounded-xl border border-[#D9D2C5]/70 text-xs text-[#1C1C1E] space-y-1">
+                            <span className="text-[10px] font-bold text-[#1A3C2E] uppercase block tracking-wider">
+                              🤖 AI Forensic Summary:
+                            </span>
+                            <p className="text-xs text-[#1C1C1E] font-medium leading-relaxed">
+                              {(() => {
+                                const isVerifiedDoc = docStatus === 'Verified' || aiRes?.verificationStatus === 'verified';
+                                const hasFlags = aiRes?.flags && aiRes.flags.length > 0;
+                                
+                                if (hasFlags) {
+                                  return `Compliance Anomalies Detected: ${aiRes.flags.map((f: any) => getFlagString(f)).join('; ')}`;
+                                }
+                                if (!isVerifiedDoc && aiRes?.rejectionReason) {
+                                  return `Compliance Warning: ${aiRes.rejectionReason}`;
+                                }
+                                if (isVerifiedDoc) {
+                                  return 'Verified Authentic — Document matches declared profile credentials with zero compliance anomalies.';
+                                }
+                                return aiRes?.summary || 'Document evaluation completed.';
+                              })()}
+                            </p>
                           </div>
                           
                           {/* Quick action buttons for this report */}
@@ -1902,10 +1920,12 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                         <>
                           <option value="Approved">Approved (Issue Scholar Award)</option>
                           <option value="For Exam">Scheduled for Exam (For Examination)</option>
+                          <option value="Pending for Ranking">Pending for Ranking</option>
                         </>
                       ) : (
                         <>
                           <option value="Pending">Pending Evaluation</option>
+                          <option value="Pending for Ranking">Pending for Ranking</option>
                           <option value="Under Review">Under Review</option>
                           <option value="For Exam">Scheduled for Exam (For Examination)</option>
                           <option value="Approved">Approved (Issue Scholar Award)</option>

@@ -345,7 +345,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
 
           {/* Status Filter Buttons */}
           <div className="flex flex-wrap gap-1 bg-[#EDE8DE]/45 p-1 rounded-lg text-[10px] font-bold">
-            {['All', 'New Applicants', 'Renewals', 'Pending', 'Under Review', 'For Exam', 'Waitlisted', 'Rejected', 'Barred'].map(st => (
+            {['All', 'New Applicants', 'Renewals', 'Pending', 'Pending for Ranking', 'Under Review', 'For Exam', 'Waitlisted', 'Rejected', 'Barred'].map(st => (
               <button
                 key={st} onClick={() => setStatusFilter(st)}
                 className={`px-3 py-1.5 rounded cursor-pointer transition-colors ${statusFilter === st ? 'bg-[#1A3C2E] text-white' : 'text-[#6C6C70] hover:text-[#1A3C2E]'}`}
@@ -488,6 +488,16 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                   className="bg-purple-700 hover:bg-purple-800 text-white px-3 py-1.5 rounded-xl font-bold border-0 cursor-pointer text-xs transition-all"
                 >
                   📋 Set For Exam ({selectedAppIds.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectedAppIds.forEach(id => handleUpdateStatus(id, 'Pending for Ranking'));
+                    setSelectedAppIds([]);
+                  }}
+                  className="bg-sky-700 hover:bg-sky-800 text-white px-3 py-1.5 rounded-xl font-bold border-0 cursor-pointer text-xs transition-all"
+                >
+                  📊 Set Pending for Ranking ({selectedAppIds.length})
                 </button>
                 <button
                   type="button"
@@ -711,6 +721,7 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                             className="appearance-none bg-white hover:bg-[#F9F5EF]/60 text-[#1C1C1E] font-semibold text-xs border border-[#D9D2C5] hover:border-[#2D5941] focus:border-[#2D5941] focus:ring-2 focus:ring-[#2D5941]/20 rounded-xl pl-3.5 pr-8 py-2 cursor-pointer outline-none transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             <option value="Pending">Pending</option>
+                            <option value="Pending for Ranking">Pending for Ranking</option>
                             <option value="Under Review">Under Review</option>
                             <option value="For Exam">For Exam</option>
                             <option value="Waitlisted">Waitlisted</option>

@@ -10,6 +10,7 @@ import 'package:iskoako/services/audit_log_service.dart';
 import 'package:iskoako/services/ai_extraction_service.dart';
 import 'package:iskoako/services/document_validation_service.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
+import 'package:iskoako/utils/app_router.dart';
 
 class DocumentUploadScreen extends StatefulWidget {
   const DocumentUploadScreen({super.key});
@@ -1263,26 +1264,42 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     try {
       final uploadedDocsList = _docs
           .where((d) => d.status == _DocStatus.valid || d.status == _DocStatus.flagged || d.isDisputeSubmitted)
-          .map((d) => {
-                'name': d.name,
-                'document_name': d.name,
-                'filename': d.filename,
-                'filesize': d.filesize,
-                'document_url': d.fileUrl ?? '',
-                'submitted_at': DateTime.now().toIso8601String(),
-                'ai_confidence': d.aiConfidence,
-                'ai_flags': d.aiFlags,
-                'is_disputed': d.isDisputeSubmitted,
-                'extractedGwa': d.extractedGpa,
-                'extractedGwaScale': d.extractedGpaScale,
-                'extractedTuitionAmount': d.extractedTuitionAmount,
-                'extracted_tuition_amount': d.extractedTuitionAmount,
-                'aiVerification': {
+          .map((d) {
+                final isDocValid = d.status == _DocStatus.valid;
+                final remarksStr = isDocValid
+                    ? 'Mobile AI Scan Verified'
+                    : (d.aiRejectionReason ?? (d.aiFlags != null && d.aiFlags!.isNotEmpty ? d.aiFlags!.join('; ') : 'Flagged for review'));
+                return {
+                  'name': d.name,
+                  'document_name': d.name,
+                  'filename': d.filename,
+                  'filesize': d.filesize,
+                  'document_url': d.fileUrl ?? '',
+                  'submitted_at': DateTime.now().toIso8601String(),
+                  'status': isDocValid ? 'Verified' : (d.status == _DocStatus.flagged ? 'Flagged' : 'Pending'),
+                  'ai_confidence': d.aiConfidence,
+                  'ai_flags': isDocValid ? [] : d.aiFlags,
+                  'ai_rejection_reason': isDocValid ? null : d.aiRejectionReason,
+                  'ai_document_detected': d.aiDocumentDetected,
+                  'is_disputed': d.isDisputeSubmitted,
                   'extractedGwa': d.extractedGpa,
                   'extractedGwaScale': d.extractedGpaScale,
                   'extractedTuitionAmount': d.extractedTuitionAmount,
                   'extracted_tuition_amount': d.extractedTuitionAmount,
-                },
+                  'remarks': isDocValid ? '' : remarksStr,
+                  'aiVerification': {
+                    'verificationStatus': isDocValid ? 'verified' : (d.status == _DocStatus.flagged ? 'flagged' : 'pending'),
+                    'confidenceScore': d.aiConfidence ?? 0.95,
+                    'extractedDocType': d.aiDocumentDetected ?? d.name,
+                    'extractedGwa': d.extractedGpa?.toString(),
+                    'extractedGwaScale': d.extractedGpaScale,
+                    'extractedTuitionAmount': d.extractedTuitionAmount?.toString(),
+                    'flags': isDocValid ? [] : (d.aiFlags ?? []),
+                    'rejectionReason': isDocValid ? null : d.aiRejectionReason,
+                    'summary': isDocValid ? 'Verified authentic by IskoAko AI Engine' : remarksStr,
+                    'provider': 'IskoAko Mobile AI Engine',
+                  },
+                };
               })
           .toList();
 
@@ -1471,9 +1488,11 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                 height: 48,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.pop(context); // Pop dialog
-                    Navigator.pop(context); // Pop upload screen
-                    Navigator.pop(context); // Pop detail screen
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      AppRouter.home,
+                      (route) => false,
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1E3D2F),

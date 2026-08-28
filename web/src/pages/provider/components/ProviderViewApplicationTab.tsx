@@ -833,6 +833,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
       case 'Additional Info Required': return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'Flagged': return 'bg-red-100 text-red-800 border-red-300';
       case 'For Exam': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+      case 'Pending for Ranking': return 'bg-sky-100 text-sky-800 border-sky-300';
       default: return 'bg-blue-100 text-blue-800 border-blue-300';
     }
   };
@@ -916,6 +917,20 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
               className="px-4 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>✓</span> Approve Scholar
+            </button>
+            <button
+              onClick={() => handleSaveStatus('For Exam')}
+              disabled={isSubmitting}
+              className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300 text-xs font-bold cursor-pointer transition-all shadow-2xs"
+            >
+              📝 For Exam
+            </button>
+            <button
+              onClick={() => handleSaveStatus('Pending for Ranking')}
+              disabled={isSubmitting}
+              className="px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-300 text-xs font-bold cursor-pointer transition-all shadow-2xs"
+            >
+              📊 Pending for Ranking
             </button>
             <button
               onClick={() => handleSaveStatus('Under Review')}
@@ -1585,9 +1600,27 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               )}
 
                               {/* Forensic Summary */}
-                              <div className="p-2.5 bg-white rounded-xl border border-[#D9D2C5]/60 text-xs text-[#1C1C1E]">
-                                <span className="text-[10px] font-bold text-[#6C6C70] block uppercase mb-0.5">Forensic Summary:</span>
-                                <p className="text-xs text-[#1C1C1E]">{aiRes.summary}</p>
+                              <div className="p-3 bg-white rounded-xl border border-[#D9D2C5]/70 text-xs text-[#1C1C1E] space-y-1">
+                                <span className="text-[10px] font-bold text-[#1A3C2E] uppercase block tracking-wider">
+                                  🤖 AI Forensic Summary:
+                                </span>
+                                <p className="text-xs text-[#1C1C1E] font-medium leading-relaxed">
+                                  {(() => {
+                                    const isVerifiedDoc = docStatus === 'Verified' || aiRes?.verificationStatus === 'verified';
+                                    const hasFlags = aiRes?.flags && aiRes.flags.length > 0;
+                                    
+                                    if (hasFlags) {
+                                      return `Compliance Anomalies Detected: ${aiRes.flags.map((f: any) => getFlagString(f)).join('; ')}`;
+                                    }
+                                    if (!isVerifiedDoc && aiRes?.rejectionReason) {
+                                      return `Compliance Warning: ${aiRes.rejectionReason}`;
+                                    }
+                                    if (isVerifiedDoc) {
+                                      return 'Verified Authentic — Document matches declared profile credentials with zero compliance anomalies.';
+                                    }
+                                    return aiRes?.summary || 'Document evaluation completed.';
+                                  })()}
+                                </p>
                               </div>
                             </div>
                           );

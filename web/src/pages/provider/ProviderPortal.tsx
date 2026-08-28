@@ -1289,6 +1289,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               status = 'Under Review';
             } else if (dbStatus === 'for_exam' || dbStatus === 'for exam') {
               status = 'For Exam';
+            } else if (dbStatus === 'pending_ranking' || dbStatus === 'pending ranking' || dbStatus === 'for_ranking' || dbStatus === 'for ranking' || (dbStatus === 'pending' && remarksLower.includes('ranking'))) {
+              status = 'Pending for Ranking';
             } else if (dbStatus === 'approved') {
               status = 'Approved';
             } else if (dbStatus === 'rejected') {
@@ -1490,18 +1492,47 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               } else if (app.submitted_documents.documents && Array.isArray(app.submitted_documents.documents)) {
                 rawDocs = app.submitted_documents.documents;
               }
-              docs = rawDocs.map((d: any) => ({
-                id: d.id,
-                name: d.name || d.document_name || d.filename || 'Submitted Document',
-                filename: d.filename || d.name || d.document_name,
-                filesize: d.filesize,
-                document_url: d.document_url || d.url,
-                url: d.document_url || d.url,
-                submitted_at: d.submitted_at || 'Recently',
-                status: d.status || 'Pending',
-                remarks: d.remarks || '',
-                aiVerification: d.aiVerification,
-              }));
+              docs = rawDocs.map((d: any) => {
+                const docName = d.name || d.document_name || d.filename || 'Submitted Document';
+                const mobileScan = app.ai_scan_summary ? app.ai_scan_summary[docName] : undefined;
+                const mobileUnderReview = app.under_review_reasons ? app.under_review_reasons[docName] : undefined;
+
+                const isDocValid = d.status === 'valid' || d.status === 'Verified' || mobileScan?.status === 'valid';
+
+                const remarksText = isDocValid
+                  ? ''
+                  : (d.remarks || d.ai_remarks || d.ai_rejection_reason || d.aiRejectionReason ||
+                     (Array.isArray(mobileUnderReview) ? mobileUnderReview.join('; ') : mobileUnderReview) ||
+                     (mobileScan?.rejection_reason) || '');
+
+                const aiVerif = d.aiVerification || (d.ai_confidence || mobileScan ? {
+                  verificationStatus: isDocValid ? 'verified' : ((d.status === 'flagged' || mobileScan?.status === 'flagged' || mobileUnderReview) ? 'flagged' : 'pending'),
+                  confidenceScore: d.ai_confidence || mobileScan?.confidence || 0.95,
+                  extractedDocType: d.ai_document_detected || mobileScan?.document_detected || docName,
+                  flags: isDocValid ? [] : (d.ai_flags || mobileScan?.flags || (Array.isArray(mobileUnderReview) ? mobileUnderReview : [])),
+                  rejectionReason: isDocValid ? null : (d.ai_rejection_reason || d.aiRejectionReason || remarksText || mobileScan?.rejection_reason || null),
+                  summary: isDocValid
+                    ? 'Verified authentic by IskoAko AI Engine'
+                    : (remarksText || (mobileScan?.flags && mobileScan.flags.length > 0 ? mobileScan.flags.join('; ') : 'Document flagged for review')),
+                  extractedGwa: d.extractedGwa || d.extracted_gpa || app.grade,
+                  extractedGwaScale: d.extractedGwaScale || d.extracted_gpa_scale || app.gpa_scale,
+                  extractedTuitionAmount: d.extractedTuitionAmount || d.extracted_tuition_amount,
+                  provider: 'IskoAko Mobile AI Engine',
+                } : undefined);
+
+                return {
+                  id: d.id,
+                  name: docName,
+                  filename: d.filename || docName,
+                  filesize: d.filesize,
+                  document_url: d.document_url || d.url,
+                  url: d.document_url || d.url,
+                  submitted_at: d.submitted_at || 'Recently',
+                  status: isDocValid ? 'Verified' : (d.status || 'Pending'),
+                  remarks: remarksText,
+                  aiVerification: aiVerif,
+                };
+              });
 
               if (app.submitted_documents.bank_details) {
                 const bd = app.submitted_documents.bank_details;
@@ -1727,6 +1758,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     let dbStatus = 'pending';
     if (nextStatus === 'Under Review') dbStatus = 'under_review';
     else if (nextStatus === 'For Exam') dbStatus = 'for_exam';
+    else if (nextStatus === 'Pending for Ranking' || nextStatus === 'Pending Ranking' || nextStatus === 'Pending') dbStatus = 'pending';
     else if (nextStatus === 'Approved') dbStatus = 'approved';
     else if (nextStatus === 'Rejected') dbStatus = 'rejected';
 
@@ -1795,8 +1827,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       if (currentUserId) {
         updatePayload.reviewed_by = currentUserId;
       }
-      if (remarks !== undefined) {
+      if (remarks !== undefined && remarks !== '') {
         updatePayload.remarks = remarks;
+      } else if (nextStatus === 'Pending for Ranking' || nextStatus === 'Pending Ranking') {
+        updatePayload.remarks = 'Pending for Ranking';
       }
       if (updatedDocs !== undefined) {
         updatePayload.submitted_documents = {
