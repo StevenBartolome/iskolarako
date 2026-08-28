@@ -430,6 +430,7 @@ export interface ProviderAnnouncementParams {
   programTitle?: string;
   location?: string;
   coordinates?: { lat: number; lng: number; address?: string };
+  targetUserId?: string;
 }
 
 export const sendProviderAnnouncement = async (params: ProviderAnnouncementParams): Promise<{ success: boolean; count: number; error?: string }> => {
@@ -445,7 +446,8 @@ export const sendProviderAnnouncement = async (params: ProviderAnnouncementParam
     programId,
     programTitle,
     location,
-    coordinates
+    coordinates,
+    targetUserId,
   } = params;
 
   try {
@@ -461,8 +463,10 @@ export const sendProviderAnnouncement = async (params: ProviderAnnouncementParam
     const broadcastId = `provider-bc-${Date.now()}`;
     const targetUserIds: Set<string> = new Set();
 
-    // 1. If announcement is an Examination Schedule, ONLY send to applicants with status = 'for_exam'
-    if (type === 'Examination Schedule') {
+    // Direct single person targeting
+    if (targetUserId) {
+      targetUserIds.add(targetUserId);
+    } else if (type === 'Examination Schedule') {
       if (programId && programId !== 'all' && programId !== 'all_scholars_and_applicants' && programId !== 'all_for_exam') {
         const { data: cycles } = await supabase
           .from('application_cycles')

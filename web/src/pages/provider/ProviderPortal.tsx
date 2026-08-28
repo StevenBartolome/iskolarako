@@ -785,6 +785,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [newAnnType, setNewAnnType] = useState<AnnType>('General Notice');
   const [newAnnAudience, setNewAnnAudience] = useState('All Scholars');
   const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
+  const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   const fetchBroadcasts = async () => {
@@ -824,6 +825,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     e.preventDefault();
     if (!newAnnTitle.trim() || !newAnnBody.trim() || !providerDetails?.id) return;
 
+    if (selectedProgramId === 'single_person' && !selectedTargetUserId) {
+      showToast('Please select a specific person recipient for this direct announcement!');
+      return;
+    }
+
     // Validate Examination Venue for exam schedules
     const examLocation = (examCoords.address || selectedExamLocation || '').trim();
     if (newAnnType === 'Examination Schedule' && !examLocation) {
@@ -843,14 +849,17 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         message: newAnnBody.trim(),
         type: newAnnType,
         audience: newAnnAudience,
-        programId: selectedProgramId !== 'all' ? selectedProgramId : undefined,
+        programId: selectedProgramId !== 'all' && selectedProgramId !== 'single_person' ? selectedProgramId : undefined,
         programTitle: matchedProg ? matchedProg.title : undefined,
         location: newAnnType === 'Examination Schedule' ? examLocation : undefined,
         coordinates: newAnnType === 'Examination Schedule' ? { lat: examCoords.lat, lng: examCoords.lng, address: examCoords.address } : undefined,
+        targetUserId: selectedProgramId === 'single_person' ? selectedTargetUserId : undefined,
       });
 
       if (res.success) {
-        if (newAnnType === 'Examination Schedule') {
+        if (selectedProgramId === 'single_person') {
+          showToast(`Direct announcement sent to recipient!`);
+        } else if (newAnnType === 'Examination Schedule') {
           if (res.count > 0) {
             showToast(`Exam schedule published & sent to ${res.count} shortlisted "for_exam" candidates!`);
           } else {
@@ -867,6 +876,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         }
         setNewAnnTitle('');
         setNewAnnBody('');
+        setSelectedTargetUserId('');
         await fetchBroadcasts();
         const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
         createAuditLog(
@@ -3601,6 +3611,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             announcements={announcements}
             onDeleteAnnouncement={handleDeleteAnnouncement}
             isBroadcasting={isBroadcasting}
+            applicantsList={applicantsList}
+            scholarsList={scholarsList}
+            selectedTargetUserId={selectedTargetUserId}
+            setSelectedTargetUserId={setSelectedTargetUserId}
           />
         )}
 

@@ -42,6 +42,10 @@ interface ProviderAnnouncementsTabProps {
   announcements: Announcement[];
   onDeleteAnnouncement?: (id: string | number) => void;
   isBroadcasting?: boolean;
+  applicantsList?: any[];
+  scholarsList?: any[];
+  selectedTargetUserId?: string;
+  setSelectedTargetUserId?: (id: string) => void;
 }
 
 export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> = ({
@@ -70,12 +74,55 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
   announcements,
   onDeleteAnnouncement,
   isBroadcasting = false,
+  applicantsList = [],
+  scholarsList = [],
+  selectedTargetUserId = '',
+  setSelectedTargetUserId,
 }) => {
   const [filterType, setFilterType] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const ITEMS_PER_PAGE = 2;
+
+  // Build unique person options (scholars + applicants) for direct individual announcements
+  const personOptions = React.useMemo(() => {
+    const map = new Map<string, { userId: string; name: string; email: string; program: string; role: string; school: string }>();
+
+    (applicantsList || []).forEach((app: any) => {
+      const uId = app.rawApplication?.scholar?.user_id || app.rawApplication?.scholar?.user?.id || app.scholarId;
+      if (!uId) return;
+      const key = String(uId);
+      if (!map.has(key)) {
+        map.set(key, {
+          userId: String(uId),
+          name: app.name || 'Applicant',
+          email: app.email || 'N/A',
+          program: app.program || 'Scholarship Program',
+          role: app.status === 'Approved' ? 'Scholar' : 'Applicant',
+          school: app.school || 'N/A',
+        });
+      }
+    });
+
+    (scholarsList || []).forEach((sch: any) => {
+      const uId = sch.appDetail?.rawApplication?.scholar?.user_id || sch.appDetail?.scholarId;
+      if (!uId) return;
+      const key = String(uId);
+      if (!map.has(key)) {
+        map.set(key, {
+          userId: String(uId),
+          name: sch.scholarName || 'Scholar',
+          email: sch.appDetail?.email || 'N/A',
+          program: sch.programTitle || 'Scholarship Program',
+          role: 'Scholar',
+          school: sch.appDetail?.school || 'N/A',
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [applicantsList, scholarsList]);
 
   // Quick Template helper
   const applyTemplate = (templateType: string) => {
@@ -261,6 +308,10 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   <span className="text-[9.5px] font-extrabold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-md">
                     🎯 for_exam status only
                   </span>
+                ) : selectedProgramId === 'single_person' ? (
+                  <span className="text-[9.5px] font-extrabold text-purple-700 bg-purple-100/80 px-1.5 py-0.5 rounded-md">
+                    👤 Specific Person Notice
+                  </span>
                 ) : selectedProgramId === 'all_scholars_and_applicants' ? (
                   <span className="text-[9.5px] font-extrabold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded-md">
                     👥 Scholars & Applicants
@@ -292,6 +343,7 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   <>
                     <option value="all">🌟 All Programs (Candidates in "for_exam" status)</option>
                     <option value="all_scholars_and_applicants">👥 All (Scholars & Applicants - General)</option>
+                    <option value="single_person">👤 Specific Person (Direct Individual Announcement)</option>
                     {programsList.map(prog => (
                       <option key={prog.id} value={String(prog.id)}>
                         🎓 Program: {prog.title} (for_exam status only)
@@ -302,6 +354,7 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   <>
                     <option value="all_scholars_and_applicants">👥 All (Scholars and Applicants)</option>
                     <option value="all">🎓 All Approved Scholars (Across All Programs)</option>
+                    <option value="single_person">👤 Specific Person (Direct Individual Announcement)</option>
                     {programsList.map(prog => (
                       <option key={prog.id} value={String(prog.id)}>
                         🎓 Program: {prog.title} (Approved Scholars Only)
@@ -310,6 +363,67 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   </>
                 )}
               </select>
+
+              {/* Specific Person Picker */}
+              {selectedProgramId === 'single_person' && (
+                <div className="space-y-2 p-3.5 rounded-2xl border border-purple-300 bg-purple-50/60 animate-fade-in mt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10.5px] font-extrabold text-purple-900 uppercase tracking-wide flex items-center gap-1">
+                      <span>👤 Target Specific Person</span>
+                      <span className="text-red-500 font-black">*</span>
+                    </span>
+                    <span className="text-[9.5px] font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full">
+                      {personOptions.length} Persons Available
+                    </span>
+                  </div>
+
+                  {personOptions.length === 0 ? (
+                    <p className="text-xs text-amber-800 italic bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                      No applicants or scholars with linked user accounts found.
+                    </p>
+                  ) : (
+                    <select
+                      value={selectedTargetUserId || ''}
+                      onChange={(e) => {
+                        const uid = e.target.value;
+                        if (setSelectedTargetUserId) setSelectedTargetUserId(uid);
+                        const matched = personOptions.find(p => p.userId === uid);
+                        if (matched) {
+                          setNewAnnAudience(`Specific Person: ${matched.name} (${matched.role})`);
+                        } else {
+                          setNewAnnAudience('Specific Person');
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-purple-300 text-xs font-semibold bg-white focus:outline-none focus:border-[#2D5941] shadow-xs cursor-pointer"
+                    >
+                      <option value="">-- Choose Specific Person --</option>
+                      {personOptions.map(p => (
+                        <option key={p.userId} value={p.userId}>
+                          {p.role === 'Scholar' ? '🎓' : '📋'} {p.name} — {p.program} ({p.role})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {selectedTargetUserId && (() => {
+                    const selectedPerson = personOptions.find(p => p.userId === selectedTargetUserId);
+                    if (!selectedPerson) return null;
+                    return (
+                      <div className="bg-white p-3 rounded-xl border border-purple-200 text-xs flex items-center gap-3 mt-1 shadow-xs">
+                        <div className="w-8 h-8 rounded-full bg-[#1A3C2E] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                          {selectedPerson.name.split(' ').map((n: string) => n[0]).join('')}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-bold text-[#1C1C1E] block truncate">{selectedPerson.name}</span>
+                          <span className="text-[10.5px] text-[#6C6C70] block truncate">
+                            {selectedPerson.email} • {selectedPerson.school} • <span className="font-bold text-purple-800">{selectedPerson.role}</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* Google Maps Venue Search (Shown when Examination Schedule is selected) */}
