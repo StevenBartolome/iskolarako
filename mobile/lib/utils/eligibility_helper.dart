@@ -75,19 +75,66 @@ class EligibilityHelper {
     return missing;
   }
 
+  // scale_5 lookup table: [gwaValue, midpointPercent]
+  // Source: Philippine Standard GWA table (lower GWA = better grade)
+  static const List<List<double>> _scale5Table = [
+    [1.00, 98.5],
+    [1.25, 95.0],
+    [1.50, 92.0],
+    [1.75, 89.0],
+    [2.00, 86.0],
+    [2.25, 83.0],
+    [2.50, 80.0],
+    [2.75, 77.0],
+    [3.00, 75.0],
+    [5.00, 55.0],
+  ];
+
+  // scale_4 lookup table: [gradePoint, midpointPercent]
+  // Source: NU / DLSU / Ateneo Grade Point System (higher grade point = better)
+  // Sorted ascending for interpolation.
+  static const List<List<double>> _scale4Table = [
+    [0.0, 55.0],
+    [1.0, 62.5],
+    [1.5, 68.5],
+    [2.0, 74.5],
+    [2.5, 80.5],
+    [3.0, 86.5],
+    [3.5, 92.5],
+    [4.0, 98.0],
+  ];
+
+  /// Linearly interpolates a value within a lookup table sorted ascending by key.
+  static double _interpolate(List<List<double>> table, double value) {
+    if (value <= table.first[0]) return table.first[1];
+    if (value >= table.last[0]) return table.last[1];
+    for (int i = 0; i < table.length - 1; i++) {
+      final k0 = table[i][0];
+      final v0 = table[i][1];
+      final k1 = table[i + 1][0];
+      final v1 = table[i + 1][1];
+      if (value >= k0 && value <= k1) {
+        final fraction = (value - k0) / (k1 - k0);
+        return v0 + fraction * (v1 - v0);
+      }
+    }
+    return table.last[1];
+  }
+
   /// Normalises any GPA/grade value to a 0–100 percentage for cross-scale comparison.
+  /// Uses official Philippine grading lookup tables with linear interpolation.
+  /// scale_5: Philippine Standard (1.00 best → 98.5%, 3.00 passing → 75%, 5.00 failing → 55%)
+  /// scale_4: NU/DLSU/Ateneo (4.0 best → 98%, 1.0 passing → 62.5%, 0.0 failing → 55%)
   static double normalizeGpa(double value, String scale) {
+    if (value > 5.0 || scale == 'percentage') {
+      return value.clamp(0.0, 100.0);
+    }
     switch (scale) {
       case 'scale_4':
-        // 4.0 = 100%, 0.0 = 0%
-        return (value / 4.0) * 100.0;
-      case 'percentage':
-        // Already in 0–100
-        return value.clamp(0.0, 100.0);
+        return _interpolate(_scale4Table, value).clamp(0.0, 100.0);
       case 'scale_5':
       default:
-        // 1.0 = 100%, 5.0 = 0%  (inverted scale)
-        return ((5.0 - value) / 4.0) * 100.0;
+        return _interpolate(_scale5Table, value).clamp(0.0, 100.0);
     }
   }
 

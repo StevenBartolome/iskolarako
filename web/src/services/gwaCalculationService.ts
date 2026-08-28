@@ -6,28 +6,78 @@ export interface SubjectGrade {
   units: string | number;
 }
 
+// scale_5 lookup table: [gwaValue, midpointPercent]
+// Source: Philippine Standard GWA table (lower GWA = better grade)
+const SCALE_5_TABLE: [number, number][] = [
+  [1.00, 98.5],
+  [1.25, 95.0],
+  [1.50, 92.0],
+  [1.75, 89.0],
+  [2.00, 86.0],
+  [2.25, 83.0],
+  [2.50, 80.0],
+  [2.75, 77.0],
+  [3.00, 75.0],
+  [5.00, 55.0],
+];
+
+// scale_4 lookup table: [gradePoint, midpointPercent]
+// Source: NU / DLSU / Ateneo Grade Point System (higher grade point = better)
+const SCALE_4_TABLE: [number, number][] = [
+  [4.0, 98.0],
+  [3.5, 92.5],
+  [3.0, 86.5],
+  [2.5, 80.5],
+  [2.0, 74.5],
+  [1.5, 68.5],
+  [1.0, 62.5],
+  [0.0, 55.0],
+];
+
+/** Linearly interpolates within a lookup table sorted ascending by key. */
+function interpolateLookup(table: [number, number][], value: number): number {
+  if (table.length === 0) return 0;
+  if (value <= table[0][0]) return table[0][1];
+  if (value >= table[table.length - 1][0]) return table[table.length - 1][1];
+
+  for (let i = 0; i < table.length - 1; i++) {
+    const [k0, v0] = table[i];
+    const [k1, v1] = table[i + 1];
+    if (value >= k0 && value <= k1) {
+      const fraction = (value - k0) / (k1 - k0);
+      return v0 + fraction * (v1 - v0);
+    }
+  }
+  return table[table.length - 1][1];
+}
+
 /**
- * Normalizes any GWA/GPA score to a standard 0-100 percentage.
- * - scale_5: 1.0 is highest (100%), 5.0 is lowest/failing (0%)
- * - scale_4: 4.0 is highest (100%), 0.0 or 1.0 is lowest/failing (0%)
- * - percentage: already 0-100%
+ * Normalizes any GWA/GPA score to a standard 0-100 percentage
+ * using official Philippine grading lookup tables.
+ *
+ * scale_5: Philippine Standard (1.00 is best → ~98.5%, 3.00 passing → 75%, 5.00 failing → <60%)
+ * scale_4: NU/DLSU/Ateneo system (4.0 is best → ~98%, 1.0 passing → ~62.5%, 0.0 failing → <60%)
+ * percentage: value is already 0–100
  */
 export function normalizeGwaToPercent(gwa: number, scale: GradingScale): number {
   if (isNaN(gwa) || gwa === 0) return 0;
-  
+  if (gwa > 5.0 || scale === 'percentage') {
+    return Math.min(100, Math.max(0, gwa));
+  }
+
   switch (scale) {
-    case 'scale_4':
-      // 4.0 = 100%, 1.0 = 0% (or 0.0 = 0%). Standardizing 1.0-4.0 range:
-      // (val - 1) / (4 - 1) is standard, but simple linear (gwa / 4) * 100 is cleaner.
-      // Let's use (gwa / 4.0) * 100.0, capped at 100.
-      return Math.min(100, Math.max(0, (gwa / 4.0) * 100.0));
-    case 'percentage':
-      return Math.min(100, Math.max(0, gwa));
+    case 'scale_4': {
+      // Table is sorted descending by grade point (4.0 best → 0.0 worst)
+      // Reverse to ascending for interpolation, then interpolate, then reverse direction
+      const ascTable: [number, number][] = [...SCALE_4_TABLE].reverse();
+      return Math.min(100, Math.max(0, interpolateLookup(ascTable, gwa)));
+    }
     case 'scale_5':
-    default:
-      // 1.0 = 100%, 5.0 = 0% (Inverted PH State University system)
-      // Conversion: ((5.0 - gwa) / 4.0) * 100
-      return Math.min(100, Math.max(0, ((5.0 - gwa) / 4.0) * 100.0));
+    default: {
+      // Table is sorted ascending by GWA (1.00 best → 5.00 worst), percent descending
+      // For interpolation: as GWA increases, percent decreases — handled by interpolateLookup
+      return Math.min(100, Math.max(0, interpolateLookup(SCALE_5_TABLE, gwa)));
+    }
   }
 }
 

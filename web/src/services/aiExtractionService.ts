@@ -12,6 +12,7 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
+import { meetsGwaRequirement } from '@/services/gwaCalculationService';
 
 // Configure pdfjs worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -34,6 +35,8 @@ export interface ApplicantVerificationContext {
   yearLevel?: string;
   gwa?: string | number;
   gpaScale?: string;
+  minimumGwa?: string | number;
+  programScale?: string;
   incomeBracket?: string;
   email?: string;
   phone?: string;
@@ -53,9 +56,11 @@ export interface DocVerificationResult {
   extractedName?: string;
   extractedSchool?: string;
   extractedGwa?: string;
+  extractedGwaScale?: string;
   extractedIncome?: string;
   extractedTuitionAmount?: string;
   extractedDocType?: string;
+  rejectionReason?: string;
   verificationStatus: 'verified' | 'flagged' | 'rejected' | 'manual_review_required';
   confidenceScore: number;
   flags: string[];
@@ -807,6 +812,20 @@ export async function verifyDocumentAuthenticity({
   }
   if (rawResult.tampering_detected) {
     flags.push('Potential digital forgery or visual alteration detected on document layout.');
+  }
+
+  const minGwaRaw = applicantContext.minimumGwa;
+  if (minGwaRaw && (rawResult.extracted_gwa || (rawResult.subject_grades && rawResult.subject_grades.length > 0))) {
+    const extractedGwaVal = parseFloat(String(rawResult.extracted_gwa || '').replace(/[^0-9.]/g, ''));
+    const minGwaVal = parseFloat(String(minGwaRaw).replace(/[^0-9.]/g, ''));
+    if (!isNaN(extractedGwaVal) && !isNaN(minGwaVal) && minGwaVal > 0) {
+      const scholarScale = (rawResult.detected_grading_scale && rawResult.detected_grading_scale !== 'unknown' ? rawResult.detected_grading_scale : applicantContext.gpaScale) as any || 'scale_5';
+      const programScale = (applicantContext.programScale || scholarScale) as any;
+      const isQualified = meetsGwaRequirement(extractedGwaVal, scholarScale, minGwaVal, programScale);
+      if (!isQualified) {
+        flags.push(`Below Minimum Grade: Extracted GWA ${rawResult.extracted_gwa} does not meet program required minimum of ${minGwaRaw}`);
+      }
+    }
   }
 
   let finalStatus: 'verified' | 'flagged' | 'rejected' | 'manual_review_required' =

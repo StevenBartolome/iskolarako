@@ -565,8 +565,9 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         new Set((appsData || []).map((a: any) => a.scholar_id).filter(Boolean))
       );
 
-      // 4. Fetch payment accounts for eligible scholars (ordered by most recently updated)
+      // 4. Fetch payment accounts & extracted tuition amounts for eligible scholars
       let paymentAccountsMap: Record<string, any> = {};
+      let scholarTuitionMap: Record<string, number> = {};
       if (scholarIds.length > 0) {
         const { data: pAccounts } = await supabase
           .from('scholar_payment_accounts')
@@ -581,6 +582,23 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             }
             if (!paymentAccountsMap[acc.scholar_id]) {
               paymentAccountsMap[acc.scholar_id] = acc;
+            }
+          });
+        }
+
+        const { data: sDocs } = await supabase
+          .from('scholar_documents')
+          .select('scholar_id, ai_extracted_data, extracted_tuition_amount')
+          .in('scholar_id', scholarIds);
+
+        if (sDocs) {
+          sDocs.forEach((sd: any) => {
+            const amtVal = sd.extracted_tuition_amount || sd.ai_extracted_data?.extractedTuitionAmount || sd.ai_extracted_data?.extracted_tuition_amount;
+            if (amtVal) {
+              const parsed = parseFloat(String(amtVal).replace(/[^0-9.]/g, ''));
+              if (!isNaN(parsed) && parsed > 0) {
+                scholarTuitionMap[sd.scholar_id] = parsed;
+              }
             }
           });
         }
@@ -668,7 +686,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                 : [];
               for (const doc of docsList) {
                 const aiVerify = doc.aiVerification || doc.ai_verification;
-                const amtVal = aiVerify?.extractedTuitionAmount || aiVerify?.ai_extracted_data?.extractedTuitionAmount || aiVerify?.extracted_tuition_amount;
+                const amtVal = aiVerify?.extractedTuitionAmount || aiVerify?.ai_extracted_data?.extractedTuitionAmount || aiVerify?.extracted_tuition_amount || doc.extractedTuitionAmount || doc.extracted_tuition_amount;
                 if (amtVal) {
                   const parsedAmt = parseFloat(String(amtVal).replace(/[^0-9.]/g, ''));
                   if (!isNaN(parsedAmt) && parsedAmt > 0) {
@@ -677,6 +695,11 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                   }
                 }
               }
+
+              if (extractedTuition <= 0 && app.scholar_id && scholarTuitionMap[app.scholar_id]) {
+                extractedTuition = scholarTuitionMap[app.scholar_id];
+              }
+
               tuitionAmt = extractedTuition > 0 ? extractedTuition : Number(progConfig.tuition_max_amount || 0);
             } else {
               tuitionAmt = Number(progConfig.tuition_max_amount || 0);

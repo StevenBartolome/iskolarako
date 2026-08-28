@@ -292,21 +292,56 @@ Carefully read and analyze the document image/PDF to perform four critical check
      * Set "confidence_score" between 0.50 and 0.65 (Flagged for Provider Review) so the application requires manual provider inspection.
 
 4. ACADEMIC GRADE / MINIMUM GWA CHECK:
-   - If this document contains academic grades, GWA, GPA, or General Average (e.g. Transcript of Records (TOR), Certificate of Grades, True Copy of Grades (TCG), Report Card, Form 138, Grade Slip, etc.):
-   - Locate and extract the overall GWA / GPA / General Average printed on the document.
-   - Calculate the student's equivalent grade percentage (0-100%):
-     * scale_5 (1.00 is top grade, 3.00 passing, 5.00 failing): Grade % = ((5.0 - GWA) / 4.0) * 100.0. (e.g. GWA 1.25 = 93.75%, 1.61 = 84.8%, 1.75 = 81.3%, 2.25 = 68.8%).
-     * scale_4 (4.00 is top grade, 0.0 failing): Grade % = (GPA / 4.0) * 100.0.
-     * percentage (e.g. 85, 90): Grade % = Grade.
-   - ALWAYS ADD A GRADE NOTE TO THE "flags" ARRAY:
-     Add a note summarizing the grade: "Extracted GWA: [extracted_grade] (Equivalent: [calculated_percentage]%)".
-   - CRITICAL GRADE REJECTION RULE:
-     If a Minimum GWA ($minimumGwa) is specified above and the student's Extracted Grade Percentage is LOWER than the required Minimum GWA Percentage (e.g. student GWA 2.25 [68.8%] vs required 1.75 [81.3%] on scale_5, or student grade 82% vs required 85%):
-     * YOU MUST REJECT THIS DOCUMENT SUBMISSION IMMEDIATELY.
-     * Set "is_valid_type": false
-     * Set "confidence_score": 0.25 to 0.35 (below 0.40 rejection threshold)
-     * Add to "flags": "Extracted GWA [extracted_grade] ([calculated_percentage]%) is below required minimum $minimumGwa"
-     * Set "rejection_reason": "Extracted grade [extracted_grade] (Equivalent: [calculated_percentage]%) does not meet the program's minimum required grade of $minimumGwa."
+    - If this document contains academic grades, GWA, GPA, or General Average (e.g. Transcript of Records (TOR), Certificate of Grades, True Copy of Grades (TCG), Report Card, Form 138, Grade Slip, etc.):
+    - Locate and extract the overall GWA / GPA / General Average printed on the document.
+
+    STEP A — DETERMINE EQUIVALENT PERCENTAGE (compute ONCE, store as [equiv_pct], use everywhere below):
+    Use ONLY the official lookup table below. DO NOT use a formula. DO NOT re-derive at any other step.
+
+    scale_5 Lookup Table (Philippine Standard — LOWER GWA = BETTER grade):
+    | GWA  | Equivalent % range | Use midpoint |
+    |------|--------------------|--------------|
+    | 1.00 | 97 – 100%          | 98.5%        |
+    | 1.25 | 94 – 96%           | 95.0%        |
+    | 1.50 | 91 – 93%           | 92.0%        |
+    | 1.75 | 88 – 90%           | 89.0%        |
+    | 2.00 | 85 – 87%           | 86.0%        |
+    | 2.25 | 82 – 84%           | 83.0%        |
+    | 2.50 | 79 – 81%           | 80.0%        |
+    | 2.75 | 76 – 78%           | 77.0%        |
+    | 3.00 | 75%                | 75.0%        |
+    | 5.00 | < 60%              | 55.0%        |
+
+    For GWA values BETWEEN table rows, interpolate linearly between the two bounding rows.
+    Example: GWA 1.61 is between 1.50 (92.0%) and 1.75 (89.0%).
+      fraction = (1.61 - 1.50) / (1.75 - 1.50) = 0.44
+      [equiv_pct] = 92.0% - (0.44 × (92.0% - 89.0%)) = 92.0% - 1.32% ≈ 90.7%
+
+    scale_4 Lookup Table (NU / DLSU / Ateneo system — HIGHER grade point = BETTER):
+    | Grade Point | Equivalent % range | Use midpoint |
+    |-------------|--------------------|--------------|
+    | 4.0         | 96 – 100%          | 98.0%        |
+    | 3.5         | 90 – 95%           | 92.5%        |
+    | 3.0         | 84 – 89%           | 86.5%        |
+    | 2.5         | 78 – 83%           | 80.5%        |
+    | 2.0         | 72 – 77%           | 74.5%        |
+    | 1.5         | 66 – 71%           | 68.5%        |
+    | 1.0         | 60 – 65%           | 62.5%        |
+    | 0.0 / R / F | < 60%              | 55.0%        |
+
+    For grade points BETWEEN table rows, interpolate linearly between the two bounding rows.
+
+    percentage system: [equiv_pct] = the grade value itself (e.g. 85 → 85.0%).
+
+    STEP B — GRADE REJECTION CHECK:
+    If a Minimum GWA ($minimumGwa) is specified above and [equiv_pct] from Step A is LOWER than
+    the equivalent percentage of the minimum required GWA (also looked up from the same table):
+      * YOU MUST REJECT THIS DOCUMENT SUBMISSION IMMEDIATELY.
+      * Set "is_valid_type": false
+      * Set "confidence_score": 0.25 to 0.35
+      * Add to "flags": "Extracted GWA [extracted_grade] ([equiv_pct]%) is below required minimum $minimumGwa"
+      * Set "rejection_reason": "Extracted GWA [extracted_grade] ([equiv_pct]%) does not meet the minimum required grade of $minimumGwa for this scholarship program."
+      CRITICAL: Use the SAME [equiv_pct] from Step A in the flag and the rejection_reason. DO NOT compute a different percentage here.
 
 Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
 {

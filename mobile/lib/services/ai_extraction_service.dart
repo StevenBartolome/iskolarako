@@ -650,24 +650,24 @@ If the document truly contains no banking information at all, return exactly:
   }
 
   static const String _academicPrompt = '''
-You are a specialized Philippine academic document auditor and GPA/GWA data extraction assistant.
-Extract details from the provided Transcript of Records (TOR), Report Card, or True Copy of Grades.
+You are a specialized Philippine academic document auditor, tuition fee extraction assistant, and OCR parser.
+Extract details from the provided Transcript of Records (TOR), Report Card, True Copy of Grades, Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, or Billing Statement.
+
 Your tasks are:
-1. Extract the overall GWA / GPA / General Average of the student (typically a single overall summary grade).
-2. Determine the grading scale used by the school:
-   - "scale_5": if 1.0 is the highest grade and 5.0 is failing (standard PH State University/UP system).
-   - "scale_4": if 4.0 is the highest grade and 1.0 or 0.0 is failing (standard US/Ateneo/DLSU system).
-   - "percentage": if the grades are based on 100 (e.g. 85, 92, 95).
+1. Extract the overall GWA / GPA / General Average of the student if printed on the document (return null if no grade is printed on this document).
+2. Determine the grading scale used by the school ("scale_5", "scale_4", or "percentage").
 3. Identify the school name if visible.
+4. If this document is a Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, Billing Statement, or Enrollment Receipt, extract the total tuition amount or total matriculation fees (look for labels like "Total Assessment", "Total Tuition", "Gross Assessment", "Total Fees", "Net Payable", "Amount Due", "Amount Payable", "Tuition Fee", "Total Assessment Amount", "Assessment Balance").
+
 Return ONLY valid, raw JSON without markdown backticks or commentary in this exact format:
 {
   "gpa": 1.75,
   "gpa_scale": "scale_5",
   "school_name": "University of the Philippines",
+  "extracted_tuition_amount": 24500.00,
   "confidence_score": 0.95
 }
-If no grade or scale is found, return exactly:
-{"gpa":null,"gpa_scale":"scale_5","school_name":"","confidence_score":0}
+If a field is not present on the document, return null for that field. If neither grade nor tuition amount is found, return confidence_score of 0.3.
 ''';
 
   static Future<ExtractedAcademicInfo?> extractAcademicDetails({
@@ -883,12 +883,16 @@ If no grade or scale is found, return exactly:
           ? expectedScale
           : (rawScaleFromAi ?? 'scale_5');
       final school = data['school_name']?.toString() ?? '';
+      final tuitionVal = double.tryParse(
+        data['extracted_tuition_amount']?.toString().replaceAll(RegExp(r'[^0-9.]'), '') ?? ''
+      );
       final conf = double.tryParse(data['confidence_score']?.toString() ?? '0.95') ?? 0.95;
 
       return ExtractedAcademicInfo(
         gpa: gpaVal,
         gpaScale: scale,
         schoolName: school,
+        extractedTuitionAmount: tuitionVal,
         confidenceScore: conf,
         aiModelUsed: modelName,
       );
@@ -903,6 +907,7 @@ class ExtractedAcademicInfo {
   final double? gpa;
   final String? gpaScale;
   final String? schoolName;
+  final double? extractedTuitionAmount;
   final double confidenceScore;
   final String aiModelUsed;
 
@@ -910,6 +915,7 @@ class ExtractedAcademicInfo {
     required this.gpa,
     required this.gpaScale,
     this.schoolName,
+    this.extractedTuitionAmount,
     this.confidenceScore = 0.95,
     this.aiModelUsed = 'AI OCR',
   });

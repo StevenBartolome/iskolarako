@@ -375,13 +375,39 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
         const aiFlags = isAlreadyApprovedByProvider ? [] : (d.ai_flags || d.aiFlags || (d as any).flags || docSummary?.flags || (Array.isArray(docUnderReviewReason) ? docUnderReviewReason : docUnderReviewReason ? [String(docUnderReviewReason)] : []));
         const aiConfidence = d.ai_confidence || d.aiConfidence || docSummary?.confidence;
-        const extractedGpa = d.extracted_gpa || d.extractedGpa || (application.grade ? String(application.grade) : '');
+        const extractedGpa = d.extracted_gpa || d.extractedGpa || d.aiVerification?.extractedGwa || (application.grade ? String(application.grade) : '');
+        const extractedGpaScale = d.extracted_gpa_scale || d.extractedGpaScale || d.aiVerification?.extractedGwaScale || '';
+        const extractedTuition = d.extracted_tuition_amount || d.extractedTuitionAmount || d.aiVerification?.extractedTuitionAmount || '';
+
+        const minGwaRaw = application?.rawApplication?.cycle?.program?.minimum_gwa || 
+                          application?.rawApplication?.cycle?.program?.minimumGwa ||
+                          application?.rawApplication?.minimum_gwa ||
+                          application?.minimumGwa;
+
+        let isBelowMinGrade = false;
+        if (minGwaRaw && extractedGpa && !isAlreadyApprovedByProvider) {
+          const extractedGwaVal = parseFloat(String(extractedGpa).replace(/[^0-9.]/g, ''));
+          const minGwaVal = parseFloat(String(minGwaRaw).replace(/[^0-9.]/g, ''));
+          if (!isNaN(extractedGwaVal) && !isNaN(minGwaVal) && minGwaVal > 0) {
+            const scholarScale = (extractedGpaScale || d.aiVerification?.extractedGwaScale || application?.rawApplication?.scholar?.gpa_scale || 'scale_5') as any;
+            const programScale = (application?.rawApplication?.cycle?.program?.gpa_scale || scholarScale) as any;
+            const isQualified = meetsGwaRequirement(extractedGwaVal, scholarScale, minGwaVal, programScale);
+            if (!isQualified) {
+              isBelowMinGrade = true;
+              const gradeFlag = `Below Minimum Grade: Extracted GWA ${extractedGpa} does not meet program required minimum of ${minGwaRaw}`;
+              if (!aiFlags.includes(gradeFlag)) {
+                aiFlags.push(gradeFlag);
+              }
+            }
+          }
+        }
 
         const isExplicitlyFlaggedOrRejected = 
           !isAlreadyApprovedByProvider && (
             statusLower === 'flagged' || 
             statusLower === 'rejected' || 
             aiFlags.length > 0 || 
+            isBelowMinGrade ||
             Boolean(d.ai_rejection_reason) || 
             Boolean(docSummary?.rejection_reason) ||
             Boolean(docUnderReviewReason)
@@ -394,21 +420,24 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             verification_status: 'verified',
             remarks: d.remarks || 'Approved by provider',
             aiVerification: {
+              ...(d.aiVerification || {}),
               verificationStatus: 'verified',
-              confidenceScore: typeof aiConfidence === 'number' ? aiConfidence : 0.98,
-              extractedDocType: docSummary?.document_detected || d.name,
-              extractedGwa: extractedGpa,
-              extractedName: application.name || '',
-              extractedSchool: application.school || '',
+              confidenceScore: typeof aiConfidence === 'number' ? aiConfidence : (d.aiVerification?.confidenceScore ?? 0.98),
+              extractedDocType: d.aiVerification?.extractedDocType || docSummary?.document_detected || d.name,
+              extractedGwa: d.aiVerification?.extractedGwa || extractedGpa,
+              extractedGwaScale: d.aiVerification?.extractedGwaScale || extractedGpaScale,
+              extractedTuitionAmount: d.aiVerification?.extractedTuitionAmount || extractedTuition,
+              extractedName: d.aiVerification?.extractedName || application.name || '',
+              extractedSchool: d.aiVerification?.extractedSchool || application.school || '',
               flags: [],
               rejectionReason: '',
-              summary: 'Verified & Approved by Provider',
+              summary: d.aiVerification?.summary || 'Verified & Approved by Provider',
               hasOfficialSealOrSignature: true,
               tamperingDetected: false,
               crossCheckResults: { nameMatch: true, schoolMatch: true, gwaMatch: true },
-              aiModelUsed: 'IskoAko AI Forensic Engine',
-              sha256Hash: '',
-              provider: 'IskoAko Mobile AI Engine',
+              aiModelUsed: d.aiVerification?.aiModelUsed || 'IskoAko AI Forensic Engine',
+              sha256Hash: d.aiVerification?.sha256Hash || '',
+              provider: d.aiVerification?.provider || 'IskoAko Mobile AI Engine',
             } as any
           };
         }
@@ -425,21 +454,24 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             status: isVerified ? 'Verified' : isFlagged ? 'Flagged' : 'Pending',
             remarks: d.remarks || rejectionMsg || '',
             aiVerification: {
-              verificationStatus: isVerified ? 'verified' : 'flagged',
-              confidenceScore: confidence,
-              extractedDocType: docSummary?.document_detected || d.name,
-              extractedGwa: extractedGpa,
-              extractedName: application.name || '',
-              extractedSchool: application.school || '',
-              flags: aiFlags,
-              rejectionReason: rejectionMsg,
-              summary: rejectionMsg ? `AI Scan Rejection: ${rejectionMsg}` : `Mobile Scan: ${(confidence * 100).toFixed(0)}% confidence`,
-              hasOfficialSealOrSignature: !isFlagged,
-              tamperingDetected: isFlagged,
-              crossCheckResults: { nameMatch: true, schoolMatch: true, gwaMatch: !isFlagged },
-              aiModelUsed: 'IskoAko AI Forensic Engine',
-              sha256Hash: '',
-              provider: 'IskoAko Mobile AI Engine',
+              ...(d.aiVerification || {}),
+              verificationStatus: d.aiVerification?.verificationStatus || (isVerified ? 'verified' : 'flagged'),
+              confidenceScore: d.aiVerification?.confidenceScore ?? confidence,
+              extractedDocType: d.aiVerification?.extractedDocType || docSummary?.document_detected || d.name,
+              extractedGwa: d.aiVerification?.extractedGwa || extractedGpa,
+              extractedGwaScale: d.aiVerification?.extractedGwaScale || extractedGpaScale,
+              extractedTuitionAmount: d.aiVerification?.extractedTuitionAmount || extractedTuition,
+              extractedName: d.aiVerification?.extractedName || application.name || '',
+              extractedSchool: d.aiVerification?.extractedSchool || application.school || '',
+              flags: (d.aiVerification?.flags && d.aiVerification.flags.length > 0) ? d.aiVerification.flags : aiFlags,
+              rejectionReason: d.aiVerification?.rejectionReason || rejectionMsg,
+              summary: d.aiVerification?.summary || (rejectionMsg ? `AI Scan Rejection: ${rejectionMsg}` : `Mobile Scan: ${(confidence * 100).toFixed(0)}% confidence`),
+              hasOfficialSealOrSignature: d.aiVerification?.hasOfficialSealOrSignature ?? !isFlagged,
+              tamperingDetected: d.aiVerification?.tamperingDetected ?? isFlagged,
+              crossCheckResults: d.aiVerification?.crossCheckResults || { nameMatch: true, schoolMatch: true, gwaMatch: !isFlagged },
+              aiModelUsed: d.aiVerification?.aiModelUsed || 'IskoAko AI Forensic Engine',
+              sha256Hash: d.aiVerification?.sha256Hash || '',
+              provider: d.aiVerification?.provider || 'IskoAko Mobile AI Engine',
             } as any
           };
         }
@@ -471,6 +503,12 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
   };
 
   const getApplicantContext = (): ApplicantVerificationContext => {
+    const minGwaRaw = application?.rawApplication?.cycle?.program?.minimum_gwa || 
+                      application?.rawApplication?.cycle?.program?.minimumGwa ||
+                      application?.rawApplication?.minimum_gwa ||
+                      application?.minimumGwa;
+    const progScale = application?.rawApplication?.cycle?.program?.gpa_scale || 
+                      application?.rawApplication?.scholar?.gpa_scale || 'scale_5';
     return {
       scholarName: application?.name || '',
       school: application?.school || '',
@@ -481,6 +519,8 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
       email: application?.email || '',
       phone: application?.phone || '',
       programTitle: application?.program || '',
+      minimumGwa: minGwaRaw || '',
+      programScale: progScale,
     };
   };
 

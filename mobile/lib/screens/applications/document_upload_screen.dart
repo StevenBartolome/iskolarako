@@ -511,11 +511,18 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             docNameLower.contains('grade') ||
             docNameLower.contains('report card') ||
             docNameLower.contains('card') ||
+            docNameLower.contains('cor') ||
+            docNameLower.contains('enrollment') ||
+            docNameLower.contains('registration') ||
+            docNameLower.contains('assessment') ||
+            docNameLower.contains('billing') ||
+            docNameLower.contains('soa') ||
             docNameLower.contains('tcg');
 
         final extraGradeFlags = <String>[];
         double? tempExtractedGpa;
         String? tempExtractedScale;
+        double? tempExtractedTuition;
 
         if (isAcademicDoc) {
           try {
@@ -532,68 +539,76 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               expectedScale: scholarGpaScale,
             );
 
-            if (extracted != null && extracted.gpa != null) {
-              tempExtractedGpa = extracted.gpa!;
-
-              // PRIORITIZE scale from scholars table if present!
-              if (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown') {
-                tempExtractedScale = scholarScaleRaw;
-              } else {
-                tempExtractedScale = extracted.gpaScale ?? scholarGpaScale;
+            if (extracted != null) {
+              if (extracted.extractedTuitionAmount != null && extracted.extractedTuitionAmount! > 0) {
+                tempExtractedTuition = extracted.extractedTuitionAmount;
+                extraGradeFlags.add('Extracted Matriculation Fee: ₱${tempExtractedTuition!.toStringAsFixed(2)}');
               }
 
-              final scholarPercent = EligibilityHelper.normalizeGpa(tempExtractedGpa, tempExtractedScale);
+              if (extracted.gpa != null) {
+                tempExtractedGpa = extracted.gpa!;
 
-              debugPrint('[Eligibility Check] Scholar GWA: $tempExtractedGpa, Scale: $tempExtractedScale, Equivalent Percent: ${scholarPercent.toStringAsFixed(1)}%');
+                // PRIORITIZE scale from scholars table if present!
+                if (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown') {
+                  tempExtractedScale = scholarScaleRaw;
+                } else {
+                  tempExtractedScale = extracted.gpaScale ?? scholarGpaScale;
+                }
 
-              extraGradeFlags.add(
-                'Extracted GWA: $tempExtractedGpa (${tempExtractedScale == "percentage" ? "$tempExtractedGpa%" : tempExtractedScale == "scale_4" ? "$tempExtractedGpa on 4.0 scale" : "$tempExtractedGpa on 5.0 scale"}, equivalent: ${scholarPercent.toStringAsFixed(1)}%)',
-              );
+                final scholarPercent = EligibilityHelper.normalizeGpa(tempExtractedGpa, tempExtractedScale);
 
-              if (minimumGwa != null) {
-                final programScale = gradingSystem;
-                final requiredPercent = EligibilityHelper.normalizeGpa(minimumGwa, programScale);
+                debugPrint('[Eligibility Check] Scholar GWA: $tempExtractedGpa, Scale: $tempExtractedScale, Equivalent Percent: ${scholarPercent.toStringAsFixed(1)}%');
 
-                debugPrint('[Eligibility Check] Scholar GWA: ${scholarPercent.toStringAsFixed(1)}%, Required: ${requiredPercent.toStringAsFixed(1)}%');
+                if (minimumGwa != null) {
+                  final programScaleRaw = _program?['gpa_scale']?.toString() ?? _program?['grading_system']?.toString() ?? '';
+                  final programScale = (minimumGwa > 5.0)
+                      ? 'percentage'
+                      : (programScaleRaw.isNotEmpty && programScaleRaw != 'null' ? programScaleRaw : scholarGpaScale);
 
-                if (scholarPercent < requiredPercent - 0.001) {
-                  // REJECT IMMEDIATELY (below program grade requirement)
-                  final newAttemptCount = attemptStatus.attemptCount + 1;
-                  final reason = 'Extracted GWA $tempExtractedGpa (${scholarPercent.toStringAsFixed(1)}%) does not meet the minimum required grade of ${minimumGwa.toStringAsFixed(0)}% for this scholarship program.';
+                  final requiredPercent = EligibilityHelper.normalizeGpa(minimumGwa, programScale);
 
-                  await DocumentValidationService.logRejection(
-                    scholarId: scholarId,
-                    cycleId: cycleId,
-                    docSlotName: doc.name,
-                    filename: fileName,
-                    confidenceScore: 0.30,
-                    rejectionReason: reason,
-                    attemptNumber: newAttemptCount,
-                  );
+                  debugPrint('[Eligibility Check] Scholar GWA: ${scholarPercent.toStringAsFixed(1)}%, Required: ${requiredPercent.toStringAsFixed(1)}% (min: $minimumGwa, scale: $programScale)');
 
-                  if (mounted) {
-                    setState(() {
-                      final idx = _docs.indexWhere((d) => d.name == doc.name);
-                      if (idx != -1) {
-                        _docs[idx] = doc.copyWith(
-                          status: _DocStatus.rejected,
-                          filename: fileName,
-                          filesize: sizeStr,
-                          fileUrl: uploadedUrl,
-                          fileBytes: bytes,
-                          aiConfidence: 0.30,
-                          aiRejectionReason: reason,
-                          aiDocumentDetected: 'Grade Document',
-                          aiFlags: [...extraGradeFlags, ...validationRes.flags],
-                          extractedGpa: tempExtractedGpa,
-                          extractedGpaScale: tempExtractedScale,
-                          attemptCount: newAttemptCount,
-                        );
-                      }
-                    });
-                    _showRejectionDialog(doc.name, reason, newAttemptCount);
+                  if (scholarPercent < requiredPercent - 0.001) {
+                    // REJECT IMMEDIATELY (below program grade requirement)
+                    final newAttemptCount = attemptStatus.attemptCount + 1;
+                    final reason = 'Extracted GWA $tempExtractedGpa (${scholarPercent.toStringAsFixed(1)}%) does not meet the minimum required grade of ${minimumGwa > 5.0 ? "${minimumGwa.toStringAsFixed(0)}%" : minimumGwa.toStringAsFixed(2)} for this scholarship program.';
+
+                    await DocumentValidationService.logRejection(
+                      scholarId: scholarId,
+                      cycleId: cycleId,
+                      docSlotName: doc.name,
+                      filename: fileName,
+                      confidenceScore: 0.30,
+                      rejectionReason: reason,
+                      attemptNumber: newAttemptCount,
+                    );
+
+                    if (mounted) {
+                      setState(() {
+                        final idx = _docs.indexWhere((d) => d.name == doc.name);
+                        if (idx != -1) {
+                          _docs[idx] = doc.copyWith(
+                            status: _DocStatus.rejected,
+                            filename: fileName,
+                            filesize: sizeStr,
+                            fileUrl: uploadedUrl,
+                            fileBytes: bytes,
+                            aiConfidence: 0.30,
+                            aiRejectionReason: reason,
+                            aiDocumentDetected: 'Grade Document',
+                            aiFlags: [...extraGradeFlags, ...validationRes.flags],
+                            extractedGpa: tempExtractedGpa,
+                            extractedGpaScale: tempExtractedScale,
+                            extractedTuitionAmount: tempExtractedTuition,
+                            attemptCount: newAttemptCount,
+                          );
+                        }
+                      });
+                      _showRejectionDialog(doc.name, reason, newAttemptCount);
+                    }
+                    return; // Stop execution, document is rejected due to below minimum grade!
                   }
-                  return; // Stop execution, document is rejected due to below minimum grade!
                 }
               }
             }
@@ -624,6 +639,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                 aiFlags: combinedFlags,
                 extractedGpa: tempExtractedGpa,
                 extractedGpaScale: tempExtractedScale,
+                extractedTuitionAmount: tempExtractedTuition,
               );
             }
           });
@@ -650,6 +666,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                 aiFlags: combinedFlags,
                 extractedGpa: tempExtractedGpa,
                 extractedGpaScale: tempExtractedScale,
+                extractedTuitionAmount: tempExtractedTuition,
               );
             }
           });
@@ -950,8 +967,6 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                               extractedScaleVal = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
                                                   ? scholarScaleRaw
                                                   : (ex.gpaScale ?? scholarGpaScale);
-                                              final percent = EligibilityHelper.normalizeGpa(extractedGpaVal, extractedScaleVal);
-                                              modalFlags.add('Extracted GWA: $extractedGpaVal (${extractedScaleVal == "percentage" ? "$extractedGpaVal%" : extractedScaleVal == "scale_4" ? "$extractedGpaVal on 4.0 scale" : "$extractedGpaVal on 5.0 scale"}, equivalent: ${percent.toStringAsFixed(1)}%)');
                                             }
                                           }
 
@@ -1231,6 +1246,16 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                 'ai_confidence': d.aiConfidence,
                 'ai_flags': d.aiFlags,
                 'is_disputed': d.isDisputeSubmitted,
+                'extractedGwa': d.extractedGpa,
+                'extractedGwaScale': d.extractedGpaScale,
+                'extractedTuitionAmount': d.extractedTuitionAmount,
+                'extracted_tuition_amount': d.extractedTuitionAmount,
+                'aiVerification': {
+                  'extractedGwa': d.extractedGpa,
+                  'extractedGwaScale': d.extractedGpaScale,
+                  'extractedTuitionAmount': d.extractedTuitionAmount,
+                  'extracted_tuition_amount': d.extractedTuitionAmount,
+                },
               })
           .toList();
 
@@ -2072,6 +2097,7 @@ class _DocItem {
   final List<String>? aiFlags;
   final double? extractedGpa;
   final String? extractedGpaScale;
+  final double? extractedTuitionAmount;
   final int attemptCount;
   final bool isDisputeSubmitted;
   final String? disputeNote;
@@ -2091,6 +2117,7 @@ class _DocItem {
     this.aiFlags,
     this.extractedGpa,
     this.extractedGpaScale,
+    this.extractedTuitionAmount,
     this.attemptCount = 0,
     this.isDisputeSubmitted = false,
     this.disputeNote,
@@ -2111,6 +2138,7 @@ class _DocItem {
     List<String>? aiFlags,
     double? extractedGpa,
     String? extractedGpaScale,
+    double? extractedTuitionAmount,
     int? attemptCount,
     bool? isDisputeSubmitted,
     String? disputeNote,
@@ -2130,6 +2158,7 @@ class _DocItem {
       aiFlags: aiFlags ?? this.aiFlags,
       extractedGpa: extractedGpa ?? this.extractedGpa,
       extractedGpaScale: extractedGpaScale ?? this.extractedGpaScale,
+      extractedTuitionAmount: extractedTuitionAmount ?? this.extractedTuitionAmount,
       attemptCount: attemptCount ?? this.attemptCount,
       isDisputeSubmitted: isDisputeSubmitted ?? this.isDisputeSubmitted,
       disputeNote: disputeNote ?? this.disputeNote,

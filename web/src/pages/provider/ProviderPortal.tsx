@@ -1269,20 +1269,24 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
             const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
 
-            const dbStatus = (app.status || 'pending').toLowerCase();
+            const dbStatus = (app.status || 'pending').toLowerCase().trim();
             const remarksLower = (app.remarks || '').toLowerCase();
             let status: ApplicantStatus = 'Pending';
 
             if (remarksLower.includes('waitlist') && dbStatus !== 'approved' && dbStatus !== 'rejected') {
               status = 'Waitlisted';
-            } else if (dbStatus === 'under_review') {
+            } else if (dbStatus === 'under_review' || dbStatus === 'under review') {
               status = 'Under Review';
-            } else if (dbStatus === 'for_exam') {
+            } else if (dbStatus === 'for_exam' || dbStatus === 'for exam') {
               status = 'For Exam';
             } else if (dbStatus === 'approved') {
               status = 'Approved';
             } else if (dbStatus === 'rejected') {
               status = 'Rejected';
+            } else if (dbStatus === 'appealed' || dbStatus === 'disputed') {
+              status = 'Appealed';
+            } else {
+              status = 'Pending';
             }
 
             const createdDate = app.created_at ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently';
@@ -1406,10 +1410,11 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             };
           });
 
-          // Deduplicate/merge applicant applications by scholar + program
+          // Preserve applications per scholar per intake cycle
           const applicantMap = new Map<string, ApplicationDetail>();
           for (const app of mappedApplicants) {
-            const key = `${app.scholarId || app.name}_${app.program}`;
+            const cycleKey = app.rawApplication?.cycle_id || app.cycle || app.program;
+            const key = `${app.scholarId || app.name}_${app.program}_${cycleKey}`;
             if (!applicantMap.has(key)) {
               const isRenewal = app.cycle_type === 'renewal' || (app.cycle || '').toLowerCase().includes('renewal') || (app.cycle || '').toLowerCase().includes('2nd sem');
               if (isRenewal) {
@@ -1430,7 +1435,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               const existingDate = existing.rawApplication?.created_at ? new Date(existing.rawApplication.created_at) : new Date(0);
               const currentDate = app.rawApplication?.created_at ? new Date(app.rawApplication.created_at) : new Date(0);
               
-              if ((currentIsRenewal && !existingIsRenewal) || currentDate > existingDate) {
+              if ((currentIsRenewal && !existingIsRenewal) || currentDate >= existingDate) {
                 app.isContinuingScholar = true;
                 applicantMap.set(key, app);
               } else {
@@ -2701,8 +2706,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       matchesStatus = !isRenewal && app.status !== 'Approved' && app.status !== 'Rejected';
     } else if (statusFilter === 'All') {
       matchesStatus = app.status !== 'Approved' && app.status !== 'Rejected'; // Exclude approved and rejected
+    } else if (statusFilter.toLowerCase() === 'pending') {
+      matchesStatus = app.status === 'Pending' || app.status?.toLowerCase() === 'pending' || app.status?.toLowerCase() === 'submitted';
     } else {
-      matchesStatus = app.status === statusFilter;
+      matchesStatus = app.status?.toLowerCase() === statusFilter.toLowerCase();
     }
 
     return matchesSearch && matchesStatus;
