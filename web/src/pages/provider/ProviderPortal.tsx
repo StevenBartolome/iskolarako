@@ -588,16 +588,25 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             });
           }
 
-          // Count ONLY approved applications per program
+          // Count ONLY approved applications per program, deduped by scholar so a
+          // scholar who reapplies/renews for another cycle (e.g. 2nd Sem Renewal)
+          // of the same program is still counted once, not once per application.
           const { data: approvedAppsData } = await supabase
             .from('scholarship_applications')
-            .select('id, cycle:cycle_id(program_id)')
+            .select('id, scholar_id, cycle:cycle_id(program_id)')
             .eq('status', 'approved');
 
           if (approvedAppsData) {
+            const seenScholarsByProgram: Record<string, Set<string>> = {};
             approvedAppsData.forEach((app: any) => {
               const pId = app.cycle?.program_id;
-              if (pId) {
+              if (!pId) return;
+              const scholarKey = app.scholar_id ? String(app.scholar_id) : `app:${app.id}`;
+              if (!seenScholarsByProgram[pId]) {
+                seenScholarsByProgram[pId] = new Set();
+              }
+              if (!seenScholarsByProgram[pId].has(scholarKey)) {
+                seenScholarsByProgram[pId].add(scholarKey);
                 approvedCountMap[pId] = (approvedCountMap[pId] || 0) + 1;
               }
             });
