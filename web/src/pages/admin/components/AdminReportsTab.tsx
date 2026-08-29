@@ -211,22 +211,22 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
 
       {/* 4 Executive Platform KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {/* Card 1: Total Platform Funding */}
+        {/* Card 1: Total Scholarships */}
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">System Funding</span>
-            <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm">₱</span>
+            <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Total Scholarships</span>
+            <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm">🎓</span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
-              ₱{totalFundingDisbursed.toLocaleString()}
+              {scholarships.length}
             </div>
             <p className="text-[11px] text-[#6C6C70] mt-0.5">
-              Total grants released across {providers.length} registered providers
+              Scholarship programs across {providers.length} registered providers
             </p>
           </div>
           <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
-            <span>✓</span> Verified Financial Tracking
+            <span>✓</span> Platform-wide Program Tracking
           </div>
         </div>
 
