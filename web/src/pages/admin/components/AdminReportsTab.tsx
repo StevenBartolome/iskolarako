@@ -63,13 +63,6 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
   // instead of the export hard-coding "100%" for every provider regardless of status.
   const getProviderComplianceScore = (p: any) => (isProviderVerified(p) ? '100%' : '0%');
 
-  // System-wide KPI Computations
-  const totalFundingDisbursed = useMemo(() => {
-    return providers.reduce((acc, p: any) => {
-      const stats = providerStatsByName.get(p.name);
-      return acc + (stats?.funding || Number(p.totalFunding) || 0);
-    }, 0);
-  }, [providers, providerStatsByName]);
 
   const verifiedProvidersCount = useMemo(() => {
     return providers.filter(isProviderVerified).length;

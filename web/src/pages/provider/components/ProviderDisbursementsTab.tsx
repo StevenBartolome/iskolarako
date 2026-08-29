@@ -1527,7 +1527,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       {/* ── SINGLE RELEASE FUND MODAL ── */}
       {isReleaseModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 border border-[#D9D2C5] shadow-2xl space-y-6 my-8">
+          <div className="bg-white rounded-3xl max-w-4xl w-full p-6 border border-[#D9D2C5] shadow-2xl space-y-6 my-8">
             <div className="flex justify-between items-center border-b border-[#D9D2C5]/60 pb-4">
               <div>
                 <h3 className="text-xl font-bold text-[#1A3C2E] font-serif">Release Payout to Applicant</h3>
@@ -1537,7 +1537,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
               </div>
               <button
                 onClick={() => setIsReleaseModalOpen(false)}
-                className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer"
+                className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer border-0 bg-transparent"
               >
                 ✕
               </button>
@@ -1588,16 +1588,16 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                 <div className="space-y-2 pt-2">
                   <button
                     onClick={() => setIsReleaseModalOpen(false)}
-                    className="w-full bg-[#2D5941] text-white py-2.5 rounded-xl text-xs font-bold shadow-md cursor-pointer hover:bg-[#1A3C2E] transition-all"
+                    className="w-full bg-[#2D5941] text-white py-2.5 rounded-xl text-xs font-bold shadow-md cursor-pointer hover:bg-[#1A3C2E] transition-all border-0"
                   >
                     Close & View Ledger
                   </button>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleInitiateSingleRelease} className="space-y-4">
+              <form onSubmit={handleInitiateSingleRelease} className="flex flex-col h-full space-y-4">
                 {errorMessage && (
-                  <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl text-xs text-[#B34040] font-medium">
+                  <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl text-xs text-[#B34040] font-medium shrink-0">
                     {errorMessage}
                   </div>
                 )}
@@ -1607,301 +1607,325 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                     Loading approved scholars...
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {/* Program Selection Dropdown */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">
-                        1. Select Program
-                      </label>
-                      <select
-                        value={singleReleaseProgramId}
-                        onChange={(e) => setSingleReleaseProgramId(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-xs font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
-                      >
-                        <option value="">All Programs ({eligibleApplicants.length} scholars)</option>
-                        {uniqueProgramsList.map((prog) => (
-                          <option key={prog.id} value={prog.id}>
-                            {prog.isCash ? '💵 ' : '🎓 '}{prog.title}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto max-h-[58vh] pr-2 pb-4">
+                    {/* Left Column: Selection & Payout Info */}
+                    <div className="space-y-4">
+                      <div className="bg-[#F9F5EF]/40 p-4 rounded-2xl border border-[#D9D2C5]/80 space-y-3">
+                        <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider border-b border-[#D9D2C5]/50 pb-2 flex items-center gap-1.5">
+                          <span>👤</span> Recipient Selection
+                        </h4>
+                        
+                        {/* Program Selection Dropdown */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">
+                            1. Select Program
+                          </label>
+                          <select
+                            value={singleReleaseProgramId}
+                            onChange={(e) => setSingleReleaseProgramId(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-[#D9D2C5] rounded-xl text-xs font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
+                          >
+                            <option value="">All Programs ({eligibleApplicants.length} scholars)</option>
+                            {uniqueProgramsList.map((prog) => (
+                              <option key={prog.id} value={prog.id}>
+                                {prog.isCash ? '💵 ' : '🎓 '}{prog.title}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                    {/* Search Scholar Name */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">
-                        2. Search Scholar Name
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-2.5 text-xs text-[#8E8E93]">🔍</span>
-                        <input
-                          type="text"
-                          placeholder="Type scholar name to search..."
-                          value={singleReleaseSearchName}
-                          onChange={(e) => setSingleReleaseSearchName(e.target.value)}
-                          className="w-full pl-9 pr-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-xs font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
-                        />
+                        {/* Search Scholar Name */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">
+                            2. Search Scholar Name
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-xs text-[#8E8E93]">🔍</span>
+                            <input
+                              type="text"
+                              placeholder="Type scholar name to search..."
+                              value={singleReleaseSearchName}
+                              onChange={(e) => setSingleReleaseSearchName(e.target.value)}
+                              className="w-full pl-8 pr-3 py-2 bg-white border border-[#D9D2C5] rounded-xl text-xs font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Scholar Dropdown (Filtered) */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">
+                            3. Select Approved Scholar Recipient *
+                          </label>
+                          {filteredApplicants.length > 0 ? (
+                            <select
+                              value={selectedApplicantId}
+                              onChange={(e) => setSelectedApplicantId(e.target.value)}
+                              required
+                              className="w-full px-3 py-2 bg-white border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
+                            >
+                              {filteredApplicants.map((app) => (
+                                <option key={app.applicationId} value={app.applicationId}>
+                                  👤 {app.scholarName} — 🎓 {app.programTitle}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl text-xs text-[#B34040] font-medium">
+                              No approved scholars match filters.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Fund Type & Amount */}
+                      <div className="bg-[#F9F5EF]/40 p-4 rounded-2xl border border-[#D9D2C5]/80 space-y-3">
+                        <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider border-b border-[#D9D2C5]/50 pb-2 flex items-center gap-1.5">
+                          <span>💰</span> Payout Details
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">Fund Type</label>
+                            <select
+                              value={fundType}
+                              onChange={(e) => setFundType(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-[#D9D2C5] rounded-xl text-xs font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
+                            >
+                              <option value="stipend">Stipend</option>
+                              <option value="allowance">Allowance</option>
+                              <option value="tuition">Tuition</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#6C6C70] uppercase mb-1">Total Payout (₱)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="1"
+                              value={amount}
+                              onChange={(e) => setAmount(e.target.value)}
+                              required
+                              placeholder="Calculated Total"
+                              className="w-full px-3 py-2 bg-white border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#2D5941] focus:outline-none focus:border-[#2D5941]"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Scholar Dropdown (Filtered) */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">
-                        3. Select Approved Scholar Recipient *
-                      </label>
-                      {filteredApplicants.length > 0 ? (
-                        <select
-                          value={selectedApplicantId}
-                          onChange={(e) => setSelectedApplicantId(e.target.value)}
-                          required
-                          className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
-                        >
-                          {filteredApplicants.map((app) => (
-                            <option key={app.applicationId} value={app.applicationId}>
-                              👤 {app.scholarName} — 🎓 {app.programTitle}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl text-xs text-[#B34040] font-medium">
-                          No approved scholars match your selected program and search filter.
+                    {/* Right Column: Breakdown & Verification */}
+                    <div className="space-y-4">
+                      {/* Itemized Program Benefit Summary Card */}
+                      {currentSelectedApplicant?.benefitSummary && (
+                        <div className="bg-[#EBF5EE] p-4 rounded-2xl border border-[#2D5941]/30 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] uppercase font-bold text-[#1A3C2E]">
+                              📊 Program Benefit Breakdown
+                            </span>
+                            <span className="text-xs font-mono font-bold text-[#2D5941] bg-white px-2.5 py-0.5 rounded-lg border border-[#2D5941]/30">
+                              ₱{effectiveTotalPayout.toLocaleString()}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                            <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60 flex flex-col justify-between">
+                              <div>
+                                <span className="text-[9px] text-[#6C6C70] font-bold block uppercase">🏫 Tuition Subsidy</span>
+                                {currentSelectedApplicant.benefitSummary.isTuitionDirectToSchool ? (
+                                  <span className="text-[9px] font-bold text-[#C97B2E] block mt-0.5">Paid Off-System</span>
+                                ) : (
+                                  <>
+                                    <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                                      ₱{effectiveTuitionAmt.toLocaleString()}
+                                    </span>
+                                    {currentSelectedApplicant.benefitSummary.tuitionSource === 'extracted' && (
+                                      <span className="text-[8px] font-semibold text-[#2D5941] block mt-0.5">
+                                        ✔ From matriculation
+                                      </span>
+                                    )}
+                                    {currentSelectedApplicant.benefitSummary.tuitionSource === 'cap' && (
+                                      <div className="mt-1">
+                                        <span className="text-[8px] font-semibold text-[#C97B2E] block mb-1">
+                                          Enter actual tuition:
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          placeholder="e.g. 15000"
+                                          value={manualTuitionAmt}
+                                          onChange={(e) => {
+                                            setManualTuitionAmt(e.target.value);
+                                            const parsed = parseFloat(e.target.value);
+                                            const bs = currentSelectedApplicant?.benefitSummary;
+                                            const newTotal = (isNaN(parsed) ? (bs?.tuitionAmt ?? 0) : parsed)
+                                              + (bs?.stipendAmt ?? 0) + (bs?.allowanceAmt ?? 0) + (bs?.customBenefitsTotal ?? 0);
+                                            setAmount(String(newTotal));
+                                          }}
+                                          className="w-full px-2 py-1 text-[9px] font-bold border border-[#C97B2E]/60 rounded-lg bg-[#FFF8EE] text-[#1A3C2E] focus:outline-none focus:border-[#2D5941]"
+                                        />
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60 flex flex-col justify-between">
+                              <div>
+                                <span className="text-[9px] text-[#6C6C70] font-bold block uppercase">🍱 Stipend</span>
+                                <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                                  ₱{currentSelectedApplicant.benefitSummary.stipendAmt.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60 flex flex-col justify-between">
+                              <div>
+                                <span className="text-[9px] text-[#6C6C70] font-bold block uppercase">📚 Book / Device</span>
+                                <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                                  ₱{currentSelectedApplicant.benefitSummary.allowanceAmt.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60 flex flex-col justify-between">
+                              <div>
+                                <span className="text-[9px] text-[#6C6C70] font-bold block uppercase">🛠️ Custom Allowances</span>
+                                <span className="font-bold text-[#1A3C2E] block mt-0.5">
+                                  ₱{currentSelectedApplicant.benefitSummary.customBenefitsTotal.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
-                    </div>
-                  </div>
-                )}
 
-                {/* Itemized Program Benefit Summary Card */}
-                {currentSelectedApplicant?.benefitSummary && (
-                  <div className="bg-[#EBF5EE] p-4 rounded-2xl border border-[#2D5941]/30 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] uppercase font-bold text-[#1A3C2E]">
-                        📊 Itemized Program Benefit Breakdown
-                      </span>
-                      <span className="text-xs font-mono font-bold text-[#2D5941] bg-white px-2.5 py-0.5 rounded-lg border border-[#2D5941]/30">
-                        Total Payout: ₱{effectiveTotalPayout.toLocaleString()}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                      <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
-                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🏫 Tuition Subsidy</span>
-                        {currentSelectedApplicant.benefitSummary.isTuitionDirectToSchool ? (
-                          <span className="text-[10px] font-bold text-[#C97B2E] block mt-0.5">Paid to School (Off-System)</span>
-                        ) : (
-                          <>
-                            <span className="font-bold text-[#1A3C2E] block mt-0.5">
-                              ₱{effectiveTuitionAmt.toLocaleString()}
-                            </span>
-                            {currentSelectedApplicant.benefitSummary.tuitionSource === 'extracted' && (
-                              <span className="text-[9px] font-semibold text-[#2D5941] block mt-0.5">
-                                ✔ From student's matriculation form
-                              </span>
-                            )}
-                            {currentSelectedApplicant.benefitSummary.tuitionSource === 'cap' && (
-                              <div className="mt-1">
-                                <span className="text-[9px] font-semibold text-[#C97B2E] block mb-1">
-                                  ⚠ AI did not extract amount — enter actual tuition:
+                      {/* Banking / Payout Card for Selected Scholar */}
+                      {currentSelectedApplicant && (
+                        (currentSelectedApplicant.disbursementMode === 'in_person_cash' || String(currentSelectedApplicant.disbursementMode).includes('cash')) ? (
+                          <div className="bg-[#FFF8EE] p-4 rounded-2xl border border-[#C97B2E]/40 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-xs text-[#1A3C2E]">
+                              <span className="text-lg">💵</span>
+                              <div>
+                                <span className="block font-bold text-[#C97B2E]">OTC Cash Disbursement</span>
+                                <span className="text-[10px] text-[#6C6C70] font-medium block mt-0.5">
+                                  Bank account not required. Funds released on-site.
                                 </span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  placeholder="e.g. 15000"
-                                  value={manualTuitionAmt}
-                                  onChange={(e) => {
-                                    setManualTuitionAmt(e.target.value);
-                                    // Auto-sync the main amount field with the new total
-                                    const parsed = parseFloat(e.target.value);
-                                    const bs = currentSelectedApplicant?.benefitSummary;
-                                    const newTotal = (isNaN(parsed) ? (bs?.tuitionAmt ?? 0) : parsed)
-                                      + (bs?.stipendAmt ?? 0) + (bs?.allowanceAmt ?? 0) + (bs?.customBenefitsTotal ?? 0);
-                                    setAmount(String(newTotal));
-                                  }}
-                                  className="w-full px-2 py-1 text-[10px] font-bold border border-[#C97B2E]/60 rounded-lg bg-[#FFF8EE] text-[#1A3C2E] focus:outline-none focus:border-[#2D5941]"
-                                />
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-lg bg-[#EBF5EE] text-[#2D5941] text-[9px] font-extrabold border border-[#2D5941]/30 shrink-0">
+                              OTC Cash
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="bg-[#F9F5EF] p-4 rounded-2xl border border-[#D9D2C5] space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] uppercase font-bold text-[#6C6C70]">
+                                Verified Bank Account Details
+                              </span>
+                              {currentSelectedApplicant.hasPaymentAccount ? (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20">
+                                  ✓ Ready
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/20">
+                                  ⚠️ Missing Info
+                                </span>
+                              )}
+                            </div>
+
+                            {currentSelectedApplicant.hasPaymentAccount && currentSelectedApplicant.paymentAccount ? (
+                              <div className="space-y-1 text-xs">
+                                <div className="flex justify-between">
+                                  <span className="text-[#6C6C70]">Bank:</span>
+                                  <span className="font-bold text-[#1C1C1E]">
+                                    {currentSelectedApplicant.paymentAccount.bankName}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-[#6C6C70]">Account #:</span>
+                                  <span className="font-mono font-bold text-[#2D5941]">
+                                    {currentSelectedApplicant.paymentAccount.accountNumber}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-[#6C6C70]">Account Name:</span>
+                                  <span className="font-bold text-[#1C1C1E]">
+                                    {currentSelectedApplicant.paymentAccount.accountName}
+                                  </span>
+                                </div>
+                                {currentSelectedApplicant.paymentAccount.documentProofUrl && (
+                                  <div className="pt-1 flex justify-end">
+                                    <a
+                                      href={currentSelectedApplicant.paymentAccount.documentProofUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[10px] font-bold text-[#2D5941] hover:underline inline-flex items-center gap-0.5"
+                                    >
+                                      <span>📄 View Bank Scan</span>
+                                      <span>↗</span>
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="space-y-2 pt-1">
+                                <p className="text-[10px] text-[#B34040]">
+                                  ⚠️ Scholar has not uploaded their bank details yet.
+                                </p>
+                                
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setUploadModalScholar({
+                                        id: currentSelectedApplicant.scholarId,
+                                        name: currentSelectedApplicant.scholarName,
+                                      })
+                                    }
+                                    className="w-full py-1.5 bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] rounded-xl text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 border-0"
+                                  >
+                                    <span>📤 OCR Upload</span>
+                                  </button>
+                                  
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        if (currentSelectedApplicant.userId) {
+                                          await supabase.from('notifications').insert({
+                                            user_id: currentSelectedApplicant.userId,
+                                            title: '⚠️ Urgent: Complete Bank Details',
+                                            message: `Your disbursement for ${currentSelectedApplicant.programTitle} is pending because you haven't uploaded your bank account details. Please upload your card scan immediately to receive your funds.`,
+                                            type: 'warning',
+                                            is_read: false,
+                                            created_at: new Date().toISOString(),
+                                          });
+                                          showToast?.('✓ Bank details reminder sent successfully.');
+                                        } else {
+                                          showToast?.('Cannot send reminder: Scholar user ID is missing.');
+                                        }
+                                      } catch (err: any) {
+                                        showToast?.(`Error sending reminder: ${err.message}`);
+                                      }
+                                    }}
+                                    className="w-full py-1.5 bg-[#FFF8EE] hover:bg-[#C97B2E] hover:text-white text-[#C97B2E] rounded-xl text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 border-0"
+                                  >
+                                    <span>🔔 Remind</span>
+                                  </button>
+                                </div>
                               </div>
                             )}
-                          </>
-                        )}
-                      </div>
-
-
-                      <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
-                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🍱 Stipend / Allowance</span>
-                        <span className="font-bold text-[#1A3C2E] block mt-0.5">
-                          ₱{currentSelectedApplicant.benefitSummary.stipendAmt.toLocaleString()}
-                        </span>
-                      </div>
-
-                      <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
-                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">📚 Book / Device</span>
-                        <span className="font-bold text-[#1A3C2E] block mt-0.5">
-                          ₱{currentSelectedApplicant.benefitSummary.allowanceAmt.toLocaleString()}
-                        </span>
-                      </div>
-
-                      <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60">
-                        <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🛠️ Custom Allowances</span>
-                        <span className="font-bold text-[#1A3C2E] block mt-0.5">
-                          ₱{currentSelectedApplicant.benefitSummary.customBenefitsTotal.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Banking / Payout Card for Selected Scholar */}
-                {currentSelectedApplicant && (
-                  (currentSelectedApplicant.disbursementMode === 'in_person_cash' || String(currentSelectedApplicant.disbursementMode).includes('cash')) ? (
-                    <div className="bg-[#FFF8EE] p-4 rounded-2xl border border-[#C97B2E]/40 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 text-xs text-[#1A3C2E]">
-                        <span className="text-xl">💵</span>
-                        <div>
-                          <span className="block font-bold text-[#C97B2E]">Over-the-Counter Cash Disbursement</span>
-                          <span className="text-[11px] text-[#6C6C70] font-medium block mt-0.5">
-                            Bank account submission is not required. Funds will be recorded and disbursed on-site.
-                          </span>
-                        </div>
-                      </div>
-                      <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] text-[#2D5941] text-[10px] font-extrabold border border-[#2D5941]/30 shrink-0">
-                        💵 OTC Cash
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="bg-[#F9F5EF] p-4 rounded-2xl border border-[#D9D2C5] space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] uppercase font-bold text-[#6C6C70]">
-                        Verified Bank Account Details
-                      </span>
-                      {currentSelectedApplicant.hasPaymentAccount ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20">
-                          ✓ Ready
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/20">
-                          ⚠️ Missing Bank Info
-                        </span>
+                          </div>
+                        )
                       )}
                     </div>
-
-                    {currentSelectedApplicant.hasPaymentAccount && currentSelectedApplicant.paymentAccount ? (
-                      <div className="space-y-1 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-[#6C6C70]">Bank:</span>
-                          <span className="font-bold text-[#1C1C1E]">
-                            {currentSelectedApplicant.paymentAccount.bankName}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#6C6C70]">Account #:</span>
-                          <span className="font-mono font-bold text-[#2D5941]">
-                            {currentSelectedApplicant.paymentAccount.accountNumber}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#6C6C70]">Account Name:</span>
-                          <span className="font-bold text-[#1C1C1E]">
-                            {currentSelectedApplicant.paymentAccount.accountName}
-                          </span>
-                        </div>
-                        {currentSelectedApplicant.paymentAccount.documentProofUrl && (
-                          <div className="pt-2 flex justify-end">
-                            <a
-                              href={currentSelectedApplicant.paymentAccount.documentProofUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[11px] font-bold text-[#2D5941] hover:underline inline-flex items-center gap-1"
-                            >
-                              <span>📄 View Bank Card Scan</span>
-                              <span>↗</span>
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5 pt-1">
-                        <p className="text-[11px] text-[#B34040]">
-                          ⚠️ Scholar has not uploaded their bank details yet.
-                        </p>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setUploadModalScholar({
-                                id: currentSelectedApplicant.scholarId,
-                                name: currentSelectedApplicant.scholarName,
-                              })
-                            }
-                            className="w-full py-2 bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border-0"
-                          >
-                            <span>📤 Upload Scan (OCR)</span>
-                          </button>
-                          
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                if (currentSelectedApplicant.userId) {
-                                  await supabase.from('notifications').insert({
-                                    user_id: currentSelectedApplicant.userId,
-                                    title: '⚠️ Urgent: Complete Bank Details',
-                                    message: `Your disbursement for ${currentSelectedApplicant.programTitle} is pending because you haven't uploaded your bank account details. Please upload your card scan immediately to receive your funds.`,
-                                    type: 'warning',
-                                    is_read: false,
-                                    created_at: new Date().toISOString(),
-                                  });
-                                  showToast?.('✓ Bank details reminder sent successfully.');
-                                } else {
-                                  showToast?.('Cannot send reminder: Scholar user ID is missing.');
-                                }
-                              } catch (err: any) {
-                                showToast?.(`Error sending reminder: ${err.message}`);
-                              }
-                            }}
-                            className="w-full py-2 bg-[#FFF8EE] hover:bg-[#C97B2E] hover:text-white text-[#C97B2E] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border-0"
-                          >
-                            <span>🔔 Send Reminder</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    </div>
-                  )
+                  </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">Fund Type</label>
-                    <select
-                      value={fundType}
-                      onChange={(e) => setFundType(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-sm font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#2D5941]"
-                    >
-                      <option value="stipend">Stipend</option>
-                      <option value="allowance">Allowance</option>
-                      <option value="tuition">Tuition</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#6C6C70] uppercase mb-1">Total Payout (₱)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="1"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      required
-                      placeholder="Calculated Program Total"
-                      className="w-full px-3.5 py-2.5 bg-[#F9F5EF]/60 border border-[#D9D2C5] rounded-xl text-sm font-bold text-[#2D5941] focus:outline-none focus:border-[#2D5941]"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-4 flex justify-end gap-3 border-t border-[#D9D2C5]/60">
+                <div className="pt-4 flex justify-end gap-3 border-t border-[#D9D2C5]/60 mt-4 shrink-0">
                   <button
                     type="button"
                     onClick={() => setIsReleaseModalOpen(false)}

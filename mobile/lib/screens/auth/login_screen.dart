@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -204,290 +205,402 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
+  Future<bool> _showExitDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFEE2E2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  LucideIcons.logOut,
+                  color: Color(0xFFDC2626),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Exit Application',
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF1E3D2F),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Are you sure you want to close IskoAko?',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: const Color(0xFF6B7280),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: Text(
+                        'No, Stay',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF4B5563),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1E3D2F),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: Text(
+                        'Yes, Exit',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return result ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFCFA),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            children: [
-              // ── Interactive Hero Top Header Banner ───────────────
-              FadeTransition(
-                opacity: _heroFade,
-                child: SlideTransition(
-                  position: _heroSlide,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 36),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1E3D2F),
-                      borderRadius: BorderRadius.vertical(
-                        bottom: Radius.circular(36),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 16,
-                          offset: Offset(0, 4),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) async {
+        if (didPop) return;
+        final shouldExit = await _showExitDialog();
+        if (shouldExit && mounted) {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFFAFCFA),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              children: [
+                // ── Interactive Hero Top Header Banner ───────────────
+                FadeTransition(
+                  opacity: _heroFade,
+                  child: SlideTransition(
+                    position: _heroSlide,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 36),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF1E3D2F),
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(36),
                         ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        // Portal Badge Tag
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 16,
+                            offset: Offset(0, 4),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          // Portal Badge Tag
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(LucideIcons.shieldCheck, color: Color(0xFFF59E0B), size: 13),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'SCHOLAR PORTAL ACCESS',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFFF59E0B),
+                                    letterSpacing: 1.1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+  
+                          // Static Elegant Logo Graphic
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: SvgPicture.asset(
+                              'assets/logo/iskolarakologo-notext.svg',
+                              height: 64,
+                              colorFilter: const ColorFilter.mode(
+                                Color(0xFFF59E0B),
+                                BlendMode.srcIn,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+  
+                          Text(
+                            'IskoAko',
+                            style: GoogleFonts.inter(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Empowering Filipino Scholars Everywhere',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: Colors.white.withValues(alpha: 0.75),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+  
+                // ── Interactive Animated Form Container ──────────────
+                FadeTransition(
+                  opacity: _formFade,
+                  child: SlideTransition(
+                    position: _formSlide,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Welcome Back!',
+                            style: GoogleFonts.inter(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF111827),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Sign in to access your scholarship applications & disbursements.',
+                            style: GoogleFonts.inter(
+                              fontSize: 12.5,
+                              color: const Color(0xFF6B7280),
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+  
+                          // Email Address Input Field
+                          _buildInputField(
+                            label: 'Email Address',
+                            controller: _emailController,
+                            icon: LucideIcons.mail,
+                            hint: 'your.name@student.edu.ph',
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                          const SizedBox(height: 16),
+  
+                          // Password Input Field
+                          _buildPasswordField(),
+                          const SizedBox(height: 14),
+  
+                          // Remember Me & Forgot Password Options
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Icon(LucideIcons.shieldCheck, color: Color(0xFFF59E0B), size: 13),
-                              const SizedBox(width: 6),
-                              Text(
-                                'SCHOLAR PORTAL ACCESS',
-                                style: GoogleFonts.inter(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFFF59E0B),
-                                  letterSpacing: 1.1,
+                              GestureDetector(
+                                onTap: () => setState(() => _rememberMe = !_rememberMe),
+                                child: Row(
+                                  children: [
+                                    AnimatedContainer(
+                                      duration: const Duration(milliseconds: 200),
+                                      width: 20,
+                                      height: 20,
+                                      decoration: BoxDecoration(
+                                        color: _rememberMe ? const Color(0xFF1E3D2F) : Colors.white,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: _rememberMe ? const Color(0xFF1E3D2F) : const Color(0xFFD1D5DB),
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: _rememberMe
+                                          ? const Icon(LucideIcons.check, size: 13, color: Colors.white)
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Remember me',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: const Color(0xFF374151),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () {
+                                  _showSnackBar('Contact your scholarship coordinator to reset password.', isError: false);
+                                },
+                                child: Text(
+                                  'Forgot Password?',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1E3D2F),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Static Elegant Logo Graphic
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: SvgPicture.asset(
-                            'assets/logo/iskolarakologo-notext.svg',
-                            height: 64,
-                            colorFilter: const ColorFilter.mode(
-                              Color(0xFFF59E0B),
-                              BlendMode.srcIn,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-
-                        Text(
-                          'IskoAko',
-                          style: GoogleFonts.inter(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Empowering Filipino Scholars Everywhere',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: Colors.white.withValues(alpha: 0.75),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // ── Interactive Animated Form Container ──────────────
-              FadeTransition(
-                opacity: _formFade,
-                child: SlideTransition(
-                  position: _formSlide,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Welcome Back!',
-                          style: GoogleFonts.inter(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF111827),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Sign in to access your scholarship applications & disbursements.',
-                          style: GoogleFonts.inter(
-                            fontSize: 12.5,
-                            color: const Color(0xFF6B7280),
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Email Address Input Field
-                        _buildInputField(
-                          label: 'Email Address',
-                          controller: _emailController,
-                          icon: LucideIcons.mail,
-                          hint: 'your.name@student.edu.ph',
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Password Input Field
-                        _buildPasswordField(),
-                        const SizedBox(height: 14),
-
-                        // Remember Me & Forgot Password Options
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            GestureDetector(
-                              onTap: () => setState(() => _rememberMe = !_rememberMe),
-                              child: Row(
-                                children: [
-                                  AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    width: 20,
-                                    height: 20,
-                                    decoration: BoxDecoration(
-                                      color: _rememberMe ? const Color(0xFF1E3D2F) : Colors.white,
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: _rememberMe ? const Color(0xFF1E3D2F) : const Color(0xFFD1D5DB),
-                                        width: 1.5,
+                          const SizedBox(height: 28),
+  
+                          // Interactive Sign In Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 52,
+                            child: ElevatedButton.icon(
+                              onPressed: _isLoading ? null : _handleLogin,
+                              icon: _isLoading
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                        color: Colors.white,
                                       ),
-                                    ),
-                                    child: _rememberMe
-                                        ? const Icon(LucideIcons.check, size: 13, color: Colors.white)
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Remember me',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w500,
-                                      color: const Color(0xFF374151),
-                                    ),
-                                  ),
-                                ],
+                                    )
+                                  : const Icon(LucideIcons.logIn, size: 18),
+                              label: Text(
+                                _isLoading ? 'Authenticating...' : 'Sign In to Portal',
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1E3D2F),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                elevation: 0,
+                                shadowColor: Colors.transparent,
                               ),
                             ),
-                            GestureDetector(
-                              onTap: () {
-                                _showSnackBar('Contact your scholarship coordinator to reset password.', isError: false);
+                          ),
+                          const SizedBox(height: 24),
+  
+                          // Divider line
+                          Row(
+                            children: [
+                              const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: Text(
+                                  'New to IskoAko?',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: const Color(0xFF9CA3AF),
+                                  ),
+                                ),
+                              ),
+                              const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+  
+                          // Register Navigation Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.pushNamed(context, AppRouter.register);
                               },
-                              child: Text(
-                                'Forgot Password?',
+                              icon: const Icon(LucideIcons.userPlus, size: 16, color: Color(0xFF1E3D2F)),
+                              label: Text(
+                                'Create Scholar Account',
                                 style: GoogleFonts.inter(
-                                  fontSize: 12.5,
+                                  fontSize: 13.5,
                                   fontWeight: FontWeight.w700,
                                   color: const Color(0xFF1E3D2F),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 28),
-
-                        // Interactive Sign In Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton.icon(
-                            onPressed: _isLoading ? null : _handleLogin,
-                            icon: _isLoading
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(LucideIcons.logIn, size: 18),
-                            label: Text(
-                              _isLoading ? 'Authenticating...' : 'Sign In to Portal',
-                              style: GoogleFonts.inter(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.2),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                               ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E3D2F),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              elevation: 0,
-                              shadowColor: Colors.transparent,
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Divider line
-                        Row(
-                          children: [
-                            const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text(
-                                'New to IskoAko?',
-                                style: GoogleFonts.inter(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w500,
-                                  color: const Color(0xFF9CA3AF),
-                                ),
-                              ),
-                            ),
-                            const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Register Navigation Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.pushNamed(context, AppRouter.register);
-                            },
-                            icon: const Icon(LucideIcons.userPlus, size: 16, color: Color(0xFF1E3D2F)),
-                            label: Text(
-                              'Create Scholar Account',
-                              style: GoogleFonts.inter(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF1E3D2F),
-                              ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.2),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
