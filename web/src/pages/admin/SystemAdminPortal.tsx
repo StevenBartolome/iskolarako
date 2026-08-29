@@ -54,7 +54,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     navigate(`/admin/${tab}`);
   };
 
-  
+
   const [currentAdminUserId, setCurrentAdminUserId] = useState<string | undefined>(undefined);
   const [adminBroadcasts, setAdminBroadcasts] = useState<any[]>([]);
   const [isSendingAnnouncement, setIsSendingAnnouncement] = useState(false);
@@ -127,7 +127,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   // Search/Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState('All');
-  
+
   // Modals / Details states
   const [selectedProvider, setSelectedProvider] = useState<ProviderOrg | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<StudentAdminView | null>(null);
@@ -169,13 +169,11 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       <button
         onClick={() => setActiveTab(tab)}
         title={label}
-        className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer border-0 ${
-          isCollapsed ? 'justify-center p-2.5' : 'gap-3 px-4 py-2.5'
-        } ${
-          isActive
+        className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer border-0 ${isCollapsed ? 'justify-center p-2.5' : 'gap-3 px-4 py-2.5'
+          } ${isActive
             ? 'bg-[#2D5941] text-white shadow-md'
             : 'text-[#9BA89F] hover:bg-white/5 hover:text-white bg-transparent'
-        }`}
+          }`}
       >
         <span className="text-sm">{emoji}</span>
         {!isCollapsed && <span>{label}</span>}
@@ -490,7 +488,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       const { data: configData, error: configError } = await supabase
         .from('provider_requirements_config')
         .select('provider_type, required_fields');
-      
+
       const reqsMap: Record<string, RequirementItem[]> = {};
       if (!configError && configData) {
         configData.forEach(c => {
@@ -567,26 +565,37 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
         const repName = rep.first_name && rep.last_name ? `${rep.first_name} ${rep.last_name}` : 'No Representative';
         const repEmail = rep.email || 'N/A';
         const remarks = p.requirements_submitted?._remarks || '';
+        // A provider's documents reflect on the admin side when submitted or when verified/under_review
+        const isSubmittedToAdmin =
+          p.verification_status !== 'pending' &&
+          (p.requirements_submitted?._isSubmitted === true ||
+            p.verification_status === 'verified' ||
+            p.verification_status === 'under_review');
         const aiVerifications = p.requirements_submitted?._aiVerification || {};
+        // Manual "Mark Verified"/"Flag" decisions made by an admin, keyed by document name.
+        const docStatusOverrides: Record<string, { status?: ProviderDocumentItem['status']; remarks?: string }> =
+          p.requirements_submitted?._docStatus || {};
 
-        // Parse documents from jsonb requirements_submitted (ignoring _ keys)
-        const docs: ProviderDocumentItem[] = p.requirements_submitted
+        const docs: ProviderDocumentItem[] = isSubmittedToAdmin && p.requirements_submitted
           ? Object.entries(p.requirements_submitted)
-              .filter(([name]) => !name.startsWith('_'))
-              .map(([name, url]) => {
-                const aiResult = aiVerifications[name];
-                const isVerified = aiResult?.verificationStatus === 'verified' || p.verification_status === 'verified';
-                const isFlagged = aiResult?.verificationStatus === 'flagged' || aiResult?.verificationStatus === 'rejected';
+            .filter(([name]) => !name.startsWith('_'))
+            .map(([name, url]) => {
+              const aiResult = aiVerifications[name];
+              const override = docStatusOverrides[name];
+              const isVerified = aiResult?.verificationStatus === 'verified' || p.verification_status === 'verified';
+              const isFlagged = aiResult?.verificationStatus === 'flagged' || aiResult?.verificationStatus === 'rejected';
+              // An admin's manual decision on a document always takes priority over the AI pre-scan verdict.
+              const status = override?.status || (isVerified ? 'Verified' : isFlagged ? 'Flagged' : 'Pending');
 
-                return {
-                  name,
-                  url: url as string,
-                  verified: isVerified,
-                  status: isVerified ? 'Verified' : isFlagged ? 'Flagged' : 'Pending',
-                  remarks: aiResult?.flags?.[0] || '',
-                  aiVerification: aiResult,
-                };
-              })
+              return {
+                name,
+                url: url as string,
+                verified: status === 'Verified',
+                status,
+                remarks: override?.remarks ?? (aiResult?.flags?.[0] || ''),
+                aiVerification: aiResult,
+              };
+            })
           : [];
 
         let uiStatus: ProviderOrg['status'] = 'Pending';
@@ -603,7 +612,8 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
           status: uiStatus,
           documents: docs,
           dateRegistered: new Date(p.created_at).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' }),
-          remarks: remarks
+          remarks: remarks,
+          isSubmitted: isSubmittedToAdmin
         };
       });
 
@@ -822,7 +832,14 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     };
   }, [activeTab]);
 
-  // Keep selectedProvider synchronized in real-time when the providers list changes
+  // Keep selectedProvider synchronized whenever the providers list changes (e.g. a realtime update
+  // from another admin session). Deliberately depends on `providers` only, NOT `selectedProvider` —
+  // every admin action here (verify/flag a doc, approve, reactivate, etc.) already applies its own
+  // optimistic update to `selectedProvider` before persisting. Re-running this on every
+  // `selectedProvider` change would re-fire on that very optimistic update and immediately clobber it
+  // with the still-stale `providers` snapshot from before the write finished — which is what made the
+  // Verify/Flag buttons appear to do nothing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (selectedProvider && providers.length > 0) {
       const updated = providers.find(p => p.id === selectedProvider.id);
@@ -836,7 +853,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
         }
       }
     }
-  }, [providers, selectedProvider]);
+  }, [providers]);
 
   // Category Multi-Add and Editing States
   const [showAddCategoryForm, setShowAddCategoryForm] = useState(false);
@@ -1202,10 +1219,10 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       remarks = customRemarks;
     }
 
-    // A suspended provider must re-upload and re-submit before being approved again
+    // If approving a suspended provider, invoke handleReactivateProvider to lift suspension and clear remarks
     const currentStatus = providers.find(p => p.id === id)?.status;
     if (nextStatus === 'Verified' && currentStatus === 'Suspended') {
-      showToast('Cannot approve a suspended provider. They must re-upload and re-submit their documents first.');
+      await handleReactivateProvider(id);
       return;
     }
 
@@ -1227,7 +1244,8 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
 
         const updatedReqs = {
           ...(currentProv?.requirements_submitted || {}),
-          _remarks: remarks || undefined
+          _remarks: remarks || undefined,
+          _isSubmitted: nextStatus === 'Verified' ? true : nextStatus === 'Suspended' ? false : currentProv?.requirements_submitted?._isSubmitted
         };
 
         const { error } = await supabase
@@ -1251,8 +1269,8 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     setProviders(prev =>
       prev.map(p => {
         if (p.id === id) {
-          const updated = { 
-            ...p, 
+          const updated = {
+            ...p,
             status: nextStatus,
             documents: p.documents.map(d => ({ ...d, verified: nextStatus === 'Verified' }))
           };
@@ -1273,6 +1291,84 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     }
   };
 
+  // Lets an admin lift a suspension directly and restore the provider to Verified, bypassing the
+  // normal "must re-upload and re-submit documents" gate in handleVerifyProvider — used when the
+  // admin has already resolved the issue that led to suspension.
+  const handleReactivateProvider = async (id: any) => {
+    const isUuid = typeof id === 'string';
+    let fetchedReqs: Record<string, any> | null = null;
+
+    if (isUuid) {
+      try {
+        const { data: currentProv } = await supabase
+          .from('provider')
+          .select('requirements_submitted')
+          .eq('id', id)
+          .single();
+
+        fetchedReqs = {
+          ...(currentProv?.requirements_submitted || {}),
+          _isSubmitted: true,
+        };
+        delete (fetchedReqs as any)._remarks;
+
+        const { error } = await supabase
+          .from('provider')
+          .update({
+            verification_status: 'verified',
+            requirements_submitted: fetchedReqs,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Error reactivating provider:', err);
+        showToast(`Database Error: ${err.message}`);
+        return;
+      }
+    }
+
+    setProviders(prev =>
+      prev.map(p => {
+        if (p.id === id) {
+          let updatedDocs = p.documents.map(d => ({ ...d, verified: true, status: 'Verified' as const }));
+
+          if (updatedDocs.length === 0 && fetchedReqs) {
+            const aiVerifs = fetchedReqs._aiVerification || {};
+            const docStatusOverrides = fetchedReqs._docStatus || {};
+            updatedDocs = Object.entries(fetchedReqs)
+              .filter(([name]) => !name.startsWith('_'))
+              .map(([name, url]) => ({
+                name,
+                url: String(url),
+                verified: true,
+                status: docStatusOverrides[name]?.status || 'Verified',
+                remarks: docStatusOverrides[name]?.remarks || undefined,
+                aiVerification: aiVerifs[name] || undefined,
+              }));
+          }
+
+          const updated: ProviderOrg = {
+            ...p,
+            status: 'Verified',
+            remarks: '',
+            documents: updatedDocs,
+          };
+          if (selectedProvider && selectedProvider.id === id) {
+            setSelectedProvider(updated);
+          }
+          return updated;
+        }
+        return p;
+      })
+    );
+
+    const providerName = providers.find(p => p.id === id)?.name || 'Unknown';
+    addAuditLog('RE-ACTIVATED SUSPENDED PROVIDER', providerName);
+    showToast(`Provider "${providerName}" has been re-activated and verified.`);
+  };
+
   const handleUpdateProviderDocs = async (
     providerId: any,
     updatedDocs: ProviderDocumentItem[],
@@ -1289,16 +1385,25 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       const aiVerifMap: Record<string, any> = {
         ...(currentProv?.requirements_submitted?._aiVerification || {}),
       };
+      // Persist each document's manual "Mark Verified"/"Flag" decision so it survives a re-fetch
+      // (e.g. navigating to another tab and back) instead of reverting to the AI pre-scan verdict.
+      const docStatusMap: Record<string, { status?: string; remarks?: string }> = {
+        ...(currentProv?.requirements_submitted?._docStatus || {}),
+      };
 
       updatedDocs.forEach(d => {
         if (d.aiVerification) {
           aiVerifMap[d.name] = d.aiVerification;
+        }
+        if (d.status) {
+          docStatusMap[d.name] = { status: d.status, remarks: d.remarks || '' };
         }
       });
 
       const updatedReqs = {
         ...(currentProv?.requirements_submitted || {}),
         _aiVerification: aiVerifMap,
+        _docStatus: docStatusMap,
       };
 
       if (newRemarks !== undefined) {
@@ -1634,8 +1739,8 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             </>
           ) : (
             <>
-              <div 
-                className="w-8 h-8 rounded-full bg-[#2D5941] flex items-center justify-center font-bold text-white text-xs shrink-0" 
+              <div
+                className="w-8 h-8 rounded-full bg-[#2D5941] flex items-center justify-center font-bold text-white text-xs shrink-0"
                 title={profile ? `${profile.firstName} ${profile.lastName} - System Admin` : 'Admin'}
               >
                 {profile ? `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`.toUpperCase() : 'AD'}
@@ -1657,7 +1762,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
 
       {/* Main Content Area */}
       <main className="flex-1 p-8 overflow-y-auto w-full space-y-6">
-        
+
         {/* Module Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -1709,6 +1814,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             setSelectedScholarshipDetails={setSelectedScholarshipDetails}
             setActiveTab={setActiveTab}
             handleVerifyProvider={handleVerifyProvider}
+            handleReactivateProvider={handleReactivateProvider}
             onUpdateProviderDocs={handleUpdateProviderDocs}
           />
         )}

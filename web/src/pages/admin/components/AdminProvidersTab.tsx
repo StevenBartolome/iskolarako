@@ -23,6 +23,7 @@ interface AdminProvidersTabProps {
   setSelectedScholarshipDetails: (prog: any) => void;
   setActiveTab: (tab: AdminTab) => void;
   handleVerifyProvider: (id: any, status: ProviderOrg['status'], remarks?: string) => void;
+  handleReactivateProvider?: (id: any) => Promise<void>;
   onUpdateProviderDocs?: (
     providerId: any,
     updatedDocs: ProviderDocumentItem[],
@@ -47,6 +48,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
   setSelectedScholarshipDetails,
   setActiveTab,
   handleVerifyProvider,
+  handleReactivateProvider,
   onUpdateProviderDocs,
 }) => {
   // Batch & AI Scanning States
@@ -267,18 +269,10 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
     }
   };
 
-  // Auto-scan unscanned documents when a provider is selected
+  // Evaluate document status summary when a provider is selected (no automatic AI scan on open)
   useEffect(() => {
     if (selectedProvider) {
-      const unscanned = selectedProvider.documents.filter(
-        d => d.url && d.url !== '#' && (!d.aiVerification || d.remarks?.toLowerCase().includes('resubmit'))
-      );
-
-      if (unscanned.length > 0) {
-        handleScanAllDocs(true);
-      } else {
-        evaluateAndAdjustStatus(selectedProvider, selectedProvider.documents);
-      }
+      evaluateAndAdjustStatus(selectedProvider, selectedProvider.documents);
     } else {
       setAutoScanSummary(null);
     }
@@ -454,6 +448,17 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
 
                   return (
                     <div className="space-y-4">
+                      {selectedProvider.status === 'Pending' && selectedProvider.documents.length === 0 && (
+                        <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 text-[#8C4A00] p-4 rounded-2xl text-xs space-y-1">
+                          <strong className="font-bold block flex items-center gap-1.5 text-sm">
+                            <span>⏳</span> Pending Verification Request
+                          </strong>
+                          <p className="leading-relaxed opacity-90">
+                            This organization has not yet submitted a formal verification request. Any files uploaded by the provider are currently in draft mode and will reflect here once they click "Submit Verification Request".
+                          </p>
+                        </div>
+                      )}
+
                       <div className="border-t border-[#D9D2C5] pt-4">
                         <button
                           type="button"
@@ -515,7 +520,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                                   : '🟡 ⚠️ AI Flagged'}
                                               </span>
                                               <span className="font-semibold">
-                                                ({assessment.scorePercent}% match • {assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'})
+                                                ({assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'})
                                               </span>
                                             </span>
                                           );
@@ -620,7 +625,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                             </span>
                                           </div>
                                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${assessment.badgeStyle}`}>
-                                            Score: {assessment.scorePercent}% • {assessment.label}
+                                            {assessment.label}
                                           </span>
                                         </div>
 
@@ -637,7 +642,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                           </span>
                                           <div className="space-y-0.5">
                                             <span className="font-bold block text-xs">
-                                              Match Rating: {assessment.scorePercent}% — {assessment.textRemark}
+                                              Match Rating: {assessment.textRemark}
                                             </span>
                                             <p className="text-[11px] leading-relaxed opacity-90 font-normal">
                                               {assessment.quality === 'GOOD' && 'Document matches declared profile credentials with verified official seals and zero visual tampering detected.'}
@@ -781,8 +786,23 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                             </p>
                           </>
                         ) : selectedProvider.status === 'Suspended' ? (
-                          <div className="bg-amber-50 border border-amber-200/60 text-amber-900 rounded-xl p-3 text-xs font-sans leading-relaxed">
-                            This provider organization is <strong>suspended</strong>. Approval is locked until they re-upload and re-submit their compliance documents.
+                          <div className="space-y-3">
+                            <div className="bg-amber-50 border border-amber-200/60 text-amber-900 rounded-2xl p-4 text-xs font-sans leading-relaxed">
+                              This provider organization is currently <strong>suspended</strong>. Active remarks: <em>"{selectedProvider.remarks || 'No specific remarks'}"</em>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (handleReactivateProvider) {
+                                  handleReactivateProvider(selectedProvider.id);
+                                } else {
+                                  handleVerifyProvider(selectedProvider.id, 'Verified');
+                                }
+                              }}
+                              className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold py-3 rounded-xl cursor-pointer border-0 shadow-md transition-all flex items-center justify-center gap-2 font-sans"
+                            >
+                              <span>🔄 Reactivate Organization & Clear Remarks</span>
+                            </button>
                           </div>
                         ) : (
                           <div className="flex gap-2">

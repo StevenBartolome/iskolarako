@@ -1471,10 +1471,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                     >
                                       <span>
                                         {aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD'
-                                          ? `🟢 ⚡ AI Verified (${assessment.scorePercent}% Match • Good)`
+                                          ? `🟢 ⚡ AI Verified (Good)`
                                           : aiRes.tamperingDetected || assessment.quality === 'BAD'
-                                          ? `🔴 ⚠️ Security Risk (${assessment.scorePercent}% Match • High Risk)`
-                                          : `🟡 ⚠️ AI Flagged (${assessment.scorePercent}% Match • Needs Review)`}
+                                          ? `🔴 ⚠️ Security Risk (High Risk)`
+                                          : `🟡 ⚠️ AI Flagged (Needs Review)`}
                                       </span>
                                     </span>
                                   );
@@ -1639,7 +1639,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                 </span>
                               </div>
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${assessment.badgeStyle}`}>
-                                Score: {assessment.scorePercent}% • {assessment.label}
+                                {assessment.label}
                               </span>
                             </div>
 
@@ -1656,7 +1656,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                               </span>
                               <div className="space-y-0.5">
                                 <span className="font-bold block text-xs">
-                                  Match Rating: {assessment.scorePercent}% — {assessment.textRemark}
+                                  Match Rating: {assessment.textRemark}
                                 </span>
                                 <p className="text-[11px] leading-relaxed opacity-90 font-normal">
                                   {assessment.quality === 'GOOD' && 'Document matches declared profile credentials with verified official seals and zero visual tampering detected.'}

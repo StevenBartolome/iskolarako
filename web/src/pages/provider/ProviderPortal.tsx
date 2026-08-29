@@ -24,6 +24,8 @@ import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
 import { ProviderNotificationDrawer } from './components/ProviderNotificationDrawer';
 import { sendProviderAnnouncement, fetchProviderBroadcasts, deleteNotification, sendDecisionNotification } from '@/services/notificationService';
 import { createAuditLog } from '@/services/auditLogService';
+import { verifyDocumentAuthenticity, type ApplicantVerificationContext } from '@/services/aiExtractionService';
+import { sanitizeRequirementsSubmitted } from './utils/sanitizeUtils';
 import type {
   ProviderPortalProps,
   TabType,
@@ -103,7 +105,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     name: string;
     providerType: string;
     verificationStatus: 'pending' | 'under_review' | 'verified' | 'rejected';
-    requirementsSubmitted: Record<string, string>;
+    requirementsSubmitted: Record<string, any>;
   } | null>(null);
 
   // Requirements checklist configuration for this provider type
@@ -288,7 +290,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               name: provData.name,
               providerType: provData.provider_type,
               verificationStatus: provData.verification_status as any,
-              requirementsSubmitted: provData.requirements_submitted || {}
+              requirementsSubmitted: sanitizeRequirementsSubmitted(provData.requirements_submitted || {})
             });
 
             // Fetch required documents configuration
@@ -346,7 +348,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               return {
                 ...prev,
                 verificationStatus: updated.verification_status,
-                requirementsSubmitted: updated.requirements_submitted || {}
+                requirementsSubmitted: sanitizeRequirementsSubmitted(updated.requirements_submitted || {})
               };
             });
             showToast('Verification status updated in real-time!');
@@ -2802,19 +2804,66 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         publicUrl = urlData?.publicUrl || `https://mock.storage.iskolarako.org/provider-documents/${filePath}`;
       }
 
-      // Update local state with the uploaded document URL
-      const updatedReqs = {
+      // Update local state with the uploaded document URL (draft mode until explicitly submitted)
+      showToast(`Running AI forensic scan on ${fieldName}...`);
+
+      // Run AI document authenticity & requirement verification
+      let aiResult: any = null;
+      try {
+        const applicantContext: ApplicantVerificationContext = {
+          isProviderOrg: true,
+          organizationName: providerDetails.name,
+          representativeName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : providerDetails.name,
+          providerType: providerDetails.providerType,
+        };
+
+        aiResult = await verifyDocumentAuthenticity({
+          documentUrl: publicUrl,
+          documentName: fieldName,
+          applicantContext,
+        });
+      } catch (aiErr) {
+        console.warn('AI document scan warning during upload:', aiErr);
+      }
+
+      const existingAiVerifs = providerDetails.requirementsSubmitted._aiVerification || {};
+      const updatedAiVerifs = aiResult ? {
+        ...existingAiVerifs,
+        [fieldName]: aiResult
+      } : existingAiVerifs;
+
+      const rawReqs = {
         ...providerDetails.requirementsSubmitted,
-        [fieldName]: publicUrl
+        [fieldName]: publicUrl,
+        _isSubmitted: false,
+        _aiVerification: updatedAiVerifs
       };
+      const updatedReqs = sanitizeRequirementsSubmitted(rawReqs);
 
       setProviderDetails(prev => prev ? {
         ...prev,
         requirementsSubmitted: updatedReqs
       } : null);
 
+      // Persist draft document upload & AI scan result to Supabase DB without changing verification_status
+      try {
+        await supabase
+          .from('provider')
+          .update({
+            requirements_submitted: updatedReqs,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', providerDetails.id);
+      } catch (dbErr) {
+        console.error('Error persisting draft upload:', dbErr);
+      }
+
       setHasModifiedDocs(true);
-      showToast(`Successfully uploaded ${fieldName}!`);
+      if (aiResult?.verificationStatus === 'rejected' || aiResult?.tamperingDetected) {
+        showToast(`⚠️ AI Warning: ${fieldName} was flagged/rejected for authenticity mismatch.`);
+      } else {
+        showToast(`Successfully uploaded and AI scanned ${fieldName}!`);
+      }
     } catch (err: any) {
       console.error('Error uploading document:', err);
       showToast(`Upload failed: ${err.message}`);
@@ -2838,8 +2887,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
     setSubmittingVerification(true);
     try {
-      const updatedReqs = { ...providerDetails.requirementsSubmitted };
-      delete updatedReqs._remarks;
+      const rawReqs = { ...providerDetails.requirementsSubmitted };
+      delete rawReqs._remarks;
+      rawReqs._isSubmitted = true;
+      const updatedReqs = sanitizeRequirementsSubmitted(rawReqs);
 
       const { error } = await supabase
         .from('provider')
@@ -2878,9 +2929,14 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
     setSubmittingVerification(true);
     try {
+      const rawReqs = { ...providerDetails.requirementsSubmitted };
+      rawReqs._isSubmitted = false;
+      const updatedReqs = sanitizeRequirementsSubmitted(rawReqs);
+
       const { error } = await supabase
         .from('provider')
         .update({
+          requirements_submitted: updatedReqs,
           verification_status: 'pending',
           updated_at: new Date().toISOString()
         })
@@ -2890,6 +2946,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       setProviderDetails(prev => prev ? {
         ...prev,
+        requirementsSubmitted: updatedReqs,
         verificationStatus: 'pending'
       } : null);
 

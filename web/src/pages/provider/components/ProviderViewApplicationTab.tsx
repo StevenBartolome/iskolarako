@@ -1284,7 +1284,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                       onClick={() => toggleExpandDoc(idx)}
                                       title="Click to toggle AI breakdown"
                                     >
-                                      ⚡ {assessment.scorePercent}% Match ({assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'})
+                                      ⚡ {assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'}
                                     </span>
                                   );
                                 })()}
@@ -1430,10 +1430,10 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                   <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
                                     Model: <strong>{aiRes.aiModelUsed || 'Gemini 2.5 Flash'}</strong> ({aiRes.provider || 'DeepMind'})
                                   </span>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${assessment.badgeStyle}`}>
+                                   {assessment.label}
+                                 </span>
                                 </div>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${assessment.badgeStyle}`}>
-                                  Score: {assessment.scorePercent}% • {assessment.label}
-                                </span>
                               </div>
 
                               {/* Quality & Score Remarks Box */}
@@ -1449,7 +1449,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                 </span>
                                 <div className="space-y-0.5">
                                   <span className="font-bold block text-xs">
-                                    Match Rating: {assessment.scorePercent}% — {assessment.textRemark}
+                                    Match Rating: {assessment.textRemark}
                                   </span>
                                   <p className="text-[11px] leading-relaxed opacity-90 font-normal">
                                     {assessment.quality === 'GOOD' && 'Document matches declared profile credentials with verified official seals and zero visual tampering detected.'}

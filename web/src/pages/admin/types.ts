@@ -39,6 +39,7 @@ export interface ProviderOrg {
   documents: ProviderDocumentItem[];
   dateRegistered: string;
   remarks?: string;
+  isSubmitted?: boolean;
   aiAuditSummary?: {
     total: number;
     verified: number;
