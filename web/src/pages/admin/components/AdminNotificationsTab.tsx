@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import type { ProviderOrg, StudentAdminView } from '../types';
+
+export type AnnouncementTargetType = 'Students' | 'Providers' | 'Both' | 'Specific Provider' | 'Specific Scholar';
 
 interface AdminBroadcastItem {
   id: string | number;
   broadcastId?: string;
   title: string;
   body: string;
-  target: 'Students' | 'Providers' | 'Both' | string;
+  target: AnnouncementTargetType | string;
+  targetName?: string;
   author: string;
   date: string;
   recipientsCount?: number;
@@ -13,8 +17,8 @@ interface AdminBroadcastItem {
 
 interface AdminNotificationsTabProps {
   handleSendAnnouncement: (e: React.FormEvent) => void;
-  announcementTarget: 'Students' | 'Providers' | 'Both';
-  setAnnouncementTarget: (target: 'Students' | 'Providers' | 'Both') => void;
+  announcementTarget: AnnouncementTargetType;
+  setAnnouncementTarget: (target: AnnouncementTargetType) => void;
   announcementTitle: string;
   setAnnouncementTitle: (title: string) => void;
   announcementBody: string;
@@ -22,6 +26,12 @@ interface AdminNotificationsTabProps {
   adminBroadcasts?: AdminBroadcastItem[];
   isSendingAnnouncement?: boolean;
   onDeleteBroadcast?: (id: string | number) => void;
+  providers?: ProviderOrg[];
+  students?: StudentAdminView[];
+  selectedTargetProviderId?: string;
+  setSelectedTargetProviderId?: (id: string) => void;
+  selectedTargetUserId?: string;
+  setSelectedTargetUserId?: (id: string) => void;
 }
 
 export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
@@ -35,10 +45,21 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
   adminBroadcasts = [],
   isSendingAnnouncement = false,
   onDeleteBroadcast,
+  providers = [],
+  students = [],
+  selectedTargetProviderId = '',
+  setSelectedTargetProviderId,
+  selectedTargetUserId = '',
+  setSelectedTargetUserId,
 }) => {
-  const [activeFilter, setActiveFilter] = useState<'All' | 'Students' | 'Providers' | 'Both'>('All');
+  const [activeFilter, setActiveFilter] = useState<'All' | 'Both' | 'Students' | 'Providers' | 'Specific Provider' | 'Specific Scholar'>('All');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const ITEMS_PER_PAGE = 3;
+  const ITEMS_PER_PAGE = 5;
+
+  const [providerSearch, setProviderSearch] = useState('');
+  const [scholarSearch, setScholarSearch] = useState('');
+  const [isProviderDropdownOpen, setIsProviderDropdownOpen] = useState(false);
+  const [isScholarDropdownOpen, setIsScholarDropdownOpen] = useState(false);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -69,10 +90,39 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
     return b.target === activeFilter;
   });
 
+  const filteredProviders = providers.filter(p => {
+    if (!providerSearch.trim()) return true;
+    const q = providerSearch.toLowerCase();
+    return (
+      (p.name && p.name.toLowerCase().includes(q)) ||
+      (p.type && p.type.toLowerCase().includes(q)) ||
+      (p.representative && p.representative.toLowerCase().includes(q)) ||
+      (p.email && p.email.toLowerCase().includes(q))
+    );
+  });
+
+  const filteredStudents = students.filter(s => {
+    if (!scholarSearch.trim()) return true;
+    const q = scholarSearch.toLowerCase();
+    return (
+      (s.name && s.name.toLowerCase().includes(q)) ||
+      (s.email && s.email.toLowerCase().includes(q)) ||
+      (s.school && s.school.toLowerCase().includes(q)) ||
+      (s.course && s.course.toLowerCase().includes(q))
+    );
+  });
+
+  const selectedProviderObj = providers.find(p => String(p.id) === String(selectedTargetProviderId));
+  const selectedStudentObj = students.find(s => String(s.id) === String(selectedTargetUserId));
+
   const totalPages = Math.ceil(filteredBroadcasts.length / ITEMS_PER_PAGE) || 1;
   const safePage = Math.min(currentPage, totalPages);
   const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
   const paginatedBroadcasts = filteredBroadcasts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  const isSubmitDisabled = isSendingAnnouncement || !announcementTitle.trim() || !announcementBody.trim() ||
+    (announcementTarget === 'Specific Provider' && !selectedTargetProviderId) ||
+    (announcementTarget === 'Specific Scholar' && !selectedTargetUserId);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -83,13 +133,13 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-[#E8A838] text-[#1A3C2E]">
               System Administration
             </span>
-            <span className="text-[11px] text-[#9BA89F] font-semibold">● Platform-wide Notification System</span>
+            <span className="text-[11px] text-[#9BA89F] font-semibold">● Dedicated Broadcast Channels</span>
           </div>
           <h2 className="text-2xl lg:text-3xl font-extrabold font-serif tracking-tight text-white mt-1">
-            System Announcements & Broadcasts
+            System Announcements & Broadcast Portal
           </h2>
           <p className="text-xs text-[#E8A838]/90 max-w-xl leading-relaxed">
-            Dispatch announcements directly to registered scholars, scholarship providers, or all accounts. Broadcasts are saved in real-time to users' database notification inboxes.
+            Dispatch platform-wide announcements or send targeted broadcast notices directly to a specific provider organization or scholar account.
           </p>
         </div>
 
@@ -106,7 +156,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
         <div className="lg:col-span-5 bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-sm space-y-5">
           <div className="border-b border-[#D9D2C5]/40 pb-4">
             <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Broadcast Announcement</h3>
-            <p className="text-xs text-[#6C6C70] mt-0.5">Dispatches in-app notifications and inbox alerts.</p>
+            <p className="text-xs text-[#6C6C70] mt-0.5">Dispatches in-app notifications and real-time push alerts.</p>
           </div>
 
           {/* Quick templates */}
@@ -145,22 +195,26 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
           </div>
 
           <form onSubmit={handleSendAnnouncement} className="space-y-4">
-            {/* Target Audience */}
+            {/* Target Audience Selector */}
             <div>
               <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-2">
-                Target Audience
+                Target Broadcast Audience
               </label>
-              <div className="flex bg-[#FFFFFF] p-1 rounded-2xl border border-[#D9D2C5]/60">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 bg-[#FFFFFF] p-1.5 rounded-2xl border border-[#D9D2C5]/60">
                 {[
                   { target: 'Both', label: '🌟 All Users' },
-                  { target: 'Students', label: '👨‍🎓 Scholars Only' },
-                  { target: 'Providers', label: '🏢 Providers Only' },
+                  { target: 'Students', label: '👨‍🎓 All Scholars' },
+                  { target: 'Providers', label: '🏢 All Providers' },
                 ].map(item => (
                   <button
                     key={item.target}
                     type="button"
-                    onClick={() => setAnnouncementTarget(item.target as any)}
-                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer border-0 ${
+                    onClick={() => {
+                      setAnnouncementTarget(item.target as AnnouncementTargetType);
+                      setIsProviderDropdownOpen(false);
+                      setIsScholarDropdownOpen(false);
+                    }}
+                    className={`py-2 px-1 text-xs font-bold rounded-xl transition-all cursor-pointer border-0 text-center ${
                       announcementTarget === item.target
                         ? 'bg-[#1A3C2E] text-white shadow-sm'
                         : 'text-[#6C6C70] hover:text-[#1A3C2E]'
@@ -170,7 +224,235 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                   </button>
                 ))}
               </div>
+
+              {/* Specific Target Channel Options */}
+              <div className="grid grid-cols-2 gap-1.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnnouncementTarget('Specific Provider');
+                    setIsProviderDropdownOpen(true);
+                  }}
+                  className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center gap-1.5 ${
+                    announcementTarget === 'Specific Provider'
+                      ? 'bg-[#1A3C2E] text-white border-[#1A3C2E] shadow-sm'
+                      : 'bg-[#F9F5EF] text-[#2D5941] border-[#D9D2C5]/60 hover:bg-[#EDE8DE]'
+                  }`}
+                >
+                  <span>🏢</span>
+                  <span>Specific Provider</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnnouncementTarget('Specific Scholar');
+                    setIsScholarDropdownOpen(true);
+                  }}
+                  className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all cursor-pointer text-center flex items-center justify-center gap-1.5 ${
+                    announcementTarget === 'Specific Scholar'
+                      ? 'bg-[#1A3C2E] text-white border-[#1A3C2E] shadow-sm'
+                      : 'bg-[#F9F5EF] text-[#2D5941] border-[#D9D2C5]/60 hover:bg-[#EDE8DE]'
+                  }`}
+                >
+                  <span>👤</span>
+                  <span>Specific Scholar</span>
+                </button>
+              </div>
             </div>
+
+            {/* Searchable Combobox: Specific Provider Selector */}
+            {announcementTarget === 'Specific Provider' && (
+              <div className="bg-[#EBF5EE] p-4 rounded-2xl border border-[#2D5941]/30 space-y-3 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wide">
+                    Target Provider Organization
+                  </label>
+                  <span className="text-[10px] text-[#2D5941] font-semibold bg-[#2D5941]/10 px-2 py-0.5 rounded-full">
+                    {providers.length} registered
+                  </span>
+                </div>
+
+                {selectedProviderObj ? (
+                  <div className="bg-white p-3 rounded-xl border border-[#2D5941]/30 shadow-xs flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-xs text-[#1A3C2E] truncate">{selectedProviderObj.name}</span>
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#EDE8DE] text-[#1A3C2E] shrink-0">
+                          {selectedProviderObj.type}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#6C6C70] truncate mt-0.5">
+                        {selectedProviderObj.representative} • {selectedProviderObj.email}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (setSelectedTargetProviderId) setSelectedTargetProviderId('');
+                        setIsProviderDropdownOpen(true);
+                      }}
+                      className="text-xs font-bold text-[#B34040] hover:text-[#8E2F2F] bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border-0 cursor-pointer shrink-0 transition-colors"
+                    >
+                      Change ✕
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative space-y-1.5">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="🔍 Search provider by name, type, rep, or email..."
+                        value={providerSearch}
+                        onChange={(e) => {
+                          setProviderSearch(e.target.value);
+                          setIsProviderDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsProviderDropdownOpen(true)}
+                        className="w-full pl-3.5 pr-8 py-2.5 rounded-xl border border-[#2D5941]/40 text-xs font-semibold focus:outline-none focus:border-[#1A3C2E] bg-white text-[#1A3C2E]"
+                      />
+                      {providerSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setProviderSearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 border-0 bg-transparent cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {isProviderDropdownOpen && (
+                      <div className="bg-white border border-[#2D5941]/30 rounded-xl shadow-lg max-h-48 overflow-y-auto z-20 space-y-0.5 p-1 animate-fade-in">
+                        {filteredProviders.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-[#6C6C70] font-medium">
+                            No matching providers found for "{providerSearch}"
+                          </div>
+                        ) : (
+                          filteredProviders.map(p => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => {
+                                if (setSelectedTargetProviderId) setSelectedTargetProviderId(String(p.id));
+                                setIsProviderDropdownOpen(false);
+                              }}
+                              className="w-full text-left p-2.5 rounded-lg hover:bg-[#EBF5EE] transition-colors cursor-pointer border-0 flex items-center justify-between gap-2"
+                            >
+                              <div className="min-w-0">
+                                <div className="font-bold text-xs text-[#1A3C2E] truncate">{p.name}</div>
+                                <div className="text-[10px] text-[#6C6C70] truncate">
+                                  {p.representative || p.email}
+                                </div>
+                              </div>
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-[#EDE8DE] text-[#1A3C2E] font-bold shrink-0">
+                                {p.type}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Searchable Combobox: Specific Scholar Selector */}
+            {announcementTarget === 'Specific Scholar' && (
+              <div className="bg-[#EBF5EE] p-4 rounded-2xl border border-[#2D5941]/30 space-y-3 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wide">
+                    Target Scholar / Student
+                  </label>
+                  <span className="text-[10px] text-[#2D5941] font-semibold bg-[#2D5941]/10 px-2 py-0.5 rounded-full">
+                    {students.length} scholars
+                  </span>
+                </div>
+
+                {selectedStudentObj ? (
+                  <div className="bg-white p-3 rounded-xl border border-[#2D5941]/30 shadow-xs flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-xs text-[#1A3C2E] truncate">{selectedStudentObj.name}</span>
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 shrink-0">
+                          {selectedStudentObj.verificationStatus}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#6C6C70] truncate mt-0.5">
+                        {selectedStudentObj.email} • {selectedStudentObj.school} ({selectedStudentObj.course})
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (setSelectedTargetUserId) setSelectedTargetUserId('');
+                        setIsScholarDropdownOpen(true);
+                      }}
+                      className="text-xs font-bold text-[#B34040] hover:text-[#8E2F2F] bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border-0 cursor-pointer shrink-0 transition-colors"
+                    >
+                      Change ✕
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative space-y-1.5">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="🔍 Search scholar by name, email, or school..."
+                        value={scholarSearch}
+                        onChange={(e) => {
+                          setScholarSearch(e.target.value);
+                          setIsScholarDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsScholarDropdownOpen(true)}
+                        className="w-full pl-3.5 pr-8 py-2.5 rounded-xl border border-[#2D5941]/40 text-xs font-semibold focus:outline-none focus:border-[#1A3C2E] bg-white text-[#1A3C2E]"
+                      />
+                      {scholarSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setScholarSearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 border-0 bg-transparent cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {isScholarDropdownOpen && (
+                      <div className="bg-white border border-[#2D5941]/30 rounded-xl shadow-lg max-h-48 overflow-y-auto z-20 space-y-0.5 p-1 animate-fade-in">
+                        {filteredStudents.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-[#6C6C70] font-medium">
+                            No matching scholars found for "{scholarSearch}"
+                          </div>
+                        ) : (
+                          filteredStudents.map(s => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => {
+                                if (setSelectedTargetUserId) setSelectedTargetUserId(String(s.id));
+                                setIsScholarDropdownOpen(false);
+                              }}
+                              className="w-full text-left p-2.5 rounded-lg hover:bg-[#EBF5EE] transition-colors cursor-pointer border-0 flex items-center justify-between gap-2"
+                            >
+                              <div className="min-w-0">
+                                <div className="font-bold text-xs text-[#1A3C2E] truncate">{s.name}</div>
+                                <div className="text-[10px] text-[#6C6C70] truncate">
+                                  {s.email} • {s.school}
+                                </div>
+                              </div>
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 font-bold shrink-0">
+                                {s.verificationStatus}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Title */}
             <div>
@@ -181,7 +463,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                 type="text"
                 required
                 maxLength={100}
-                placeholder="e.g. Scheduled System Upgrade on Aug 15"
+                placeholder="e.g. Scheduled System Upgrade or Direct Notice"
                 value={announcementTitle}
                 onChange={(e) => setAnnouncementTitle(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-[#D9D2C5] text-xs font-semibold focus:outline-none focus:border-[#2D5941] bg-white"
@@ -197,7 +479,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                 rows={5}
                 required
                 maxLength={1000}
-                placeholder="Enter detailed broadcast notice, instructions, or emergency updates..."
+                placeholder="Enter detailed broadcast notice, instructions, or direct channel message..."
                 value={announcementBody}
                 onChange={(e) => setAnnouncementBody(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-[#D9D2C5] text-xs font-semibold focus:outline-none focus:border-[#2D5941] bg-white leading-relaxed"
@@ -206,18 +488,24 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
 
             <button
               type="submit"
-              disabled={isSendingAnnouncement || !announcementTitle.trim() || !announcementBody.trim()}
+              disabled={isSubmitDisabled}
               className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] disabled:bg-[#D9D2C5] disabled:cursor-not-allowed text-white py-3.5 rounded-xl text-xs font-bold shadow-md cursor-pointer transition-colors border-0 flex items-center justify-center gap-2"
             >
               {isSendingAnnouncement ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Sending System Broadcast...</span>
+                  <span>Dispatching Announcement...</span>
                 </>
               ) : (
                 <>
                   <span>📢</span>
-                  <span>Broadcast System Announcement</span>
+                  <span>
+                    {announcementTarget === 'Specific Provider'
+                      ? 'Send Direct Announcement to Provider'
+                      : announcementTarget === 'Specific Scholar'
+                      ? 'Send Direct Announcement to Scholar'
+                      : 'Broadcast System Announcement'}
+                  </span>
                 </>
               )}
             </button>
@@ -227,15 +515,15 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
         {/* ─── Broadcast History (7 cols) ─── */}
         <div className="lg:col-span-7 space-y-6">
           <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Sent Broadcast History</h3>
                 <p className="text-xs text-[#6C6C70]">System notices logged to user inboxes</p>
               </div>
 
               {/* Filter Tabs */}
-              <div className="flex items-center gap-1 bg-[#FFFFFF] p-1 rounded-xl border border-[#D9D2C5]/60">
-                {['All', 'Both', 'Students', 'Providers'].map(filter => (
+              <div className="flex flex-wrap items-center gap-1 bg-[#FFFFFF] p-1 rounded-xl border border-[#D9D2C5]/60">
+                {['All', 'Both', 'Students', 'Providers', 'Specific Provider', 'Specific Scholar'].map(filter => (
                   <button
                     key={filter}
                     type="button"
@@ -246,7 +534,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                         : 'text-[#6C6C70] hover:text-[#1A3C2E]'
                     }`}
                   >
-                    {filter}
+                    {filter === 'Specific Provider' ? '🏢 Direct Provider' : filter === 'Specific Scholar' ? '👤 Direct Scholar' : filter}
                   </button>
                 ))}
               </div>
@@ -259,7 +547,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                 <div className="w-14 h-14 bg-[#EDE8DE] rounded-2xl flex items-center justify-center mx-auto text-2xl text-[#2D5941]">
                   📢
                 </div>
-                <h4 className="font-bold text-[#1A3C2E] font-serif text-base">No Broadcasts Yet</h4>
+                <h4 className="font-bold text-[#1A3C2E] font-serif text-base">No Broadcasts Found</h4>
                 <p className="text-xs text-[#6C6C70] max-w-sm mx-auto">
                   System announcements you broadcast will appear here and be delivered directly to the inboxes of all targeted accounts.
                 </p>
@@ -276,8 +564,14 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide bg-purple-100 text-purple-800 border border-purple-200">
                           🏛️ System Announcement
                         </span>
-                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#1A3C2E]">
-                          Target: {bc.target}
+                        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold ${
+                          bc.target === 'Specific Provider'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : bc.target === 'Specific Scholar'
+                            ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                            : 'bg-[#EDE8DE] text-[#1A3C2E]'
+                        }`}>
+                          Target: {bc.targetName ? `${bc.target} (${bc.targetName})` : bc.target}
                         </span>
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
                           ✓ Delivered
@@ -364,3 +658,4 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
     </div>
   );
 };
+

@@ -275,63 +275,102 @@ export const sendScholarAgreementNotification = async (params: ScholarAgreementN
 export interface AdminAnnouncementParams {
   title: string;
   message: string;
-  target: 'Students' | 'Providers' | 'Both';
+  target: 'Students' | 'Providers' | 'Both' | 'Specific Provider' | 'Specific Scholar';
+  targetProviderId?: string;
+  targetUserId?: string;
+  targetName?: string;
   adminId?: string;
   adminName?: string;
 }
 
 export const sendAdminAnnouncement = async (params: AdminAnnouncementParams): Promise<{ success: boolean; count: number; error?: string }> => {
-  const { title, message, target, adminId, adminName = 'System Admin' } = params;
+  const { title, message, target, targetProviderId, targetUserId, targetName, adminId, adminName = 'System Admin' } = params;
 
   try {
     const broadcastId = `admin-bc-${Date.now()}`;
     const userIdsSet = new Set<string>();
 
-    if (target === 'Students' || target === 'Both') {
-      // 1. Fetch scholar user IDs from scholar table
-      const { data: scholarTableData, error: scholarErr } = await supabase
-        .from('scholar')
-        .select('user_id');
-      if (scholarErr) console.warn('[Admin Announcement Scholar Table Note]:', scholarErr.message);
-      scholarTableData?.forEach((s: any) => {
-        if (s.user_id) userIdsSet.add(s.user_id);
-      });
+    if (target === 'Specific Provider') {
+      if (targetProviderId) {
+        // Fetch provider user IDs matching provider_id
+        const { data: providerUsers, error: pErr } = await supabase
+          .from('users')
+          .select('id')
+          .eq('provider_id', targetProviderId);
+        if (pErr) console.warn('[Admin Announcement Specific Provider Note]:', pErr.message);
+        providerUsers?.forEach((u: any) => {
+          if (u.id) userIdsSet.add(u.id);
+        });
 
-      // 2. Fetch scholar user IDs from users table with role 'scholar'
-      const { data: usersScholarData, error: usersScholarErr } = await supabase
-        .from('users')
-        .select('id')
-        .eq('role', 'scholar');
-      if (usersScholarErr) console.warn('[Admin Announcement Users Scholar Note]:', usersScholarErr.message);
-      usersScholarData?.forEach((u: any) => {
-        if (u.id) userIdsSet.add(u.id);
-      });
-    }
+        // Also check if targetProviderId itself is a user ID in users table
+        const { data: directUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', targetProviderId)
+          .maybeSingle();
+        if (directUser?.id) userIdsSet.add(directUser.id);
+      }
+    } else if (target === 'Specific Scholar') {
+      if (targetUserId) {
+        userIdsSet.add(targetUserId);
 
-    if (target === 'Providers' || target === 'Both') {
-      // 1. Fetch provider user IDs from users table
-      const { data: usersProviderData, error: providerErr } = await supabase
-        .from('users')
-        .select('id')
-        .in('role', ['provider', 'provider-member']);
-      if (providerErr) console.warn('[Admin Announcement Provider Users Note]:', providerErr.message);
-      usersProviderData?.forEach((u: any) => {
-        if (u.id) userIdsSet.add(u.id);
-      });
+        // Also check if targetUserId was a scholar table id (lookup user_id)
+        const { data: scholarRow } = await supabase
+          .from('scholar')
+          .select('user_id')
+          .eq('id', targetUserId)
+          .maybeSingle();
+        if (scholarRow?.user_id) {
+          userIdsSet.add(scholarRow.user_id);
+        }
+      }
+    } else {
+      if (target === 'Students' || target === 'Both') {
+        // 1. Fetch scholar user IDs from scholar table
+        const { data: scholarTableData, error: scholarErr } = await supabase
+          .from('scholar')
+          .select('user_id');
+        if (scholarErr) console.warn('[Admin Announcement Scholar Table Note]:', scholarErr.message);
+        scholarTableData?.forEach((s: any) => {
+          if (s.user_id) userIdsSet.add(s.user_id);
+        });
 
-      // 2. Fetch users with non-null provider_id
-      const { data: providerIdUsers } = await supabase
-        .from('users')
-        .select('id')
-        .not('provider_id', 'is', null);
-      providerIdUsers?.forEach((u: any) => {
-        if (u.id) userIdsSet.add(u.id);
-      });
+        // 2. Fetch scholar user IDs from users table with role 'scholar'
+        const { data: usersScholarData, error: usersScholarErr } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'scholar');
+        if (usersScholarErr) console.warn('[Admin Announcement Users Scholar Note]:', usersScholarErr.message);
+        usersScholarData?.forEach((u: any) => {
+          if (u.id) userIdsSet.add(u.id);
+        });
+      }
+
+      if (target === 'Providers' || target === 'Both') {
+        // 1. Fetch provider user IDs from users table
+        const { data: usersProviderData, error: providerErr } = await supabase
+          .from('users')
+          .select('id')
+          .in('role', ['provider', 'provider-member']);
+        if (providerErr) console.warn('[Admin Announcement Provider Users Note]:', providerErr.message);
+        usersProviderData?.forEach((u: any) => {
+          if (u.id) userIdsSet.add(u.id);
+        });
+
+        // 2. Fetch users with non-null provider_id
+        const { data: providerIdUsers } = await supabase
+          .from('users')
+          .select('id')
+          .not('provider_id', 'is', null);
+        providerIdUsers?.forEach((u: any) => {
+          if (u.id) userIdsSet.add(u.id);
+        });
+      }
     }
 
     // Filter out duplicates and invalid IDs
     const uniqueUserIds = Array.from(userIdsSet).filter(Boolean);
-    console.log(`[sendAdminAnnouncement]: Target "${target}" resolved ${uniqueUserIds.length} target recipient user IDs.`);
+    console.log(`[sendAdminAnnouncement]: Target "${target}" (${targetName || 'N/A'}) resolved ${uniqueUserIds.length} target recipient user IDs.`);
 
     // Prepare notification rows for all target users
     const nowIso = new Date().toISOString();
@@ -346,6 +385,9 @@ export const sendAdminAnnouncement = async (params: AdminAnnouncementParams): Pr
         sender_type: 'admin',
         sender_name: adminName,
         target_audience: target,
+        target_name: targetName || null,
+        target_provider_id: targetProviderId || null,
+        target_user_id: targetUserId || null,
         broadcast_id: broadcastId,
         announcement_type: 'System Announcement'
       }
@@ -365,6 +407,9 @@ export const sendAdminAnnouncement = async (params: AdminAnnouncementParams): Pr
           sender_type: 'admin',
           sender_name: adminName,
           target_audience: target,
+          target_name: targetName || null,
+          target_provider_id: targetProviderId || null,
+          target_user_id: targetUserId || null,
           broadcast_id: broadcastId,
           recipients_count: uniqueUserIds.length,
           announcement_type: 'System Announcement'
@@ -786,6 +831,7 @@ export const fetchAdminBroadcasts = async (): Promise<any[]> => {
           title: n.title,
           body: n.message,
           target: meta.target_audience || 'Both',
+          targetName: meta.target_name || undefined,
           author: meta.sender_name || 'System Admin',
           date: new Date(n.created_at).toLocaleDateString('en-US', {
             month: 'short',

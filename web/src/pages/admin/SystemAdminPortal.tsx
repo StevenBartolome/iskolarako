@@ -14,6 +14,7 @@ import { AdminDocumentsTab } from './components/AdminDocumentsTab';
 import { AdminReportsTab } from './components/AdminReportsTab';
 import { AdminFundsTab } from './components/AdminFundsTab';
 import { AdminNotificationsTab } from './components/AdminNotificationsTab';
+import type { AnnouncementTargetType } from './components/AdminNotificationsTab';
 import { AdminLogsTab } from './components/AdminLogsTab';
 import { AdminSettingsTab } from './components/AdminSettingsTab';
 import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
@@ -391,7 +392,9 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   // System Config States
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [announcementTarget, setAnnouncementTarget] = useState<'Students' | 'Providers' | 'Both'>('Both');
+  const [announcementTarget, setAnnouncementTarget] = useState<AnnouncementTargetType>('Both');
+  const [selectedTargetProviderId, setSelectedTargetProviderId] = useState<string>('');
+  const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementBody, setAnnouncementBody] = useState('');
 
@@ -611,7 +614,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   };
 
   useEffect(() => {
-    if (activeTab === 'providers' || activeTab === 'dashboard') {
+    if (activeTab === 'providers' || activeTab === 'dashboard' || activeTab === 'notifications') {
       fetchRealProviders();
     }
   }, [activeTab]);
@@ -1414,21 +1417,36 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
   const handleSendAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!announcementTitle.trim() || !announcementBody.trim()) return;
+
+    let targetName = '';
+    if (announcementTarget === 'Specific Provider' && selectedTargetProviderId) {
+      const p = providers.find(item => String(item.id) === String(selectedTargetProviderId));
+      targetName = p ? p.name : '';
+    } else if (announcementTarget === 'Specific Scholar' && selectedTargetUserId) {
+      const s = students.find(item => String(item.id) === String(selectedTargetUserId));
+      targetName = s ? s.name : '';
+    }
+
     setIsSendingAnnouncement(true);
     try {
       const res = await sendAdminAnnouncement({
         title: announcementTitle.trim(),
         message: announcementBody.trim(),
         target: announcementTarget,
+        targetProviderId: announcementTarget === 'Specific Provider' ? selectedTargetProviderId : undefined,
+        targetUserId: announcementTarget === 'Specific Scholar' ? selectedTargetUserId : undefined,
+        targetName: targetName || undefined,
         adminId: currentAdminUserId,
         adminName: profile ? `${profile.firstName} ${profile.lastName}` : 'System Admin'
       });
 
       if (res.success) {
-        addAuditLog(`BROADCAST ANNOUNCEMENT`, `Target: ${announcementTarget} - Title: ${announcementTitle} (${res.count} users)`);
-        showToast(`Announcement successfully broadcasted to ${res.count} users!`);
+        addAuditLog(`BROADCAST ANNOUNCEMENT`, `Target: ${announcementTarget}${targetName ? ` (${targetName})` : ''} - Title: ${announcementTitle} (${res.count} users)`);
+        showToast(`Announcement successfully sent to ${targetName || announcementTarget} (${res.count} user${res.count === 1 ? '' : 's'})!`);
         setAnnouncementTitle('');
         setAnnouncementBody('');
+        setSelectedTargetProviderId('');
+        setSelectedTargetUserId('');
         await fetchBroadcastsHistory();
       } else {
         showToast(`Failed to send broadcast: ${res.error || 'Unknown error'}`);
@@ -1746,6 +1764,12 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             adminBroadcasts={adminBroadcasts}
             isSendingAnnouncement={isSendingAnnouncement}
             onDeleteBroadcast={handleDeleteAdminBroadcast}
+            providers={providers}
+            students={students}
+            selectedTargetProviderId={selectedTargetProviderId}
+            setSelectedTargetProviderId={setSelectedTargetProviderId}
+            selectedTargetUserId={selectedTargetUserId}
+            setSelectedTargetUserId={setSelectedTargetUserId}
           />
         )}
 
