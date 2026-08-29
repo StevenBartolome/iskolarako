@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { AdminReport, ProviderOrg, ScholarshipAdminView, StudentAdminView, AuditLogEntry } from '../types';
+import { downloadCsv, dateStampedFilename } from '@/utils/csvExport';
 
 interface AdminReportsTabProps {
   reports: AdminReport[];
@@ -37,13 +38,41 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
     });
   }, [reports, reportFilter, searchQuery]);
 
+  // Per-provider funding & active-scholarship totals, derived from the scholarships list.
+  // (ProviderOrg records themselves don't carry a funding/program-count field — deriving
+  // it here instead of trusting a `totalFunding`/`activeScholarships` prop that is never
+  // actually populated keeps the KPI card and the Master Audit export from silently
+  // showing ₱0 / placeholder values for every provider.)
+  const providerStatsByName = useMemo(() => {
+    const map = new Map<string, { funding: number; activeScholarships: number }>();
+    scholarships.forEach(s => {
+      const key = s.providerName;
+      if (!key) return;
+      const entry = map.get(key) || { funding: 0, activeScholarships: 0 };
+      entry.funding += Number(s.amount) || 0;
+      if (s.status === 'Approved' || s.status === 'Published') entry.activeScholarships += 1;
+      map.set(key, entry);
+    });
+    return map;
+  }, [scholarships]);
+
+  const isProviderVerified = (p: any) => p.status === 'Verified' || p.verificationStatus === 'verified';
+
+  // A verified provider is treated as fully compliant; anything still pending/under review
+  // or suspended/revoked is not — this mirrors the same check used for the KPI card below,
+  // instead of the export hard-coding "100%" for every provider regardless of status.
+  const getProviderComplianceScore = (p: any) => (isProviderVerified(p) ? '100%' : '0%');
+
   // System-wide KPI Computations
   const totalFundingDisbursed = useMemo(() => {
-    return providers.reduce((acc, p: any) => acc + (Number(p.totalFunding) || 0), 0);
-  }, [providers]);
+    return providers.reduce((acc, p: any) => {
+      const stats = providerStatsByName.get(p.name);
+      return acc + (stats?.funding || Number(p.totalFunding) || 0);
+    }, 0);
+  }, [providers, providerStatsByName]);
 
   const verifiedProvidersCount = useMemo(() => {
-    return providers.filter((p: any) => p.status === 'Verified' || p.verificationStatus === 'verified').length;
+    return providers.filter(isProviderVerified).length;
   }, [providers]);
 
   const providerComplianceRate = providers.length > 0
@@ -94,55 +123,50 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
     return counts;
   }, [scholarships]);
 
-  // Export Escalations CSV
+  // Export Escalations CSV — exports whatever the admin currently has filtered/searched
+  // for, matching what's on screen (rather than silently ignoring the filter/search bar).
   const exportEscalationsCsv = () => {
-    if (reports.length === 0) {
+    if (filteredReports.length === 0) {
       showToast('No complaints or reports to export.');
       return;
     }
 
     const headers = ['Report ID', 'Type', 'Reported Entity', 'Reason', 'Reporter', 'Date', 'Status'];
-    const rows = reports.map(r => [
-      `"${r.id}"`,
-      `"${r.type}"`,
-      `"${r.reportedEntity}"`,
-      `"${r.reason.replace(/"/g, '""')}"`,
-      `"${r.reporter}"`,
-      `"${r.date}"`,
-      `"${r.status}"`,
+    const rows = filteredReports.map(r => [
+      r.id,
+      r.type,
+      r.reportedEntity,
+      r.reason,
+      r.reporter,
+      r.date,
+      r.status,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `IskoAko_System_Escalations_Report_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Exported system escalations to CSV!');
+    downloadCsv(dateStampedFilename('IskoAko_System_Escalations_Report'), headers, rows);
+    showToast(`Exported ${filteredReports.length} escalation record(s) to CSV!`);
   };
 
   // Export Master System Audit CSV
   const exportMasterAuditCsv = () => {
-    const headers = ['Provider Name', 'Type', 'Status', 'Active Scholarships', 'Total Funding (PHP)', 'Compliance Score'];
-    const rows = providers.map((p: any) => [
-      `"${p.name}"`,
-      `"${p.type || p.provider_type || 'N/A'}"`,
-      `"${p.status || p.verificationStatus || 'Verified'}"`,
-      `"${p.activeScholarships || p.activePrograms || 1}"`,
-      `"${p.totalFunding || 0}"`,
-      `"100%"`,
-    ]);
+    if (providers.length === 0) {
+      showToast('No providers to export.');
+      return;
+    }
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `IskoAko_Master_Provider_Audit_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const headers = ['Provider Name', 'Type', 'Status', 'Active Scholarships', 'Total Funding (PHP)', 'Compliance Score'];
+    const rows = providers.map((p: any) => {
+      const stats = providerStatsByName.get(p.name);
+      return [
+        p.name,
+        p.type || p.provider_type || 'N/A',
+        p.status || p.verificationStatus || 'Verified',
+        stats?.activeScholarships ?? 0,
+        stats?.funding || Number(p.totalFunding) || 0,
+        getProviderComplianceScore(p),
+      ];
+    });
+
+    downloadCsv(dateStampedFilename('IskoAko_Master_Provider_Audit'), headers, rows);
     showToast('Exported master provider audit to CSV!');
   };
 

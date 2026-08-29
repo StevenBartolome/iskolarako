@@ -1,6 +1,44 @@
 import React, { useState, useMemo } from 'react';
 import type { Program, ScholarAward, DisbursementTx, Announcement } from '../types';
 import type { ApplicationDetail, SubmittedDocItem } from './ReviewApplicationModal';
+import { downloadCsv, dateStampedFilename } from '@/utils/csvExport';
+import { normalizeGwa } from '../utils/gwaUtils';
+
+// `DisbursementTx` is a loose/`any`-keyed type because it's shared across screens that
+// populate it differently. The live data this tab actually receives (see ProviderPortal's
+// fetchDisbursements) uses `scholar` / `program` / `method` and a pre-formatted currency
+// string for `amount` (with the raw number kept separately in `numericAmount`) — not the
+// `scholarName` / `programTitle` / `type` / numeric-`amount` shape one might expect from
+// the field names alone. These helpers read whichever shape is actually present so the
+// KPIs, table, and CSV export all agree with what's on screen instead of silently reading
+// undefined fields.
+const getDisbursementScholarName = (d: DisbursementTx): string => d.scholarName || d.scholar || 'Scholar';
+const getDisbursementProgram = (d: DisbursementTx): string => d.programTitle || d.program || '';
+const getDisbursementType = (d: DisbursementTx): string => d.type || d.method || 'Stipend';
+const getDisbursementRef = (d: DisbursementTx): string => d.batchRef || d.reference_number || String(d.id ?? '');
+const getDisbursementAmount = (d: DisbursementTx): number => {
+  if (typeof d.numericAmount === 'number' && !isNaN(d.numericAmount)) return d.numericAmount;
+  if (typeof d.amount === 'number') return d.amount;
+  // Strings may come pre-formatted as currency, e.g. "₱50,000" — strip non-numeric chars.
+  const parsed = Number(String(d.amount ?? '').replace(/[^0-9.-]/g, ''));
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+// Schools grade on different scales (PH Standard 1.00–5.00, NU/DLSU/Ateneo 0–4.00, straight
+// percentage, etc.), so a raw `grade` number is not comparable across applicants and can't be
+// meaningfully averaged or bucketed as-is — the same 1.75 GWA is "Dean's List" on a 5.0 scale
+// but failing on a 4.0 scale. `normalizeGwa` (also used for candidate ranking elsewhere in this
+// portal, e.g. ProviderApplicantsTab) converts any scale to a common 0–100 percentage so reports
+// are scale-independent. Returns null when there's no usable grade, mirroring the previous
+// `!isNaN(g) && g > 0` guard.
+const getScaleForApplicant = (a: ApplicationDetail): string =>
+  a.gpa_scale || a.gpaScale || a.rawApplication?.scholar?.gpa_scale || a.rawApplication?.cycle?.program?.gpa_scale || 'scale_5';
+
+const getNormalizedGradePercent = (a: ApplicationDetail): number | null => {
+  if (a.grade === null || a.grade === undefined || String(a.grade).trim() === '') return null;
+  const percent = normalizeGwa(a.grade, getScaleForApplicant(a));
+  return percent > 0 ? percent : null;
+};
 
 interface ProviderReportsTabProps {
   programs?: Program[];
@@ -34,35 +72,55 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
   // Helper to get unique student key (prevents double-counting renewals or multiple program applications)
   const getScholarKey = (app: ApplicationDetail) => app.scholarId || app.email || app.name.toLowerCase().trim();
 
-  // Filter applicants based on selected program and timeframe search
+  // Timeframe filter cutoff. `date` fields on applicants/disbursements are pre-formatted
+  // display strings (e.g. "Jan 05, 2026"), which `Date` can parse directly — no raw ISO
+  // timestamp is available on the disbursement records this tab receives.
+  const timeframeCutoff = useMemo(() => {
+    const now = new Date();
+    if (selectedTimeframe === '30d') return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    if (selectedTimeframe === '90d') return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    if (selectedTimeframe === 'ay') return new Date('2025-08-01'); // AY 2025-2026 start
+    return null;
+  }, [selectedTimeframe]);
+
+  const isWithinTimeframe = (dateStr: string | undefined): boolean => {
+    if (!timeframeCutoff || !dateStr) return true;
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed.getTime())) return true; // unparseable ("Recently"/"N/A") — don't drop it
+    return parsed >= timeframeCutoff;
+  };
+
+  // Filter applicants based on selected program, timeframe and search
   const filteredApplicants = useMemo(() => {
     return applicants.filter(app => {
-      const matchProg = selectedProgramId === 'all' || 
+      const matchProg = selectedProgramId === 'all' ||
         (app.program && app.program.toLowerCase().includes(selectedProgramId.toLowerCase())) ||
         (app.program_id && app.program_id === selectedProgramId) ||
         (app.rawApplication?.cycle?.program_id === selectedProgramId);
-      const matchSearch = !searchQuery || 
+      const matchSearch = !searchQuery ||
         app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         app.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
         app.course.toLowerCase().includes(searchQuery.toLowerCase()) ||
         String(app.id).toLowerCase().includes(searchQuery.toLowerCase());
-      return matchProg && matchSearch;
+      const matchTimeframe = isWithinTimeframe(app.rawApplication?.created_at || app.date);
+      return matchProg && matchSearch && matchTimeframe;
     });
-  }, [applicants, selectedProgramId, searchQuery]);
+  }, [applicants, selectedProgramId, searchQuery, timeframeCutoff]);
 
-  // Filter disbursements based on selected program
+  // Filter disbursements based on selected program, timeframe and search
   const filteredDisbursements = useMemo(() => {
     return disbursements.filter(tx => {
-      const matchProg = selectedProgramId === 'all' || 
-        (tx.programTitle && tx.programTitle.toLowerCase().includes(selectedProgramId.toLowerCase())) ||
+      const program = getDisbursementProgram(tx);
+      const matchProg = selectedProgramId === 'all' ||
+        (program && program.toLowerCase().includes(selectedProgramId.toLowerCase())) ||
         (tx.program_id && tx.program_id === selectedProgramId);
       const matchSearch = !searchQuery ||
-        (tx.scholarName && tx.scholarName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (tx.batchRef && tx.batchRef.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (tx.id && String(tx.id).toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchProg && matchSearch;
+        getDisbursementScholarName(tx).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        getDisbursementRef(tx).toLowerCase().includes(searchQuery.toLowerCase());
+      const matchTimeframe = isWithinTimeframe(tx.date);
+      return matchProg && matchSearch && matchTimeframe;
     });
-  }, [disbursements, selectedProgramId, searchQuery]);
+  }, [disbursements, selectedProgramId, searchQuery, timeframeCutoff]);
 
   // Filter scholars list
   const filteredScholars = useMemo(() => {
@@ -137,28 +195,27 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
   }, [programs]);
 
   const totalDisbursed = useMemo(() => {
-    return filteredDisbursements.reduce((acc, d) => {
-      const amount = typeof d.amount === 'number' ? d.amount : Number(d.amount) || 0;
-      return acc + amount;
-    }, 0);
+    return filteredDisbursements.reduce((acc, d) => acc + getDisbursementAmount(d), 0);
   }, [filteredDisbursements]);
 
   const budgetUtilization = totalBudget > 0 ? ((totalDisbursed / totalBudget) * 100).toFixed(1) : '0.0';
 
-  // Average GWA calculated across UNIQUE STUDENTS (no duplicates for semestral renewals)
-  const avgGwa = useMemo(() => {
-    const scholarGwaMap = new Map<string, number>();
+  // Average Grade % calculated across UNIQUE STUDENTS (no duplicates for semestral renewals).
+  // Uses the normalized 0–100 percentage (not raw GWA) so scholars from schools on different
+  // grading scales (5.0 / 4.0 / percentage) can be averaged together meaningfully.
+  const avgGradePercent = useMemo(() => {
+    const scholarGradeMap = new Map<string, number>();
     filteredApplicants.forEach(a => {
-      const g = parseFloat(a.grade);
-      if (!isNaN(g) && g > 0 && g <= 5.0) {
-        scholarGwaMap.set(getScholarKey(a), g);
+      const percent = getNormalizedGradePercent(a);
+      if (percent !== null) {
+        scholarGradeMap.set(getScholarKey(a), percent);
       }
     });
 
-    const validGwas = Array.from(scholarGwaMap.values());
-    if (validGwas.length === 0) return 'N/A';
-    const sum = validGwas.reduce((a, b) => a + b, 0);
-    return (sum / validGwas.length).toFixed(2);
+    const validGrades = Array.from(scholarGradeMap.values());
+    if (validGrades.length === 0) return null;
+    const sum = validGrades.reduce((a, b) => a + b, 0);
+    return sum / validGrades.length;
   }, [filteredApplicants]);
 
   // Year Level Breakdown (Deduplicated per Unique Student)
@@ -216,30 +273,33 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
       .slice(0, 5);
   }, [filteredApplicants]);
 
-  // GWA Performance Spectrum (Deduplicated per Unique Student)
+  // Grade Performance Spectrum (Deduplicated per Unique Student).
+  // Bucketed by normalized grade PERCENTAGE rather than raw GWA, since applicants come from
+  // schools on different scales (5.0 / 4.0 / percentage) and their raw grade numbers aren't
+  // comparable — e.g. 1.75 is "Dean's List" on a 5.0 scale but failing on a 4.0 scale.
   const gwaDistribution = useMemo(() => {
     const ranges = {
-      '1.00 – 1.25 (Summa/High Honors)': 0,
-      '1.26 – 1.50 (Magna/Honors)': 0,
-      '1.51 – 1.75 (Dean\'s List)': 0,
-      '1.76 – 2.00 (Good Standing)': 0,
-      '2.01+ (Passed)': 0,
+      '95% – 100% (Summa/High Honors)': 0,
+      '90% – 94.9% (Magna/Honors)': 0,
+      '85% – 89.9% (Dean\'s List)': 0,
+      '80% – 84.9% (Good Standing)': 0,
+      'Below 80% (Passed)': 0,
     };
 
-    const scholarGwaMap = new Map<string, number>();
+    const scholarGradeMap = new Map<string, number>();
     filteredApplicants.forEach(a => {
-      const g = parseFloat(a.grade);
-      if (!isNaN(g) && g > 0 && g <= 5.0) {
-        scholarGwaMap.set(getScholarKey(a), g);
+      const percent = getNormalizedGradePercent(a);
+      if (percent !== null) {
+        scholarGradeMap.set(getScholarKey(a), percent);
       }
     });
 
-    scholarGwaMap.forEach(g => {
-      if (g <= 1.25) ranges['1.00 – 1.25 (Summa/High Honors)']++;
-      else if (g <= 1.50) ranges['1.26 – 1.50 (Magna/Honors)']++;
-      else if (g <= 1.75) ranges['1.51 – 1.75 (Dean\'s List)']++;
-      else if (g <= 2.00) ranges['1.76 – 2.00 (Good Standing)']++;
-      else ranges['2.01+ (Passed)']++;
+    scholarGradeMap.forEach(percent => {
+      if (percent >= 95) ranges['95% – 100% (Summa/High Honors)']++;
+      else if (percent >= 90) ranges['90% – 94.9% (Magna/Honors)']++;
+      else if (percent >= 85) ranges['85% – 89.9% (Dean\'s List)']++;
+      else if (percent >= 80) ranges['80% – 84.9% (Good Standing)']++;
+      else ranges['Below 80% (Passed)']++;
     });
 
     return ranges;
@@ -280,30 +340,23 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
 
     const headers = ['Application ID', 'Scholar ID', 'Name', 'Email', 'Phone', 'Program', 'University', 'Course', 'Year Level', 'GWA', 'Status', 'Date Applied', 'Remarks'];
     const rows = filteredApplicants.map(a => [
-      `"${a.id}"`,
-      `"${a.scholarId || ''}"`,
-      `"${a.name}"`,
-      `"${a.email || ''}"`,
-      `"${a.phone || ''}"`,
-      `"${a.program}"`,
-      `"${a.school}"`,
-      `"${a.course}"`,
-      `"${a.yearLevel || ''}"`,
-      `"${a.grade}"`,
-      `"${a.status}"`,
-      `"${a.date}"`,
-      `"${(a.remarks || '').replace(/"/g, '""')}"`,
+      a.id,
+      a.scholarId || '',
+      a.name,
+      a.email || '',
+      a.phone || '',
+      a.program,
+      a.school,
+      a.course,
+      a.yearLevel || '',
+      a.grade,
+      a.status,
+      a.date,
+      a.remarks || '',
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `IskoAko_Applicant_Report_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast?.('Exported applicant report to CSV!');
+    downloadCsv(dateStampedFilename('IskoAko_Applicant_Report'), headers, rows);
+    showToast?.(`Exported ${filteredApplicants.length} applicant record(s) to CSV!`);
   };
 
   const exportDisbursementsCsv = () => {
@@ -314,25 +367,18 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
 
     const headers = ['Transaction ID', 'Batch Ref', 'Scholar Name', 'Program', 'Amount (PHP)', 'Disbursement Type', 'Status', 'Date Released'];
     const rows = filteredDisbursements.map(d => [
-      `"${d.id}"`,
-      `"${d.batchRef || 'N/A'}"`,
-      `"${d.scholarName || ''}"`,
-      `"${d.programTitle || ''}"`,
-      `"${d.amount}"`,
-      `"${d.type || 'Stipend'}"`,
-      `"${d.status}"`,
-      `"${d.date}"`,
+      d.id,
+      getDisbursementRef(d),
+      getDisbursementScholarName(d),
+      getDisbursementProgram(d),
+      getDisbursementAmount(d),
+      getDisbursementType(d),
+      d.status,
+      d.date,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `IskoAko_Disbursements_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast?.('Exported disbursements ledger to CSV!');
+    downloadCsv(dateStampedFilename('IskoAko_Disbursements_Ledger'), headers, rows);
+    showToast?.(`Exported ${filteredDisbursements.length} disbursement record(s) to CSV!`);
   };
 
   return (
@@ -463,15 +509,15 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
         {/* Card 3: Academic Index */}
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Average GWA</span>
+            <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Avg. Grade %</span>
             <span className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm">🎓</span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
-              {avgGwa}
+              {avgGradePercent !== null ? `${avgGradePercent.toFixed(1)}%` : 'N/A'}
             </div>
             <p className="text-[11px] text-[#6C6C70] mt-0.5">
-              Grade Point Average across {activeScholarsCount} unique scholars
+              Normalized grade %, scale-independent, across {activeScholarsCount} unique scholars
             </p>
           </div>
           <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
@@ -628,7 +674,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
           </div>
         </div>
 
-        {/* Right Column: Feeder Universities & GWA Spectrum (5 cols) */}
+        {/* Right Column: Feeder Universities & Grade Spectrum (5 cols) */}
         <div className="lg:col-span-5 space-y-6">
           {/* Top Feeder Universities (Deduplicated) */}
           <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-xs space-y-4">
@@ -660,13 +706,13 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
             </div>
           </div>
 
-          {/* GWA Spectrum Histogram (Deduplicated) */}
+          {/* Grade Spectrum Histogram (Deduplicated) */}
           <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif">
-                GWA Performance Spectrum
+                Grade Performance Spectrum
               </h3>
-              <span className="text-xs text-[#6C6C70] font-medium">Deduplicated per student</span>
+              <span className="text-xs text-[#6C6C70] font-medium">Normalized %, deduplicated per student</span>
             </div>
 
             <div className="space-y-2.5">
@@ -818,11 +864,11 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                 ) : (
                   filteredDisbursements.slice(0, 10).map((tx) => (
                     <tr key={tx.id} className="hover:bg-[#F9F5EF]/40 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold">{tx.batchRef || tx.id}</td>
-                      <td className="py-3 px-4 font-bold">{tx.scholarName || 'Scholar'}</td>
-                      <td className="py-3 px-4 text-[#6C6C70]">{tx.programTitle}</td>
+                      <td className="py-3 px-4 font-mono font-bold">{getDisbursementRef(tx)}</td>
+                      <td className="py-3 px-4 font-bold">{getDisbursementScholarName(tx)}</td>
+                      <td className="py-3 px-4 text-[#6C6C70]">{getDisbursementProgram(tx)}</td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-[#2D5941]">
-                        ₱{Number(tx.amount).toLocaleString()}
+                        ₱{getDisbursementAmount(tx).toLocaleString()}
                       </td>
                       <td className="py-3 px-4 text-center text-[#6C6C70]">{tx.date}</td>
                       <td className="py-3 px-4 text-center">
