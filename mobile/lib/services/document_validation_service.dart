@@ -13,6 +13,10 @@ class DocumentValidationResult {
   final String rejectionReason;
   final List<String> flags;
   final String modelUsed;
+  final double? extractedGwa;
+  final String? extractedGwaScale;
+  final double? extractedTuitionAmount;
+  final String? extractedSchool;
 
   const DocumentValidationResult({
     required this.isValidType,
@@ -21,6 +25,10 @@ class DocumentValidationResult {
     required this.rejectionReason,
     required this.flags,
     required this.modelUsed,
+    this.extractedGwa,
+    this.extractedGwaScale,
+    this.extractedTuitionAmount,
+    this.extractedSchool,
   });
 }
 
@@ -291,9 +299,12 @@ Carefully read and analyze the document image/PDF to perform four critical check
      * Add a clear warning flag to the "flags" array (e.g. "Missing Dean signature as specified in provider instructions: $requirementDescription").
      * Set "confidence_score" between 0.50 and 0.65 (Flagged for Provider Review) so the application requires manual provider inspection.
 
-4. ACADEMIC GRADE / MINIMUM GWA CHECK:
+4. ACADEMIC GRADE / MINIMUM GWA CHECK & EXTRACTION:
     - If this document contains academic grades, GWA, GPA, or General Average (e.g. Transcript of Records (TOR), Certificate of Grades, True Copy of Grades (TCG), Report Card, Form 138, Grade Slip, etc.):
-    - Locate and extract the overall GWA / GPA / General Average printed on the document.
+    - Locate and extract the overall GWA / GPA / General Average printed on the document into "extracted_gwa" (e.g. 1.75, 88.5, 3.5).
+    - Identify the grading scale used in the document ("scale_5", "scale_4", or "percentage") into "extracted_gwa_scale".
+    - If this document is a Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, or Billing Statement, extract the total tuition amount or matriculation fees into "extracted_tuition_amount" (numeric only e.g. 35638.00).
+    - Extract the school name into "extracted_school".
 
     STEP A — DETERMINE EQUIVALENT PERCENTAGE (compute ONCE, store as [equiv_pct], use everywhere below):
     Use ONLY the official lookup table below. DO NOT use a formula. DO NOT re-derive at any other step.
@@ -349,7 +360,11 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
   "document_detected": "Name of document seen",
   "confidence_score": 0.85,
   "rejection_reason": "Specific reason if invalid/rejected, else empty string",
-  "flags": ["list of concerns if any"]
+  "flags": ["list of concerns if any"],
+  "extracted_gwa": 1.75,
+  "extracted_gwa_scale": "scale_5",
+  "extracted_school": "School or University Name",
+  "extracted_tuition_amount": 35638.00
 }
 ''';
 
@@ -411,11 +426,11 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
     final url = Uri.parse('https://openrouter.ai/api/v1/chat/completions');
 
     const models = [
+      'google/gemini-2.0-flash-001',
+      'google/gemini-flash-1.5',
       'google/gemini-2.5-flash',
-      'google/gemini-2.0-flash',
-      'anthropic/claude-3.5-haiku',
       'openai/gpt-4o-mini',
-      'google/gemini-2.5-flash:free',
+      'anthropic/claude-3.5-haiku',
     ];
 
     for (final model in models) {
@@ -552,6 +567,55 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
             .toList();
       }
 
+      // Robust extraction of GWA / GPA
+      double? extractedGwa;
+      final rawGwa = map['extracted_gwa'] ??
+          map['gwa'] ??
+          map['gpa'] ??
+          map['grade'] ??
+          map['general_average'] ??
+          map['general_weighted_average'];
+      if (rawGwa != null) {
+        final cleanGwaStr = rawGwa.toString().replaceAll(RegExp(r'[^0-9.]'), '');
+        extractedGwa = double.tryParse(cleanGwaStr);
+      }
+
+      // Extracted GWA scale
+      String? extractedGwaScale = map['extracted_gwa_scale']?.toString() ??
+          map['gpa_scale']?.toString() ??
+          map['detected_grading_scale']?.toString();
+      if (extractedGwaScale != null) {
+        extractedGwaScale = extractedGwaScale.trim();
+        if (extractedGwaScale.isEmpty ||
+            extractedGwaScale == 'null' ||
+            extractedGwaScale == 'unknown') {
+          extractedGwaScale = null;
+        }
+      }
+
+      // Extracted tuition amount
+      double? extractedTuition;
+      final rawTuition = map['extracted_tuition_amount'] ??
+          map['tuition_amount'] ??
+          map['tuition_fee'] ??
+          map['total_amount'] ??
+          map['net_amount'] ??
+          map['total_assessment'];
+      if (rawTuition != null) {
+        final cleanTuitionStr = rawTuition
+            .toString()
+            .replaceAll(RegExp(r'[^0-9.]'), '');
+        extractedTuition = double.tryParse(cleanTuitionStr);
+      }
+
+      // Extracted school name
+      String? extractedSchool = map['extracted_school']?.toString() ??
+          map['school_name']?.toString() ??
+          map['school']?.toString();
+      if (extractedSchool != null && extractedSchool.trim().isEmpty) {
+        extractedSchool = null;
+      }
+
       return DocumentValidationResult(
         isValidType: isValid,
         documentDetected: detected,
@@ -559,6 +623,10 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
         rejectionReason: reason,
         flags: flags,
         modelUsed: modelName,
+        extractedGwa: extractedGwa,
+        extractedGwaScale: extractedGwaScale,
+        extractedTuitionAmount: extractedTuition,
+        extractedSchool: extractedSchool,
       );
     } catch (e) {
       debugPrint('Failed to parse AI JSON response: $e\nRaw: $rawText');

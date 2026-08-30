@@ -814,10 +814,11 @@ If a field is not present on the document (for instance, a COR has tuition fees 
   }) async {
     final url = Uri.parse('https://openrouter.ai/api/v1/chat/completions');
     const models = [
-      'google/gemini-2.5-pro',
-      'openai/gpt-4o',
+      'google/gemini-2.0-flash-001',
+      'google/gemini-flash-1.5',
       'google/gemini-2.5-flash',
       'openai/gpt-4o-mini',
+      'anthropic/claude-3.5-haiku',
     ];
 
     for (final model in models) {
@@ -869,23 +870,49 @@ If a field is not present on the document (for instance, a COR has tuition fees 
   static ExtractedAcademicInfo? _parseAcademicJsonResponse(String raw, String modelName, [String? expectedScale]) {
     try {
       String clean = raw.trim();
-      if (clean.startsWith('```')) {
+      if (clean.startsWith('```json')) clean = clean.substring(7);
+      if (clean.startsWith('```')) clean = clean.substring(3);
+      if (clean.endsWith('```')) clean = clean.substring(0, clean.length - 3);
+      clean = clean.trim();
+
+      if (clean.contains('{') && clean.contains('}')) {
         final start = clean.indexOf('{');
         final end = clean.lastIndexOf('}');
         if (start != -1 && end != -1) {
           clean = clean.substring(start, end + 1);
         }
       }
+
       final data = jsonDecode(clean);
-      final gpaVal = double.tryParse(data['gpa']?.toString() ?? '');
-      final rawScaleFromAi = data['gpa_scale']?.toString();
+      double? gpaVal;
+      final rawGwa = data['extracted_gwa'] ??
+          data['gpa'] ??
+          data['gwa'] ??
+          data['grade'] ??
+          data['general_average'] ??
+          data['general_weighted_average'];
+      if (rawGwa != null) {
+        final cleanGwaStr = rawGwa.toString().replaceAll(RegExp(r'[^0-9.]'), '');
+        gpaVal = double.tryParse(cleanGwaStr);
+      }
+
+      final rawScaleFromAi = (data['extracted_gwa_scale'] ?? data['gpa_scale'] ?? data['detected_grading_scale'])?.toString();
       final scale = (expectedScale != null && expectedScale.isNotEmpty && expectedScale != 'unknown')
           ? expectedScale
-          : (rawScaleFromAi ?? 'scale_5');
-      final school = data['school_name']?.toString() ?? '';
-      final tuitionVal = double.tryParse(
-        data['extracted_tuition_amount']?.toString().replaceAll(RegExp(r'[^0-9.]'), '') ?? ''
-      );
+          : (rawScaleFromAi != null && rawScaleFromAi != 'null' && rawScaleFromAi != 'unknown' ? rawScaleFromAi : 'scale_5');
+      final school = (data['extracted_school'] ?? data['school_name'] ?? data['school'])?.toString() ?? '';
+      
+      final rawTuition = data['extracted_tuition_amount'] ??
+          data['tuition_amount'] ??
+          data['tuition_fee'] ??
+          data['total_amount'] ??
+          data['net_amount'] ??
+          data['total_assessment'];
+      double? tuitionVal;
+      if (rawTuition != null) {
+        final cleanTuitionStr = rawTuition.toString().replaceAll(RegExp(r'[^0-9.]'), '');
+        tuitionVal = double.tryParse(cleanTuitionStr);
+      }
       final conf = double.tryParse(data['confidence_score']?.toString() ?? '0.95') ?? 0.95;
 
       return ExtractedAcademicInfo(

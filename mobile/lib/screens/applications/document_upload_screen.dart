@@ -505,8 +505,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           return; // Stop immediately, do not proceed to grade extraction!
         }
 
-        // STEP 2: IF STEP 1 PASSED — Check if document is about grades, then proceed to grade extraction & minimum GWA check!
+        // STEP 2: IF STEP 1 PASSED — Extract academic details & minimum GWA check!
         final docNameLower = doc.name.toLowerCase();
+        final detectedLower = validationRes.documentDetected.toLowerCase();
         final isAcademicDoc = docNameLower.contains('tor') ||
             docNameLower.contains('transcript') ||
             docNameLower.contains('grade') ||
@@ -518,21 +519,40 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             docNameLower.contains('assessment') ||
             docNameLower.contains('billing') ||
             docNameLower.contains('soa') ||
-            docNameLower.contains('tcg');
+            docNameLower.contains('tcg') ||
+            docNameLower.contains('scholastic') ||
+            docNameLower.contains('academic') ||
+            docNameLower.contains('form 137') ||
+            docNameLower.contains('form 138') ||
+            docNameLower.contains('cog') ||
+            docNameLower.contains('gwa') ||
+            docNameLower.contains('evaluation') ||
+            detectedLower.contains('transcript') ||
+            detectedLower.contains('grade') ||
+            detectedLower.contains('card') ||
+            detectedLower.contains('tor') ||
+            detectedLower.contains('registration') ||
+            detectedLower.contains('enrollment') ||
+            detectedLower.contains('assessment') ||
+            detectedLower.contains('billing') ||
+            detectedLower.contains('soa') ||
+            validationRes.extractedGwa != null ||
+            validationRes.extractedTuitionAmount != null;
 
         final extraGradeFlags = <String>[];
-        double? tempExtractedGpa;
-        String? tempExtractedScale;
-        double? tempExtractedTuition;
+        double? tempExtractedGpa = validationRes.extractedGwa;
+        String? tempExtractedScale = validationRes.extractedGwaScale;
+        double? tempExtractedTuition = validationRes.extractedTuitionAmount;
 
-        if (isAcademicDoc) {
+        // If Step 1 didn't find the GWA or Tuition, run secondary AiExtractionService
+        if (isAcademicDoc && (tempExtractedGpa == null || tempExtractedTuition == null)) {
           try {
             final scholarScaleRaw = scholar?['gpa_scale']?.toString() ?? _scholar?['gpa_scale']?.toString() ?? '';
             final scholarGpaScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
                 ? scholarScaleRaw
                 : 'scale_5';
 
-            debugPrint('[AiExtraction] Step 1 Passed. Extracting academic details for ${doc.name}... scholar scale: "$scholarGpaScale"');
+            debugPrint('[AiExtraction] Running secondary academic extraction for ${doc.name} (scholar scale: "$scholarGpaScale")...');
 
             final extracted = await AiExtractionService.extractAcademicDetails(
               fileBytes: bytes,
@@ -541,79 +561,85 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             );
 
             if (extracted != null) {
-              if (extracted.extractedTuitionAmount != null && extracted.extractedTuitionAmount! > 0) {
+              if (tempExtractedTuition == null && extracted.extractedTuitionAmount != null && extracted.extractedTuitionAmount! > 0) {
                 tempExtractedTuition = extracted.extractedTuitionAmount;
               }
 
-              if (extracted.gpa != null) {
+              if (tempExtractedGpa == null && extracted.gpa != null) {
                 tempExtractedGpa = extracted.gpa!;
-
-                // PRIORITIZE scale from scholars table if present!
-                if (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown') {
-                  tempExtractedScale = scholarScaleRaw;
-                } else {
-                  tempExtractedScale = extracted.gpaScale ?? scholarGpaScale;
-                }
-
-                final scholarPercent = EligibilityHelper.normalizeGpa(tempExtractedGpa, tempExtractedScale);
-
-                debugPrint('[Eligibility Check] Scholar GWA: $tempExtractedGpa, Scale: $tempExtractedScale, Equivalent Percent: ${scholarPercent.toStringAsFixed(1)}%');
-
-                if (minimumGwa != null) {
-                  final programScaleRaw = _program?['gpa_scale']?.toString() ?? _program?['grading_system']?.toString() ?? '';
-                  final programScale = (minimumGwa > 5.0)
-                      ? 'percentage'
-                      : (programScaleRaw.isNotEmpty && programScaleRaw != 'null' ? programScaleRaw : scholarGpaScale);
-
-                  final requiredPercent = EligibilityHelper.normalizeGpa(minimumGwa, programScale);
-
-                  debugPrint('[Eligibility Check] Scholar GWA: ${scholarPercent.toStringAsFixed(1)}%, Required: ${requiredPercent.toStringAsFixed(1)}% (min: $minimumGwa, scale: $programScale)');
-
-                  if (scholarPercent < requiredPercent - 0.001) {
-                    // REJECT IMMEDIATELY (below program grade requirement)
-                    final newAttemptCount = attemptStatus.attemptCount + 1;
-                    final reason = 'Extracted GWA $tempExtractedGpa (${scholarPercent.toStringAsFixed(1)}%) does not meet the minimum required grade of ${minimumGwa > 5.0 ? "${minimumGwa.toStringAsFixed(0)}%" : minimumGwa.toStringAsFixed(2)} for this scholarship program.';
-
-                    await DocumentValidationService.logRejection(
-                      scholarId: scholarId,
-                      cycleId: cycleId,
-                      docSlotName: doc.name,
-                      filename: fileName,
-                      confidenceScore: 0.30,
-                      rejectionReason: reason,
-                      attemptNumber: newAttemptCount,
-                    );
-
-                    if (mounted) {
-                      setState(() {
-                        final idx = _docs.indexWhere((d) => d.name == doc.name);
-                        if (idx != -1) {
-                          _docs[idx] = doc.copyWith(
-                            status: _DocStatus.rejected,
-                            filename: fileName,
-                            filesize: sizeStr,
-                            fileUrl: uploadedUrl,
-                            fileBytes: bytes,
-                            aiConfidence: 0.30,
-                            aiRejectionReason: reason,
-                            aiDocumentDetected: 'Grade Document',
-                            aiFlags: [...extraGradeFlags, ...validationRes.flags],
-                            extractedGpa: tempExtractedGpa,
-                            extractedGpaScale: tempExtractedScale,
-                            extractedTuitionAmount: tempExtractedTuition,
-                            attemptCount: newAttemptCount,
-                          );
-                        }
-                      });
-                      _showRejectionDialog(doc.name, reason, newAttemptCount);
-                    }
-                    return; // Stop execution, document is rejected due to below minimum grade!
-                  }
-                }
+                tempExtractedScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
+                    ? scholarScaleRaw
+                    : (extracted.gpaScale ?? scholarGpaScale);
               }
             }
           } catch (e) {
             debugPrint('[AiExtraction] Error extracting academic details during upload: $e');
+          }
+        }
+
+        // Apply scale resolution and minimum GWA eligibility check
+        if (tempExtractedGpa != null) {
+          final scholarScaleRaw = scholar?['gpa_scale']?.toString() ?? _scholar?['gpa_scale']?.toString() ?? '';
+          if (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown') {
+            tempExtractedScale = scholarScaleRaw;
+          } else {
+            tempExtractedScale ??= scholarGpaScale;
+          }
+
+          final scholarPercent = EligibilityHelper.normalizeGpa(tempExtractedGpa, tempExtractedScale);
+
+          debugPrint('[Eligibility Check] Scholar GWA: $tempExtractedGpa, Scale: $tempExtractedScale, Equivalent Percent: ${scholarPercent.toStringAsFixed(1)}%');
+
+          if (minimumGwa != null) {
+            final programScaleRaw = _program?['gpa_scale']?.toString() ?? _program?['grading_system']?.toString() ?? '';
+            final programScale = (minimumGwa > 5.0)
+                ? 'percentage'
+                : (programScaleRaw.isNotEmpty && programScaleRaw != 'null' ? programScaleRaw : scholarGpaScale);
+
+            final requiredPercent = EligibilityHelper.normalizeGpa(minimumGwa, programScale);
+
+            debugPrint('[Eligibility Check] Scholar GWA: ${scholarPercent.toStringAsFixed(1)}%, Required: ${requiredPercent.toStringAsFixed(1)}% (min: $minimumGwa, scale: $programScale)');
+
+            if (scholarPercent < requiredPercent - 0.001) {
+              // REJECT IMMEDIATELY (below program grade requirement)
+              final newAttemptCount = attemptStatus.attemptCount + 1;
+              final reason = 'Extracted GWA $tempExtractedGpa (${scholarPercent.toStringAsFixed(1)}%) does not meet the minimum required grade of ${minimumGwa > 5.0 ? "${minimumGwa.toStringAsFixed(0)}%" : minimumGwa.toStringAsFixed(2)} for this scholarship program.';
+
+              await DocumentValidationService.logRejection(
+                scholarId: scholarId,
+                cycleId: cycleId,
+                docSlotName: doc.name,
+                filename: fileName,
+                confidenceScore: 0.30,
+                rejectionReason: reason,
+                attemptNumber: newAttemptCount,
+              );
+
+              if (mounted) {
+                setState(() {
+                  final idx = _docs.indexWhere((d) => d.name == doc.name);
+                  if (idx != -1) {
+                    _docs[idx] = doc.copyWith(
+                      status: _DocStatus.rejected,
+                      filename: fileName,
+                      filesize: sizeStr,
+                      fileUrl: uploadedUrl,
+                      fileBytes: bytes,
+                      aiConfidence: 0.30,
+                      aiRejectionReason: reason,
+                      aiDocumentDetected: 'Grade Document',
+                      aiFlags: [...extraGradeFlags, ...validationRes.flags],
+                      extractedGpa: tempExtractedGpa,
+                      extractedGpaScale: tempExtractedScale,
+                      extractedTuitionAmount: tempExtractedTuition,
+                      attemptCount: newAttemptCount,
+                    );
+                  }
+                });
+                _showRejectionDialog(doc.name, reason, newAttemptCount);
+              }
+              return; // Stop execution, document is rejected due to below minimum grade!
+            }
           }
         }
 
@@ -945,11 +971,13 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                             gradingSystem: gradingSystem,
                                           );
 
-                                          double? extractedGpaVal;
-                                          String? extractedScaleVal;
+                                          double? extractedGpaVal = vRes.extractedGwa;
+                                          String? extractedScaleVal = vRes.extractedGwaScale;
+                                          double? tempModalTuition = vRes.extractedTuitionAmount;
                                           final modalFlags = <String>[...vRes.flags];
 
                                           final docNameLower = doc.name.toLowerCase();
+                                          final detectedLower = vRes.documentDetected.toLowerCase();
                                           final isAcademicDoc = docNameLower.contains('tor') ||
                                               docNameLower.contains('transcript') ||
                                               docNameLower.contains('grade') ||
@@ -961,11 +989,27 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                               docNameLower.contains('assessment') ||
                                               docNameLower.contains('billing') ||
                                               docNameLower.contains('soa') ||
-                                              docNameLower.contains('tcg');
+                                              docNameLower.contains('tcg') ||
+                                              docNameLower.contains('scholastic') ||
+                                              docNameLower.contains('academic') ||
+                                              docNameLower.contains('form 137') ||
+                                              docNameLower.contains('form 138') ||
+                                              docNameLower.contains('cog') ||
+                                              docNameLower.contains('gwa') ||
+                                              docNameLower.contains('evaluation') ||
+                                              detectedLower.contains('transcript') ||
+                                              detectedLower.contains('grade') ||
+                                              detectedLower.contains('card') ||
+                                              detectedLower.contains('tor') ||
+                                              detectedLower.contains('registration') ||
+                                              detectedLower.contains('enrollment') ||
+                                              detectedLower.contains('assessment') ||
+                                              detectedLower.contains('billing') ||
+                                              detectedLower.contains('soa') ||
+                                              vRes.extractedGwa != null ||
+                                              vRes.extractedTuitionAmount != null;
 
-                                          double? tempModalTuition;
-
-                                          if (isAcademicDoc) {
+                                          if (isAcademicDoc && (extractedGpaVal == null || tempModalTuition == null)) {
                                             final scholarScaleRaw = _scholar?['gpa_scale']?.toString() ?? '';
                                             final scholarGpaScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
                                                 ? scholarScaleRaw
@@ -976,13 +1020,13 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                               expectedScale: scholarGpaScale,
                                             );
                                             if (ex != null) {
-                                              if (ex.gpa != null) {
+                                              if (extractedGpaVal == null && ex.gpa != null) {
                                                 extractedGpaVal = ex.gpa!;
                                                 extractedScaleVal = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
                                                     ? scholarScaleRaw
                                                     : (ex.gpaScale ?? scholarGpaScale);
                                               }
-                                              if (ex.extractedTuitionAmount != null && ex.extractedTuitionAmount! > 0) {
+                                              if (tempModalTuition == null && ex.extractedTuitionAmount != null && ex.extractedTuitionAmount! > 0) {
                                                 tempModalTuition = ex.extractedTuitionAmount;
                                               }
                                             }
