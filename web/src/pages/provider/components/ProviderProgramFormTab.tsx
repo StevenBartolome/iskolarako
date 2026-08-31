@@ -27,6 +27,30 @@ interface ProviderProgramFormTabProps {
   providerDetails?: any;
 }
 
+const normalizeCategory = (cat?: string): string => {
+  if (!cat) return 'Merit-Based';
+  const lower = cat.toLowerCase();
+  if ((lower.includes('need') && lower.includes('merit')) || lower.includes('both')) {
+    return 'Both Merit and Need';
+  }
+  if (lower.includes('need')) {
+    return 'Need-Based';
+  }
+  return 'Merit-Based';
+};
+
+const isIncomeProofRequirement = (req: ProgramRequirement | string): boolean => {
+  const name = (typeof req === 'string' ? req : req.name || '').toLowerCase();
+  const desc = (typeof req === 'string' ? '' : req.description || '').toLowerCase();
+  const keywords = ['income', 'indigency', 'itr', 'payslip', 'tax return', 'bir 2316', 'low income', 'financial need', 'certificate of indigency', 'proof of income'];
+  return keywords.some(kw => name.includes(kw) || desc.includes(kw));
+};
+
+const isNeedBasedCategory = (cat: string): boolean => {
+  const lower = (cat || '').toLowerCase();
+  return lower.includes('need');
+};
+
 export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   programToEdit,
   selectedCycleId,
@@ -41,7 +65,9 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
 
   // Step 1: Basic Info
   const [title, setTitle] = useState(programToEdit?.title || '');
-  const [category, setCategory] = useState(programToEdit?.category || 'Merit-Based');
+  const [category, setCategory] = useState(() =>
+    normalizeCategory(programToEdit?.category || programToEdit?.scholarship_type || (programToEdit as any)?.scholarshipType)
+  );
   const [targetLevel, setTargetLevel] = useState<EducationLevel>(
     programToEdit?.target_education_level || programToEdit?.targetEducationLevel || 'college'
   );
@@ -305,6 +331,17 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
       if (requirementsList.length === 0) {
         return { valid: false, error: '⚠️ Step 4 Required: Please include at least one document requirement for applicant submission.' };
       }
+      if (isNeedBasedCategory(category)) {
+        const hasMandatoryIncomeProof = requirementsList.some(
+          r => isIncomeProofRequirement(r) && (typeof r === 'string' || r.required !== false)
+        );
+        if (!hasMandatoryIncomeProof) {
+          return {
+            valid: false,
+            error: '⚠️ Step 4 Required: For Need-Based scholarships, Proof of Income / Certificate of Indigency is mandatory and must be marked as required in the document requirements checklist.',
+          };
+        }
+      }
     }
 
     return { valid: true, error: '' };
@@ -420,8 +457,9 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   // Re-sync on programToEdit change so editing an existing program always pre-selects its saved values
   React.useEffect(() => {
     if (programToEdit) {
+      const normalizedCat = normalizeCategory(programToEdit.category || programToEdit.scholarship_type || (programToEdit as any)?.scholarshipType);
       setTitle(programToEdit.title || '');
-      setCategory(programToEdit.category || 'Merit-Based');
+      setCategory(normalizedCat);
       const lvl = (programToEdit.target_education_level || programToEdit.targetEducationLevel || 'college') as EducationLevel;
       setTargetLevel(lvl);
       setDescription(programToEdit.description || '');
@@ -522,14 +560,27 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         programToEdit.application_requirements ??
         programToEdit.applicationRequirements;
       if (Array.isArray(rawReqs) && rawReqs.length > 0) {
-        setRequirementsList(rawReqs.map((r: any) => {
+        let list: ProgramRequirement[] = rawReqs.map((r: any) => {
           if (typeof r === 'string') return { name: r, description: '', required: true };
           return {
             name: r.name || r.document_name || 'Required Document',
             description: r.description || '',
             required: r.required !== false,
           };
-        }));
+        });
+        if (isNeedBasedCategory(normalizedCat)) {
+          const hasIncome = list.some(isIncomeProofRequirement);
+          if (!hasIncome) {
+            list.push({
+              name: 'Certificate of Indigency / Proof of Income',
+              description: 'ITR, Certificate of Indigency, or Proof of Family Income (Mandatory for Need-Based Programs)',
+              required: true,
+            });
+          } else {
+            list = list.map(r => (isIncomeProofRequirement(r) ? { ...r, required: true } : r));
+          }
+        }
+        setRequirementsList(list);
       }
 
       // Sync location scope & target regions/provinces/municipalities/schools
@@ -597,11 +648,38 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
     setCustomStrandInput('');
   };
 
+  const handleCategoryChange = (newCat: string) => {
+    const normalized = normalizeCategory(newCat);
+    setCategory(normalized);
+    if (isNeedBasedCategory(normalized)) {
+      const hasIncomeDoc = requirementsList.some(isIncomeProofRequirement);
+      if (!hasIncomeDoc) {
+        setRequirementsList(prev => [
+          ...prev,
+          {
+            name: 'Certificate of Indigency / Proof of Income',
+            description: 'ITR, Certificate of Indigency, or Proof of Family Income (Mandatory for Need-Based Programs)',
+            required: true,
+          },
+        ]);
+      } else {
+        setRequirementsList(prev =>
+          prev.map(r =>
+            isIncomeProofRequirement(r)
+              ? { ...(typeof r === 'string' ? { name: r, description: '' } : r), required: true }
+              : r
+          )
+        );
+      }
+    }
+  };
+
   // Step 4: Requirements Checklist
   const [requirementsList, setRequirementsList] = useState<ProgramRequirement[]>(() => {
     const raw = programToEdit?.application_requirements || programToEdit?.applicationRequirements;
+    let list: ProgramRequirement[] = [];
     if (Array.isArray(raw) && raw.length > 0) {
-      return raw.map((r: any) => {
+      list = raw.map((r: any) => {
         if (typeof r === 'string') {
           return { name: r, description: '', required: true };
         }
@@ -611,13 +689,29 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
           required: r.required !== false,
         };
       });
+    } else {
+      list = [
+        { name: 'Transcript of Records / Certificate of Grades', description: 'Official TOR or certified grade slip', required: true },
+        { name: 'Certificate of Good Moral Character', description: 'Issued by school dean or principal', required: true },
+        { name: 'Certificate of Indigency / Proof of Income', description: 'ITR or Barangay Certificate of Indigency', required: true },
+        { name: 'Valid Government / Student ID', description: 'Government-issued ID or current School ID', required: true },
+      ];
     }
-    return [
-      { name: 'Transcript of Records / Certificate of Grades', description: 'Official TOR or certified grade slip', required: true },
-      { name: 'Certificate of Good Moral Character', description: 'Issued by school dean or principal', required: true },
-      { name: 'Certificate of Indigency / Proof of Income', description: 'ITR or Barangay Certificate of Indigency', required: true },
-      { name: 'Valid Government / Student ID', description: 'Government-issued ID or current School ID', required: true },
-    ];
+
+    const currentCat = normalizeCategory(programToEdit?.category || programToEdit?.scholarship_type || (programToEdit as any)?.scholarshipType);
+    if (isNeedBasedCategory(currentCat)) {
+      const hasIncome = list.some(isIncomeProofRequirement);
+      if (!hasIncome) {
+        list.push({
+          name: 'Certificate of Indigency / Proof of Income',
+          description: 'ITR, Certificate of Indigency, or Proof of Family Income (Mandatory for Need-Based Programs)',
+          required: true,
+        });
+      } else {
+        list = list.map(r => (isIncomeProofRequirement(r) ? { ...r, required: true } : r));
+      }
+    }
+    return list;
   });
   const [newRequirementName, setNewRequirementName] = useState('');
   const [newRequirementDesc, setNewRequirementDesc] = useState('');
@@ -654,12 +748,15 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
 
   const handleSaveEditRequirement = (idx: number) => {
     if (!editingReqName.trim()) return;
+    const isIncome = isIncomeProofRequirement({ name: editingReqName.trim(), description: editingReqDesc.trim(), required: editingReqRequired });
+    const enforcedRequired = (isNeedBasedCategory(category) && isIncome) ? true : editingReqRequired;
+
     setRequirementsList(prev => prev.map((item, i) => {
       if (i === idx) {
         return {
           name: editingReqName.trim(),
           description: editingReqDesc.trim(),
-          required: editingReqRequired,
+          required: enforcedRequired,
         };
       }
       return item;
@@ -672,6 +769,11 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   };
 
   const handleRemoveRequirement = (idx: number) => {
+    const req = requirementsList[idx];
+    if (isNeedBasedCategory(category) && isIncomeProofRequirement(req)) {
+      setStepValidationError('⚠️ Proof of Income / Certificate of Indigency is mandatory for Need-Based scholarships and cannot be removed.');
+      return;
+    }
     setRequirementsList(prev => prev.filter((_, i) => i !== idx));
   };
 
@@ -700,6 +802,16 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
       if (!check.valid) {
         setStepValidationError(check.error);
         setCurrentStep(s);
+        return;
+      }
+    }
+    if (isNeedBasedCategory(category)) {
+      const hasMandatoryIncomeProof = requirementsList.some(
+        r => isIncomeProofRequirement(r) && (typeof r === 'string' || r.required !== false)
+      );
+      if (!hasMandatoryIncomeProof) {
+        setStepValidationError('⚠️ Step 4 Required: For Need-Based scholarships, Proof of Income / Certificate of Indigency is mandatory and must be included in the document requirements.');
+        setCurrentStep(4);
         return;
       }
     }
@@ -909,17 +1021,12 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 </label>
                 <select
                   value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
                   className="w-full px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none focus:border-[#1A3C2E] text-sm bg-white cursor-pointer font-medium"
                 >
-                  <option>Merit-Based</option>
-                  <option>Need-Based</option>
-                  <option>Merit and Need</option>
-                  <option>STEM</option>
-                  <option>Graduate / Fellowship</option>
-                  <option>Vocational / TVET</option>
-                  <option>Indigenous Peoples</option>
-                  <option>Persons with Disability</option>
+                  <option value="Merit-Based">Merit-Based</option>
+                  <option value="Need-Based">Need-Based</option>
+                  <option value="Both Merit and Need">Both Merit and Need</option>
                 </select>
               </div>
             </div>
@@ -2352,6 +2459,18 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               4. Document Requirements Checklist
             </h3>
 
+            {isNeedBasedCategory(category) && (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-3 text-xs">
+                <span className="text-xl leading-none">💼</span>
+                <div>
+                  <span className="font-bold block text-sm text-amber-950 mb-0.5">Need-Based Scholarship Requirement</span>
+                  <span className="text-amber-800 leading-relaxed">
+                    Proof of Income / Certificate of Indigency is <strong>strictly mandatory</strong> for {category.toLowerCase()} programs. Applicants must upload valid proof (e.g. ITR, Certificate of Indigency, or Payslip) to establish financial eligibility.
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div className="p-4 rounded-2xl bg-[#F9F5EF] border border-[#D9D2C5]/80 space-y-3">
                 <h4 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wide">
@@ -2399,6 +2518,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   const reqName = typeof req === 'string' ? req : req.name;
                   const reqDesc = typeof req === 'string' ? '' : req.description;
                   const isRequired = typeof req === 'string' ? true : req.required !== false;
+                  const isIncome = isIncomeProofRequirement(req);
+                  const isLockedNeedBased = isNeedBasedCategory(category) && isIncome;
 
                   if (isEditing) {
                     return (
@@ -2430,14 +2551,22 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                           </div>
                         </div>
                         <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-[#EDE8DE]">
-                          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[#1A3C2E]">
+                          <label className={`flex items-center gap-2 text-xs font-semibold ${isLockedNeedBased ? 'text-amber-800' : 'text-[#1A3C2E] cursor-pointer'}`}>
                             <input
                               type="checkbox"
-                              checked={editingReqRequired}
+                              checked={isLockedNeedBased ? true : editingReqRequired}
+                              disabled={isLockedNeedBased}
                               onChange={(e) => setEditingReqRequired(e.target.checked)}
-                              className="w-4 h-4 text-[#1A3C2E] rounded cursor-pointer"
+                              className="w-4 h-4 text-[#1A3C2E] rounded cursor-pointer disabled:opacity-50"
                             />
-                            <span>Mandatory (Required for submission)</span>
+                            <span>
+                              Mandatory (Required for submission)
+                              {isLockedNeedBased && (
+                                <span className="ml-2 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
+                                  🔒 Locked: Mandatory for Need-Based Programs
+                                </span>
+                              )}
+                            </span>
                           </label>
                           <div className="flex items-center gap-2">
                             <button
@@ -2465,11 +2594,17 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                       <div className="flex items-start gap-3">
                         <span className="text-base leading-none mt-0.5">📄</span>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-[#1A3C2E] text-sm">{reqName}</span>
-                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${isRequired ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-slate-100 text-slate-500'}`}>
-                              {isRequired ? 'REQUIRED' : 'OPTIONAL'}
-                            </span>
+                            {isLockedNeedBased ? (
+                              <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300">
+                                🔒 MANDATORY (NEED-BASED)
+                              </span>
+                            ) : (
+                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${isRequired ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-slate-100 text-slate-500'}`}>
+                                {isRequired ? 'REQUIRED' : 'OPTIONAL'}
+                              </span>
+                            )}
                           </div>
                           {reqDesc && (
                             <p className="text-[11px] text-[#6C6C70] mt-0.5">{reqDesc}</p>
@@ -2488,7 +2623,11 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                         <button
                           type="button"
                           onClick={() => handleRemoveRequirement(idx)}
-                          className="text-rose-600 font-bold hover:underline border-0 bg-transparent cursor-pointer text-xs"
+                          disabled={isLockedNeedBased}
+                          title={isLockedNeedBased ? "Proof of Income is mandatory for Need-Based scholarships and cannot be removed." : "Remove requirement"}
+                          className={`font-bold hover:underline border-0 bg-transparent text-xs ${
+                            isLockedNeedBased ? 'text-gray-400 cursor-not-allowed opacity-60' : 'text-rose-600 cursor-pointer'
+                          }`}
                         >
                           Remove
                         </button>

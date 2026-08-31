@@ -638,7 +638,12 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
     required String formattedEndDate,
     required Map<String, dynamic>? program,
   }) {
-    final typeLabel = program?['scholarship_type']?.toString().toUpperCase() ?? 'MERIT-BASED';
+    final rawType = program?['scholarship_type']?.toString().toUpperCase() ?? 'MERIT-BASED';
+    final typeLabel = (rawType.contains('MERIT') && rawType.contains('NEED'))
+        ? 'MERIT & NEED'
+        : rawType.contains('NEED')
+            ? 'NEED-BASED'
+            : (rawType.contains('MERIT') ? 'MERIT-BASED' : rawType.replaceAll('_', ' '));
     final showUrgent = daysLeft > 0 && daysLeft <= 7;
 
     return Container(

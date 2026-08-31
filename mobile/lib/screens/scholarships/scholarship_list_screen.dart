@@ -21,7 +21,7 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
     'NGO / Private',
     'Merit-Based',
     'Need-Based',
-    'STEM'
+    'Both Merit & Need',
   ];
 
   Map<String, dynamic>? _scholarProfile;
@@ -170,17 +170,15 @@ class _ScholarshipListScreenState extends State<ScholarshipListScreen> {
           final type = prov?['provider_type']?.toString().toLowerCase() ?? '';
           return type == 'private' || type == 'ngo';
         }).toList();
+      } else if (filterLabel.contains('Both') || (filterLabel.contains('Merit') && filterLabel.contains('Need'))) {
+        filtered = filtered.where((p) {
+          final t = p['scholarship_type']?.toString().toLowerCase() ?? '';
+          return t.contains('merit') && t.contains('need');
+        }).toList();
       } else if (filterLabel.contains('Merit')) {
         filtered = filtered.where((p) => p['scholarship_type']?.toString().toLowerCase().contains('merit') == true).toList();
       } else if (filterLabel.contains('Need')) {
         filtered = filtered.where((p) => p['scholarship_type']?.toString().toLowerCase().contains('need') == true).toList();
-      } else if (filterLabel == 'STEM') {
-        filtered = filtered.where((p) {
-          final title = p['title']?.toString().toLowerCase() ?? '';
-          final desc = p['description']?.toString().toLowerCase() ?? '';
-          final category = p['category']?.toString().toLowerCase() ?? '';
-          return category.contains('stem') || title.contains('stem') || desc.contains('stem');
-        }).toList();
       }
     }
 

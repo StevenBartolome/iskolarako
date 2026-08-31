@@ -433,7 +433,16 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       statusType: dbProg.status === 'approved' || dbProg.status === 'Approved' || dbProg.status === 'active' || dbProg.status === 'Active' ? 'success' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'draft' : dbProg.status === 'paused' ? 'closing' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'draft' : 'closing',
       title: dbProg.title,
       description: dbProg.description,
-      category: dbProg.category?.name || 'Merit-Based',
+      category: (() => {
+        const sType = (dbProg.scholarship_type || '').toLowerCase();
+        if (sType === 'need_based' || sType === 'need') return 'Need-Based';
+        if (sType === 'merit_and_need' || (sType.includes('merit') && sType.includes('need')) || sType.includes('both')) return 'Both Merit and Need';
+        if (sType === 'merit') return 'Merit-Based';
+        const cName = (dbProg.category?.name || '').toLowerCase();
+        if ((cName.includes('need') && cName.includes('merit')) || cName.includes('both')) return 'Both Merit and Need';
+        if (cName.includes('need')) return 'Need-Based';
+        return 'Merit-Based';
+      })(),
       scholarshipType: dbProg.scholarship_type,
       coverstuition: dbProg.covers_tuition,
       coversStipend: dbProg.covers_stipend,
@@ -3419,7 +3428,14 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               setActiveTab('programs');
             }}
             onSubmit={async (formData, isEdit) => {
-              const matchedCat = categories.find(c => c.name === formData.category);
+              const fCat = (formData.category || '').toLowerCase();
+              const matchedCat = categories.find(c => {
+                const cName = (c.name || '').toLowerCase();
+                return cName === fCat ||
+                  (fCat.includes('need') && fCat.includes('merit') && cName.includes('need') && cName.includes('merit')) ||
+                  (fCat.includes('need') && !fCat.includes('merit') && cName.includes('need') && !cName.includes('merit')) ||
+                  (fCat.includes('merit') && !fCat.includes('need') && cName.includes('merit') && !cName.includes('need'));
+              });
               const categoryId = matchedCat ? matchedCat.id : null;
 
               const parseYearLevels = (raw: any): number[] => {
@@ -3462,10 +3478,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               const mapScholarshipType = (cat: string): string => {
                 if (!cat) return 'merit';
                 const lower = cat.toLowerCase();
-                if (lower.includes('need') && lower.includes('merit')) return 'merit_and_need';
+                if ((lower.includes('need') && lower.includes('merit')) || lower.includes('both')) return 'merit_and_need';
                 if (lower.includes('need')) return 'need_based';
-                if (lower.includes('fellowship') || lower.includes('graduate')) return 'fellowship';
-                if (lower.includes('vocational') || lower.includes('grant') || lower.includes('tvet')) return 'grant';
                 return 'merit';
               };
 
