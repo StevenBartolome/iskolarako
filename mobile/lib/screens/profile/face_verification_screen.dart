@@ -521,24 +521,78 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         }
 
         // 3. Update scholar row in database
-        final updatePayload = <String, dynamic>{
+        final verifiedIdFirstName = _idExtractResult?.extractedFirstName.isNotEmpty == true
+            ? _idExtractResult!.extractedFirstName
+            : _regFirstName;
+        final verifiedIdLastName = _idExtractResult?.extractedLastName.isNotEmpty == true
+            ? _idExtractResult!.extractedLastName
+            : _regLastName;
+        final verifiedIdFullName = '$verifiedIdFirstName $verifiedIdLastName'.trim();
+        final verifiedIdBirthDate = _idExtractResult?.extractedBirthDate.isNotEmpty == true
+            ? _idExtractResult!.extractedBirthDate
+            : _regBirthDate;
+        final verifiedIdNumber = _idExtractResult?.extractedIdNumber;
+        final resolvedIdType = _selectedIdType == 'Other / Custom ID'
+            ? (_customIdController.text.trim().isNotEmpty ? _customIdController.text.trim() : 'Custom ID')
+            : (_selectedIdType ?? 'Valid ID');
+
+        final verifiedIdData = {
+          'id_full_name': verifiedIdFullName,
+          'id_first_name': verifiedIdFirstName,
+          'id_last_name': verifiedIdLastName,
+          'id_birth_date': verifiedIdBirthDate,
+          'id_type': resolvedIdType,
+          'id_number': verifiedIdNumber,
+          'verified_at': DateTime.now().toIso8601String(),
+        };
+
+        // 3. Update scholar row in database (using valid schema columns)
+        final scholarPayload = <String, dynamic>{
           'face_verification_status': status,
           'face_verified_at': result.isMatch ? DateTime.now().toIso8601String() : null,
           'face_verification_reason': result.reason,
         };
-        if (idUrl != null) updatePayload['id_document_url'] = idUrl;
-        if (selfieUrl != null) updatePayload['face_selfie_url'] = selfieUrl;
 
         try {
-          await Supabase.instance.client.from('scholar').update(updatePayload).eq('user_id', user.id);
+          await Supabase.instance.client.from('scholar').update(scholarPayload).eq('user_id', user.id);
         } catch (e) {
-          // Fallback update
-          await Supabase.instance.client.from('scholar').update({
-            'face_verification_status': status,
-            'face_verified_at': result.isMatch ? DateTime.now().toIso8601String() : null,
-            'face_verification_reason': result.reason,
-          }).eq('user_id', user.id);
+          debugPrint('[FaceVerification] Error updating scholar table: $e');
         }
+
+        // 4. Save Verified ID document to scholar_documents table
+        if (idUrl != null) {
+          try {
+            final scholarRow = await Supabase.instance.client
+                .from('scholar')
+                .select('id')
+                .eq('user_id', user.id)
+                .maybeSingle();
+
+            if (scholarRow != null) {
+              final scholarId = scholarRow['id'];
+              await Supabase.instance.client.from('scholar_documents').upsert({
+                'scholar_id': scholarId,
+                'document_name': 'Verified Government / Student ID',
+                'document_url': idUrl,
+                'verification_status': result.isMatch ? 'verified' : 'rejected',
+                'document_type': 'id_verification',
+                'remarks': 'Face & ID Verification ($resolvedIdType) - Holder: $verifiedIdFullName',
+                'ai_verification_status': result.isMatch ? 'verified' : 'rejected',
+                'ai_confidence_score': result.confidence,
+                'ai_model_used': result.modelUsed,
+              });
+            }
+          } catch (docErr) {
+            debugPrint('[FaceVerification] Error logging ID to scholar_documents: $docErr');
+          }
+        }
+
+        // 5. Store verified ID data in auth metadata for duplicate/integrity checks
+        try {
+          await Supabase.instance.client.auth.updateUser(
+            UserAttributes(data: {'verified_id_data': verifiedIdData}),
+          );
+        } catch (_) {}
       }
       
       if (result.isMatch) {

@@ -24,6 +24,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   bool _isUploadingPhoto = false;
   bool _isProfileComplete = false;
+  bool _isProfileInfoComplete = false;
   // Face verification
   String _faceVerificationStatus = 'unverified'; // unverified | verified | failed
   DateTime? _faceVerifiedAt;
@@ -42,6 +43,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadProfileData();
   }
 
+  bool _hasCompletedProfileInfo(Map<String, dynamic>? scholar) {
+    if (scholar == null) return false;
+    final requiredFields = [
+      'first_name',
+      'last_name',
+      'birth_date',
+      'gender',
+      'phone',
+      'school',
+      'course',
+      'year_level',
+      'citizenship',
+      'region',
+      'province',
+      'municipality',
+      'barangay',
+    ];
+    for (final field in requiredFields) {
+      if (scholar[field] == null || scholar[field].toString().trim().isEmpty) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _loadProfileData() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
@@ -55,6 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (mounted) {
           setState(() {
             if (data != null) {
+              _isProfileInfoComplete = _hasCompletedProfileInfo(data);
               _isProfileComplete = EligibilityHelper.isProfileComplete(data);
               final first = data['first_name'] ?? '';
               final last = data['last_name'] ?? '';
@@ -82,6 +109,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               final verifiedAtRaw = data['face_verified_at']?.toString();
               _faceVerifiedAt = verifiedAtRaw != null ? DateTime.tryParse(verifiedAtRaw) : null;
             } else {
+              _isProfileInfoComplete = false;
               _isProfileComplete = false;
               _fullName = user.email ?? 'Scholar Student';
               _initials = 'IS';
@@ -568,6 +596,100 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // ─── Complete Profile Details Card ──────────────────────────────────────────
+  Widget _buildCompleteProfileCard() {
+    return GestureDetector(
+      onTap: () async {
+        final updated = await Navigator.pushNamed(context, AppRouter.profileEdit);
+        if (updated == true) {
+          _loadProfileData();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0FDF4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFBBF7D0), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCFCE7),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                LucideIcons.fileText,
+                color: Color(0xFF16A34A),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Complete Profile Details',
+                    style: GoogleFonts.inter(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Fill in personal, academic, location & family info',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: const Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3D2F),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Fill Info',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(
+                    LucideIcons.arrowRight,
+                    color: Colors.white,
+                    size: 13,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -682,7 +804,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           child: Text(
                                             (_isProfileComplete && _faceVerificationStatus == 'verified')
                                                 ? '✓ Verified Scholar'
-                                                : '● Incomplete Profile',
+                                                : (!_isProfileInfoComplete)
+                                                    ? '● Incomplete Profile'
+                                                    : '● Unverified Identity',
                                             style: GoogleFonts.inter(
                                               fontSize: 10.5,
                                               fontWeight: FontWeight.w700,
@@ -788,6 +912,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         // Face Verification Banner
                         _buildFaceVerificationCard(),
+
+                        // Complete Profile Details Banner (shown when profile info is incomplete)
+                        if (!_isProfileInfoComplete) ...[
+                          const SizedBox(height: 12),
+                          _buildCompleteProfileCard(),
+                        ],
                         const SizedBox(height: 20),
 
                         // Menu Settings Section
@@ -814,6 +944,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 icon: LucideIcons.userCheck,
                                 title: 'Personal & Academic Information',
                                 subtitle: 'Education level, location & details',
+                                onTap: () async {
+                                  final updated = await Navigator.pushNamed(context, AppRouter.profileEdit);
+                                  if (updated == true) {
+                                    _loadProfileData();
+                                  }
+                                },
+                              ),
+                              const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                              _buildProfileItem(
+                                icon: LucideIcons.users,
+                                title: 'Parents & Guardian Background',
+                                subtitle: 'Family details, occupation & siblings',
                                 onTap: () async {
                                   final updated = await Navigator.pushNamed(context, AppRouter.profileEdit);
                                   if (updated == true) {

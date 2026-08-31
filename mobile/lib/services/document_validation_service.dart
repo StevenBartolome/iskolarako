@@ -13,6 +13,7 @@ class DocumentValidationResult {
   final String rejectionReason;
   final List<String> flags;
   final String modelUsed;
+  final String? extractedStudentName;
   final double? extractedGwa;
   final String? extractedGwaScale;
   final double? extractedTuitionAmount;
@@ -25,6 +26,7 @@ class DocumentValidationResult {
     required this.rejectionReason,
     required this.flags,
     required this.modelUsed,
+    this.extractedStudentName,
     this.extractedGwa,
     this.extractedGwaScale,
     this.extractedTuitionAmount,
@@ -190,6 +192,89 @@ class DocumentValidationService {
     }
   }
 
+  /// Validate whether the name on the document matches the declared scholar's legal name
+  static bool validateStudentNameMatch({
+    required String? declaredFullName,
+    required String? declaredFirstName,
+    required String? declaredMiddleName,
+    required String? declaredLastName,
+    required String? documentStudentName,
+  }) {
+    if (documentStudentName == null || documentStudentName.trim().isEmpty) {
+      return true; // No name detected on document to compare
+    }
+
+    final rawDoc = documentStudentName.trim().toLowerCase();
+    // Check if inverted format with comma (e.g. "Bartolome, Mark Steven")
+    String docSurname = '';
+    String docGiven = '';
+
+    if (rawDoc.contains(',')) {
+      final parts = rawDoc.split(',');
+      docSurname = parts[0].trim().replaceAll(RegExp(r'[^a-z\s]'), '');
+      docGiven = parts.length > 1 ? parts[1].trim().replaceAll(RegExp(r'[^a-z\s]'), '') : '';
+    } else {
+      final tokens = rawDoc.replaceAll(RegExp(r'[^a-z\s]'), ' ').split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
+      if (tokens.isNotEmpty) {
+        docSurname = tokens.last;
+        docGiven = tokens.sublist(0, tokens.length - 1).join(' ');
+      }
+    }
+
+    final cleanDoc = rawDoc.replaceAll(RegExp(r'[^a-z\s]'), ' ');
+    final docTokens = cleanDoc.split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
+    if (docTokens.isEmpty) return true;
+
+    final first = (declaredFirstName ?? '').trim().toLowerCase();
+    final last = (declaredLastName ?? '').trim().toLowerCase();
+
+    final firstTokens = first.split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
+    final lastTokens = last.split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
+
+    // 1. SURNAME VALIDATION (HIGHEST PRIORITY):
+    // In Philippine records, the declared surname MUST match the document's legal surname (docSurname)
+    // or appear in docTokens.
+    bool surnameMatches = false;
+    for (final l in lastTokens) {
+      if (docSurname.contains(l) || l == docSurname || (docTokens.isNotEmpty && docTokens.last == l)) {
+        surnameMatches = true;
+        break;
+      }
+    }
+
+    // Married woman validation: Declared Maiden Last Name appears in the document before spouse surname
+    // e.g. Declared Last Name "Dela Cruz" is inside docTokens in "Maria Dela Cruz Reyes"
+    bool marriedMaidenSurnameMatches = false;
+    for (final l in lastTokens) {
+      if (docTokens.contains(l)) {
+        marriedMaidenSurnameMatches = true;
+        break;
+      }
+    }
+
+    // 2. FIRST NAME VALIDATION:
+    // The primary first name token MUST match between declared and document
+    bool firstMatches = false;
+    for (final f in firstTokens) {
+      if (docGiven.contains(f) || (docTokens.contains(f) && f != docSurname)) {
+        firstMatches = true;
+        break;
+      }
+    }
+
+    // If surname is completely absent from the document, it is a mismatch!
+    if (!surnameMatches && !marriedMaidenSurnameMatches) {
+      return false;
+    }
+
+    // If first name doesn't match, it is a mismatch (e.g. parent or sibling's document)
+    if (!firstMatches) {
+      return false;
+    }
+
+    return true;
+  }
+
   /// Main AI validation function
   static Future<DocumentValidationResult> validateDocument({
     required Uint8List fileBytes,
@@ -197,6 +282,9 @@ class DocumentValidationService {
     required String requiredDocName,
     String? requirementDescription,
     String? scholarName,
+    String? declaredFirstName,
+    String? declaredMiddleName,
+    String? declaredLastName,
     double? minimumGwa,
     String? gradingSystem,
     String? filePath,
@@ -252,7 +340,7 @@ class DocumentValidationService {
     final geminiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
 
     final scholarNameText = (scholarName != null && scholarName.isNotEmpty)
-        ? 'Declared Scholar Name: "$scholarName"'
+        ? 'Declared Scholar Full Name: "$scholarName" (First: "${declaredFirstName ?? ""}", Middle: "${declaredMiddleName ?? ""}", Surname: "${declaredLastName ?? ""}")'
         : 'Declared Scholar Name: Not provided';
 
     final reqDescText =
@@ -282,17 +370,22 @@ Carefully read and analyze the document image/PDF to perform four critical check
 
 2. STUDENT / INDIVIDUAL NAME CHECK:
    - Search the document for the student's name (e.g. "Name:", "Student Name:", "Student:", "Issued to:").
+   - Extract the student's exact name from the document into "extracted_student_name".
    - Compare the document name with the applicant's declared name "$scholarName".
    
-   NAME MATCHING RULES:
-   a) MATCH / ACCEPT (is_valid_type = true, confidence_score >= 0.80):
+   STRICT PHILIPPINE NAME MATCHING RULES:
+   a) MATCH / ACCEPT (is_valid_type = true, confidence_score >= 0.85):
       - Exact match (e.g. "Mark Steven Bartolome" vs "Mark Steven Bartolome").
-      - Name variations including middle names, middle initials, or title order (e.g. Declared: "Mark Steven Bartolome" vs Document: "Mark Steven Mendoza Bartolome" or "Bartolome, Mark Steven M.").
-      - DO NOT REJECT OR PENALIZE for extra middle names, middle initials, or inverted Last-Name-First formatting! Treat this as a clean match (confidence_score >= 0.85).
+      - Same person with middle name, middle initial, or inverted format (e.g. "Mark Steven Mendoza Bartolome" vs "Bartolome, Mark Steven M.").
+      - Married woman scenario: When a woman scholar marries, her First Name remains identical, while her Maiden Surname becomes her Middle Name (e.g. Declared: "Maria Santos Dela Cruz" vs Document: "Maria Santos Dela Cruz-Reyes" or "Maria Dela Cruz Reyes"). Because First Name is identical and Maiden Surname matches Middle Name, ACCEPT as valid applicant.
 
-   b) COMPLETELY DIFFERENT PERSON (confidence_score = 0.25 to 0.35):
-      - If the document clearly belongs to a completely different person (e.g. Declared: "$scholarName" vs Document: "Juan Dela Cruz" or "Maria Santos"), this MUST BE REJECTED.
-      - Set "is_valid_type": false, "confidence_score": 0.25 to 0.35, and set "rejection_reason": "This document belongs to [Name on Document], which does not match declared scholar name $scholarName."
+   b) MISMATCH / DIFFERENT PERSON / REJECT (is_valid_type = false, confidence_score = 0.20 to 0.30):
+      - CRITICAL SURNAME RULE: In Philippine records, the LAST NAME / SURNAME represents the legal family name.
+      - Example: Declared: "Steven Bartolome Mendoza" (Surname: "Mendoza") vs Document: "Mark Steven M. Bartolome" (Surname: "Bartolome").
+        HERE "Bartolome" is the surname of the document, but "Mendoza" is the declared surname. These are TWO DIFFERENT PEOPLE from different families!
+        YOU MUST REJECT! Set "is_valid_type": false, "confidence_score": 0.20, "rejection_reason": "Document surname (Bartolome) does not match declared applicant surname (Mendoza)."
+      - If the First Name on the document belongs to a parent, sibling, or different person (e.g. Declared: "Steven" vs Document: "Mark Bartolome"), REJECT!
+      - Set "is_valid_type": false, "confidence_score": 0.20, and set "rejection_reason": "This document belongs to [Name on Document], which does not match declared scholar name $scholarName."
 
 3. PROVIDER INSTRUCTIONS / REMARKS CHECK:
    - If Provider Custom Instructions/Remarks ("$requirementDescription") are specified above:
@@ -360,6 +453,7 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
 {
   "is_valid_type": true,
   "document_detected": "Name of document seen",
+  "extracted_student_name": "Student Full Name on Document",
   "confidence_score": 0.85,
   "rejection_reason": "Specific reason if invalid/rejected, else empty string",
   "flags": ["list of concerns if any"],
@@ -370,80 +464,78 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
 }
 ''';
 
+    DocumentValidationResult? result;
+
     // 1. Try OpenRouter Vision (Multi-Model Pool)
     if (openRouterKey.isNotEmpty) {
       try {
         debugPrint(
           '[DocValidation] Calling OpenRouter for $requiredDocName...',
         );
-        final res = await _callOpenRouter(
+        result = await _callOpenRouter(
           prompt: prompt,
           images: visionImages,
           mimeType: visionMime,
           apiKey: openRouterKey,
         );
-        if (res != null) return res;
       } catch (e) {
         debugPrint('[DocValidation] OpenRouter error: $e');
       }
     }
 
     // 2. Try Mistral Direct Vision API (Fast Native Backup)
-    if (mistralKey.isNotEmpty) {
+    if (result == null && mistralKey.isNotEmpty) {
       try {
         debugPrint(
           '[DocValidation] Calling Mistral Direct Vision for $requiredDocName...',
         );
-        final res = await _callMistral(
+        result = await _callMistral(
           prompt: prompt,
           images: visionImages,
           mimeType: visionMime,
           apiKey: mistralKey,
         );
-        if (res != null) return res;
       } catch (e) {
         debugPrint('[DocValidation] Mistral Direct Vision error: $e');
       }
     }
 
     // 3. Try Groq Vision API (Ultra-Fast Backup)
-    if (groqKey.isNotEmpty) {
+    if (result == null && groqKey.isNotEmpty) {
       try {
         debugPrint(
           '[DocValidation] Calling Groq Vision for $requiredDocName...',
         );
-        final res = await _callGroq(
+        result = await _callGroq(
           prompt: prompt,
           images: visionImages,
           mimeType: visionMime,
           apiKey: groqKey,
         );
-        if (res != null) return res;
       } catch (e) {
         debugPrint('[DocValidation] Groq Vision error: $e');
       }
     }
 
     // 4. Try Gemini Native Vision (Fallback)
-    if (geminiKey.isNotEmpty) {
+    if (result == null && geminiKey.isNotEmpty) {
       try {
         debugPrint(
           '[DocValidation] Calling Gemini fallback for $requiredDocName...',
         );
-        final res = await _callGemini(
+        result = await _callGemini(
           prompt: prompt,
           images: visionImages,
           mimeType: visionMime,
           apiKey: geminiKey,
         );
-        if (res != null) return res;
       } catch (e) {
         debugPrint('[DocValidation] Gemini error: $e');
       }
     }
 
-    // Clean Local Validation Fallback (Valid format - Do NOT penalize student with manual review)
-    return DocumentValidationResult(
+    // Fallback if all API calls failed
+    result ??= DocumentValidationResult(
       isValidType: true,
       documentDetected: requiredDocName,
       confidenceScore: 0.88,
@@ -451,6 +543,36 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
       flags: [],
       modelUsed: 'Local Document Safety Engine',
     );
+
+    // ─── CRITICAL PROGRAMMATIC NAME MATCH VERIFICATION ───
+    if (result.isValidType && result.extractedStudentName != null && result.extractedStudentName!.isNotEmpty) {
+      final isNameValid = validateStudentNameMatch(
+        declaredFullName: scholarName,
+        declaredFirstName: declaredFirstName,
+        declaredMiddleName: declaredMiddleName,
+        declaredLastName: declaredLastName,
+        documentStudentName: result.extractedStudentName,
+      );
+
+      if (!isNameValid) {
+        final surname = declaredLastName ?? 'declared applicant surname';
+        return DocumentValidationResult(
+          isValidType: false,
+          documentDetected: result.documentDetected,
+          confidenceScore: 0.20,
+          rejectionReason: 'Document belongs to "${result.extractedStudentName}", which does not match declared applicant surname ($surname).',
+          flags: [...result.flags, 'Name mismatch with declared profile'],
+          modelUsed: result.modelUsed,
+          extractedStudentName: result.extractedStudentName,
+          extractedGwa: result.extractedGwa,
+          extractedGwaScale: result.extractedGwaScale,
+          extractedTuitionAmount: result.extractedTuitionAmount,
+          extractedSchool: result.extractedSchool,
+        );
+      }
+    }
+
+    return result;
   }
 
   static Future<DocumentValidationResult?> _callOpenRouter({
@@ -774,6 +896,14 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
         extractedSchool = null;
       }
 
+      // Extracted student name
+      String? extractedStudentName = map['extracted_student_name']?.toString() ??
+          map['student_name']?.toString() ??
+          map['name']?.toString();
+      if (extractedStudentName != null && extractedStudentName.trim().isEmpty) {
+        extractedStudentName = null;
+      }
+
       return DocumentValidationResult(
         isValidType: isValid,
         documentDetected: detected,
@@ -781,6 +911,7 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
         rejectionReason: reason,
         flags: flags,
         modelUsed: modelName,
+        extractedStudentName: extractedStudentName,
         extractedGwa: extractedGwa,
         extractedGwaScale: extractedGwaScale,
         extractedTuitionAmount: extractedTuition,

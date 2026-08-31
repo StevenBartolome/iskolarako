@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/services/audit_log_service.dart';
 import 'package:iskoako/services/ai_extraction_service.dart';
 import 'package:iskoako/services/document_validation_service.dart';
+import 'package:iskoako/services/duplicate_check_service.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
 import 'package:iskoako/utils/app_router.dart';
 
@@ -47,7 +48,44 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       }
 
       _initializeRequirements();
-      _ensureScholarProfile();
+      _ensureScholarProfile().then((liveScholar) {
+        if (mounted && !EligibilityHelper.isProfileComplete(liveScholar)) {
+          final missing = EligibilityHelper.getMissingFields(liveScholar);
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  const Icon(LucideIcons.alertTriangle, color: Color(0xFFD97706)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Verification Required', style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 16)),
+                  ),
+                ],
+              ),
+              content: Text(
+                'Your profile is incomplete or your identity is unverified (${missing.join(', ')}). Please complete your profile and face verification before proceeding.',
+                style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF4B5563)),
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3D2F),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text('Go Back', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          );
+        }
+      });
       _isInitialized = true;
     }
   }
@@ -203,41 +241,10 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   }
 
   Future<Map<String, dynamic>?> _ensureScholarProfile() async {
-    if (_scholar != null &&
-        _scholar!['id'] != null &&
-        _scholar!['gpa_scale'] != null &&
-        _scholar!['gpa_scale'].toString().isNotEmpty &&
-        _scholar!['gpa_scale'].toString() != 'null') {
-      return _scholar;
-    }
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return _scholar;
 
     try {
-      try {
-        final existingUser = await Supabase.instance.client
-            .from('users')
-            .select()
-            .eq('id', user.id)
-            .maybeSingle();
-
-        if (existingUser == null) {
-          final firstName = user.userMetadata?['first_name']?.toString() ?? 'Scholar';
-          final lastName = user.userMetadata?['last_name']?.toString() ?? 'Student';
-          final email = user.email ?? '${user.id}@iskolarako.app';
-
-          await Supabase.instance.client.from('users').upsert({
-            'id': user.id,
-            'email': email,
-            'first_name': firstName,
-            'last_name': lastName,
-            'role': 'scholar',
-          });
-        }
-      } catch (uErr) {
-        debugPrint('Note checking public.users table: $uErr');
-      }
-
       final existingScholar = await Supabase.instance.client
           .from('scholar')
           .select()
@@ -247,43 +254,15 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       if (existingScholar != null) {
         if (mounted) {
           setState(() {
-            _scholar = {...(_scholar ?? {}), ...existingScholar};
+            _scholar = existingScholar;
           });
         } else {
-          _scholar = {...(_scholar ?? {}), ...existingScholar};
+          _scholar = existingScholar;
         }
-        debugPrint('[DocumentUploadScreen] Resolved complete scholar profile: id=${_scholar!['id']}, gpa_scale=${_scholar!['gpa_scale']}');
-        return _scholar;
-      }
-
-      final firstName = user.userMetadata?['first_name']?.toString() ?? 'Scholar';
-      final lastName = user.userMetadata?['last_name']?.toString() ?? 'Student';
-      final school = user.userMetadata?['school']?.toString();
-      final course = user.userMetadata?['course']?.toString();
-      final phone = user.userMetadata?['phone']?.toString();
-      final yearLevel = int.tryParse(user.userMetadata?['year_level']?.toString() ?? '');
-      final gpa = double.tryParse(user.userMetadata?['gpa']?.toString() ?? '');
-
-      final Map<String, dynamic> insertPayload = {
-        'user_id': user.id,
-        'first_name': firstName,
-        'last_name': lastName,
-        'citizenship': 'Filipino',
-      };
-      if (school != null && school.isNotEmpty) insertPayload['school'] = school;
-      if (course != null && course.isNotEmpty) insertPayload['course'] = course;
-      if (phone != null && phone.isNotEmpty) insertPayload['phone'] = phone;
-      if (yearLevel != null) insertPayload['year_level'] = yearLevel;
-      if (gpa != null) insertPayload['gpa'] = gpa;
-
-      final newScholar = await Supabase.instance.client.from('scholar').insert(insertPayload).select().maybeSingle();
-
-      if (newScholar != null) {
-        _scholar = newScholar;
-        return newScholar;
+        return existingScholar;
       }
     } catch (e) {
-      debugPrint('Error ensuring scholar profile: $e');
+      debugPrint('[DocumentUploadScreen] Error resolving live scholar profile: $e');
     }
 
     return _scholar;
@@ -438,8 +417,11 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         }
 
         final scholarFirstName = scholar?['first_name']?.toString() ?? '';
+        final scholarMiddleName = scholar?['middle_name']?.toString() ?? '';
         final scholarLastName = scholar?['last_name']?.toString() ?? '';
-        final scholarFullName = '$scholarFirstName $scholarLastName'.trim();
+        final scholarFullName = [scholarFirstName, scholarMiddleName, scholarLastName]
+            .where((s) => s.trim().isNotEmpty)
+            .join(' ');
 
         // Extract Minimum GWA and Grading System from scholarship program
         final minGwaRaw = _program?['minimum_gwa'] ?? _program?['minimumGwa'] ?? _program?['renewal_gwa_requirement'];
@@ -460,6 +442,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           requiredDocName: doc.name,
           requirementDescription: doc.description,
           scholarName: scholarFullName,
+          declaredFirstName: scholarFirstName,
+          declaredMiddleName: scholarMiddleName,
+          declaredLastName: scholarLastName,
           minimumGwa: minimumGwa,
           gradingSystem: gradingSystem,
         );
@@ -1288,16 +1273,51 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     final scholarId = scholar?['id'];
     final scholarGpaScale = scholar?['gpa_scale']?.toString() ?? 'scale_5';
 
-    if (scholarId == null) {
+    if (scholarId == null || !EligibilityHelper.isProfileComplete(scholar)) {
       if (mounted) {
         setState(() => _isSubmitting = false);
+        final missing = EligibilityHelper.getMissingFields(scholar);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unable to resolve scholar profile. Please complete your profile first.'),
-            backgroundColor: Color(0xFFB91C1C),
+          SnackBar(
+            content: Text('Cannot submit: Incomplete profile or unverified identity (${missing.join(', ')}).'),
+            backgroundColor: const Color(0xFFB91C1C),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
+      return;
+    }
+
+    // ─── Profile Integrity Check (Verified ID vs Declared Profile Name) ───
+    final integrityCheck = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+    if (integrityCheck.isTampered) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        await DuplicateCheckService.showProfileTamperedDialog(context, integrityCheck);
+      }
+      return;
+    }
+
+    // ─── Duplicate Application Validation ──────────────────────────────────
+    final dupCheck = await DuplicateCheckService.checkForDuplicate(
+      cycleId: cycleId.toString(),
+      currentScholarId: scholarId.toString(),
+      firstName: scholar?['first_name']?.toString() ?? '',
+      middleName: scholar?['middle_name']?.toString() ?? '',
+      lastName: scholar?['last_name']?.toString() ?? '',
+      birthDate: scholar?['birth_date'],
+      phone: scholar?['phone']?.toString(),
+      programTitle: _program?['title']?.toString(),
+    );
+
+    if (dupCheck.isDuplicate) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      await DuplicateCheckService.showDuplicateWarningDialog(
+        context,
+        dupCheck,
+        programTitle: _program?['title']?.toString(),
+      );
       return;
     }
 
@@ -2143,6 +2163,12 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
           const SizedBox(height: 12),
           _buildInfoRow('Full Name', _scholarFullName),
           const SizedBox(height: 6),
+          _buildInfoRow(
+            'Identity (Face Check)',
+            _scholar?['face_verification_status']?.toString() == 'verified' ? '✓ Verified' : '✕ Unverified',
+            isVerified: _scholar?['face_verification_status']?.toString() == 'verified',
+          ),
+          const SizedBox(height: 6),
           _buildInfoRow('School / University', _scholarSchool),
           const SizedBox(height: 6),
           _buildInfoRow('Course & Year Level', _scholarCourseAndYear),
@@ -2151,7 +2177,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String val) {
+  Widget _buildInfoRow(String label, String val, {bool? isVerified}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -2159,7 +2185,13 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         Flexible(
           child: Text(
             val,
-            style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
+            style: GoogleFonts.inter(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: isVerified != null
+                  ? (isVerified ? const Color(0xFF15803D) : const Color(0xFFDC2626))
+                  : const Color(0xFF111827),
+            ),
             textAlign: TextAlign.end,
           ),
         ),

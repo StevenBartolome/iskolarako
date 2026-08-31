@@ -17,6 +17,37 @@ class ProfileEditScreen extends StatefulWidget {
   State<ProfileEditScreen> createState() => _ProfileEditScreenState();
 }
 
+class _SiblingEntry {
+  final TextEditingController firstNameController;
+  final TextEditingController middleNameController;
+  final TextEditingController lastNameController;
+  final TextEditingController occupationController;
+
+  _SiblingEntry({
+    String firstName = '',
+    String middleName = '',
+    String lastName = '',
+    String occupation = '',
+  })  : firstNameController = TextEditingController(text: firstName),
+        middleNameController = TextEditingController(text: middleName),
+        lastNameController = TextEditingController(text: lastName),
+        occupationController = TextEditingController(text: occupation);
+
+  void dispose() {
+    firstNameController.dispose();
+    middleNameController.dispose();
+    lastNameController.dispose();
+    occupationController.dispose();
+  }
+
+  Map<String, String> toJson() => {
+    'first_name': firstNameController.text.trim(),
+    'middle_name': middleNameController.text.trim(),
+    'last_name': lastNameController.text.trim(),
+    'occupation': occupationController.text.trim(),
+  };
+}
+
 class _ProfileEditScreenState extends State<ProfileEditScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = true;
@@ -26,8 +57,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   bool _editingAcademic = false;
   bool _editingPersonal = false;
   bool _editingAddress = false;
+  bool _editingFamily = false;
 
-  bool get _isAnyEditing => _editingAcademic || _editingPersonal || _editingAddress;
+  bool get _isAnyEditing =>
+      _editingAcademic || _editingPersonal || _editingAddress || _editingFamily;
 
   String _userEmail = '';
   String? _avatarUrl;
@@ -42,6 +75,26 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   final _citizenshipController = TextEditingController(text: 'Filipino');
   DateTime? _selectedBirthDate;
   String? _selectedGender;
+
+  // Family Info (Parents, Guardian, Siblings)
+  final _fatherFirstNameController = TextEditingController();
+  final _fatherMiddleNameController = TextEditingController();
+  final _fatherLastNameController = TextEditingController();
+  final _fatherOccupationController = TextEditingController();
+
+  final _motherFirstNameController = TextEditingController();
+  final _motherMiddleNameController = TextEditingController();
+  final _motherLastNameController = TextEditingController();
+  final _motherOccupationController = TextEditingController();
+
+  final _guardianFirstNameController = TextEditingController();
+  final _guardianMiddleNameController = TextEditingController();
+  final _guardianLastNameController = TextEditingController();
+  final _guardianRelationshipController = TextEditingController();
+  final _guardianOccupationController = TextEditingController();
+
+  int _numberOfSiblings = 0;
+  List<_SiblingEntry> _siblingEntries = [];
 
   // Location / Address (PSGC API)
   List<Map<String, dynamic>> _regions = [];
@@ -150,6 +203,27 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _citizenshipController.dispose();
     _schoolController.dispose();
     _courseController.dispose();
+
+    _fatherFirstNameController.dispose();
+    _fatherMiddleNameController.dispose();
+    _fatherLastNameController.dispose();
+    _fatherOccupationController.dispose();
+
+    _motherFirstNameController.dispose();
+    _motherMiddleNameController.dispose();
+    _motherLastNameController.dispose();
+    _motherOccupationController.dispose();
+
+    _guardianFirstNameController.dispose();
+    _guardianMiddleNameController.dispose();
+    _guardianLastNameController.dispose();
+    _guardianRelationshipController.dispose();
+    _guardianOccupationController.dispose();
+
+    for (final s in _siblingEntries) {
+      s.dispose();
+    }
+
     super.dispose();
   }
 
@@ -276,6 +350,91 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
         if (dataList['birth_date'] != null) {
           _selectedBirthDate = DateTime.tryParse(dataList['birth_date']);
+        }
+
+        // Family Info (Parents, Guardian, Siblings)
+        final metaFamily = user.userMetadata?['family_details'] as Map<String, dynamic>?;
+
+        _fatherFirstNameController.text = dataList['father_first_name']?.toString() ??
+            metaFamily?['father_first_name']?.toString() ??
+            '';
+        _fatherMiddleNameController.text = dataList['father_middle_name']?.toString() ??
+            metaFamily?['father_middle_name']?.toString() ??
+            '';
+        _fatherLastNameController.text = dataList['father_last_name']?.toString() ??
+            metaFamily?['father_last_name']?.toString() ??
+            '';
+        _fatherOccupationController.text = dataList['father_occupation']?.toString() ??
+            metaFamily?['father_occupation']?.toString() ??
+            '';
+
+        _motherFirstNameController.text = dataList['mother_first_name']?.toString() ??
+            metaFamily?['mother_first_name']?.toString() ??
+            '';
+        _motherMiddleNameController.text = dataList['mother_middle_name']?.toString() ??
+            metaFamily?['mother_middle_name']?.toString() ??
+            '';
+        _motherLastNameController.text = dataList['mother_last_name']?.toString() ??
+            metaFamily?['mother_last_name']?.toString() ??
+            '';
+        _motherOccupationController.text = dataList['mother_occupation']?.toString() ??
+            metaFamily?['mother_occupation']?.toString() ??
+            '';
+
+        _guardianFirstNameController.text = dataList['guardian_first_name']?.toString() ??
+            metaFamily?['guardian_first_name']?.toString() ??
+            '';
+        _guardianMiddleNameController.text = dataList['guardian_middle_name']?.toString() ??
+            metaFamily?['guardian_middle_name']?.toString() ??
+            '';
+        _guardianLastNameController.text = dataList['guardian_last_name']?.toString() ??
+            metaFamily?['guardian_last_name']?.toString() ??
+            '';
+        _guardianRelationshipController.text = dataList['guardian_relationship']?.toString() ??
+            metaFamily?['guardian_relationship']?.toString() ??
+            '';
+        _guardianOccupationController.text = dataList['guardian_occupation']?.toString() ??
+            metaFamily?['guardian_occupation']?.toString() ??
+            '';
+
+        final rawSiblingsCount = dataList['number_of_siblings'] ??
+            dataList['siblings_count'] ??
+            metaFamily?['number_of_siblings'] ??
+            metaFamily?['siblings_count'] ??
+            0;
+        final sibCount = int.tryParse(rawSiblingsCount.toString()) ?? 0;
+        _numberOfSiblings = sibCount.clamp(0, 10);
+
+        final rawSiblings = dataList['siblings'] ?? metaFamily?['siblings'];
+        List<dynamic> parsedSiblings = [];
+        if (rawSiblings is List) {
+          parsedSiblings = rawSiblings;
+        } else if (rawSiblings is String) {
+          try {
+            parsedSiblings = jsonDecode(rawSiblings);
+          } catch (_) {}
+        }
+
+        // Clean previous sibling entries
+        for (final s in _siblingEntries) {
+          s.dispose();
+        }
+        _siblingEntries = [];
+
+        for (int i = 0; i < _numberOfSiblings; i++) {
+          if (i < parsedSiblings.length && parsedSiblings[i] is Map) {
+            final m = parsedSiblings[i] as Map<String, dynamic>;
+            _siblingEntries.add(_SiblingEntry(
+              firstName: m['first_name']?.toString() ?? '',
+              middleName: m['middle_name']?.toString() ?? '',
+              lastName: m['last_name']?.toString() ?? '',
+              occupation: m['occupation']?.toString() ?? '',
+            ));
+          } else {
+            _siblingEntries.add(_SiblingEntry(
+              lastName: _lastNameController.text.trim(),
+            ));
+          }
         }
       }
     } catch (e) {
@@ -442,6 +601,128 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       } finally {
         if (mounted) setState(() => _isSaving = false);
       }
+    }
+  }
+
+  void _autofillGuardianFromFather() {
+    setState(() {
+      _guardianFirstNameController.text = _fatherFirstNameController.text.trim();
+      _guardianMiddleNameController.text = _fatherMiddleNameController.text.trim();
+      _guardianLastNameController.text = _fatherLastNameController.text.trim();
+      _guardianRelationshipController.text = 'Father';
+      _guardianOccupationController.text = _fatherOccupationController.text.trim();
+    });
+    _showSnackBar('Autofilled Guardian details from Father.', isError: false);
+  }
+
+  void _autofillGuardianFromMother() {
+    setState(() {
+      _guardianFirstNameController.text = _motherFirstNameController.text.trim();
+      _guardianMiddleNameController.text = _motherMiddleNameController.text.trim();
+      _guardianLastNameController.text = _motherLastNameController.text.trim();
+      _guardianRelationshipController.text = 'Mother';
+      _guardianOccupationController.text = _motherOccupationController.text.trim();
+    });
+    _showSnackBar('Autofilled Guardian details from Mother.', isError: false);
+  }
+
+  void _clearGuardianDetails() {
+    setState(() {
+      _guardianFirstNameController.clear();
+      _guardianMiddleNameController.clear();
+      _guardianLastNameController.clear();
+      _guardianRelationshipController.clear();
+      _guardianOccupationController.clear();
+    });
+  }
+
+  void _updateSiblingCount(int newCount) {
+    if (newCount == _numberOfSiblings) return;
+    setState(() {
+      if (newCount > _siblingEntries.length) {
+        for (int i = _siblingEntries.length; i < newCount; i++) {
+          _siblingEntries.add(_SiblingEntry(
+            lastName: _lastNameController.text.trim(),
+          ));
+        }
+      } else if (newCount < _siblingEntries.length) {
+        for (int i = newCount; i < _siblingEntries.length; i++) {
+          _siblingEntries[i].dispose();
+        }
+        _siblingEntries = _siblingEntries.sublist(0, newCount);
+      }
+      _numberOfSiblings = newCount;
+    });
+  }
+
+  Future<void> _saveFamilySection() async {
+    setState(() => _isSaving = true);
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final familyData = {
+        'father_first_name': _fatherFirstNameController.text.trim(),
+        'father_middle_name': _fatherMiddleNameController.text.trim(),
+        'father_last_name': _fatherLastNameController.text.trim(),
+        'father_occupation': _fatherOccupationController.text.trim(),
+        'mother_first_name': _motherFirstNameController.text.trim(),
+        'mother_middle_name': _motherMiddleNameController.text.trim(),
+        'mother_last_name': _motherLastNameController.text.trim(),
+        'mother_occupation': _motherOccupationController.text.trim(),
+        'guardian_first_name': _guardianFirstNameController.text.trim(),
+        'guardian_middle_name': _guardianMiddleNameController.text.trim(),
+        'guardian_last_name': _guardianLastNameController.text.trim(),
+        'guardian_relationship': _guardianRelationshipController.text.trim(),
+        'guardian_occupation': _guardianOccupationController.text.trim(),
+        'number_of_siblings': _numberOfSiblings,
+        'siblings_count': _numberOfSiblings,
+        'siblings': _siblingEntries.map((s) => s.toJson()).toList(),
+      };
+
+      try {
+        await Supabase.instance.client.from('scholar').upsert({
+          'user_id': user.id,
+          'first_name': _firstNameController.text.trim().isNotEmpty
+              ? _firstNameController.text.trim()
+              : 'Scholar',
+          'last_name': _lastNameController.text.trim().isNotEmpty
+              ? _lastNameController.text.trim()
+              : 'Student',
+          ...familyData,
+          'updated_at': DateTime.now().toIso8601String(),
+        }, onConflict: 'user_id');
+      } catch (colErr) {
+        debugPrint('[ProfileEdit] Direct scholar column upsert notice: $colErr');
+        try {
+          await Supabase.instance.client.from('scholar').upsert({
+            'user_id': user.id,
+            'first_name': _firstNameController.text.trim().isNotEmpty
+                ? _firstNameController.text.trim()
+                : 'Scholar',
+            'last_name': _lastNameController.text.trim().isNotEmpty
+                ? _lastNameController.text.trim()
+                : 'Student',
+            'updated_at': DateTime.now().toIso8601String(),
+          }, onConflict: 'user_id');
+        } catch (_) {}
+      }
+
+      try {
+        await Supabase.instance.client.auth.updateUser(
+          UserAttributes(data: {'family_details': familyData}),
+        );
+      } catch (authErr) {
+        debugPrint('[ProfileEdit] Auth user metadata update notice: $authErr');
+      }
+
+      if (mounted) {
+        _showSnackBar('Family & Guardian details updated successfully!', isError: false);
+        AuditLogService.createAuditLog(
+          action: 'UPDATED FAMILY DETAILS',
+          target: 'Parents/Guardian & Siblings',
+        );
+        setState(() => _editingFamily = false);
+      }
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -1180,6 +1461,23 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
   }
 
+  Widget _buildFamilySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeaderWithAction(
+          title: 'Parents & Guardian Details',
+          isEditing: _editingFamily,
+          onToggleEdit: () => setState(() => _editingFamily = !_editingFamily),
+        ),
+        if (_editingFamily)
+          _buildEditFamilySection()
+        else
+          _buildViewFamilySection(),
+      ],
+    );
+  }
+
   // ── VIEW MODE SECTIONS ─────────────────────────────────────────────────────
 
   Widget _buildViewAcademicSection() {
@@ -1309,6 +1607,155 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         icon: LucideIcons.mapPin,
         label: 'Residential Address',
         value: fullAddress,
+      ),
+    );
+  }
+
+  Widget _buildViewFamilySection() {
+    final fatherFirst = _fatherFirstNameController.text.trim();
+    final fatherMiddle = _fatherMiddleNameController.text.trim();
+    final fatherLast = _fatherLastNameController.text.trim();
+    final fatherOcc = _fatherOccupationController.text.trim();
+    final fatherFullName = '$fatherFirst ${fatherMiddle.isNotEmpty ? "$fatherMiddle " : ""}$fatherLast'.trim();
+
+    final motherFirst = _motherFirstNameController.text.trim();
+    final motherMiddle = _motherMiddleNameController.text.trim();
+    final motherLast = _motherLastNameController.text.trim();
+    final motherOcc = _motherOccupationController.text.trim();
+    final motherFullName = '$motherFirst ${motherMiddle.isNotEmpty ? "$motherMiddle " : ""}$motherLast'.trim();
+
+    final guardianFirst = _guardianFirstNameController.text.trim();
+    final guardianMiddle = _guardianMiddleNameController.text.trim();
+    final guardianLast = _guardianLastNameController.text.trim();
+    final guardianRel = _guardianRelationshipController.text.trim();
+    final guardianOcc = _guardianOccupationController.text.trim();
+    final guardianFullName = '$guardianFirst ${guardianMiddle.isNotEmpty ? "$guardianMiddle " : ""}$guardianLast'.trim();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildViewDetailRow(
+            icon: LucideIcons.user,
+            label: 'Father Details',
+            value: fatherFullName.isNotEmpty ? fatherFullName : 'Not specified',
+            subtitle: fatherOcc.isNotEmpty ? 'Occupation: $fatherOcc' : null,
+          ),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
+          _buildViewDetailRow(
+            icon: LucideIcons.heart,
+            label: 'Mother Details (Maiden)',
+            value: motherFullName.isNotEmpty ? motherFullName : 'Not specified',
+            subtitle: motherOcc.isNotEmpty ? 'Occupation: $motherOcc' : null,
+          ),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
+          _buildViewDetailRow(
+            icon: LucideIcons.shieldCheck,
+            label: 'Guardian Details',
+            value: guardianFullName.isNotEmpty
+                ? '$guardianFullName ${guardianRel.isNotEmpty ? "($guardianRel)" : ""}'
+                : 'Not specified',
+            subtitle: guardianOcc.isNotEmpty ? 'Occupation: $guardianOcc' : null,
+          ),
+          const Divider(height: 20, color: Color(0xFFF3F4F6)),
+          _buildViewDetailRow(
+            icon: LucideIcons.users,
+            label: 'Number of Siblings',
+            value: '$_numberOfSiblings sibling${_numberOfSiblings == 1 ? "" : "s"}',
+          ),
+          if (_numberOfSiblings > 0 && _siblingEntries.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'SIBLINGS LIST',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF6B7280),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._siblingEntries.asMap().entries.map((entry) {
+                    final idx = entry.key + 1;
+                    final sib = entry.value;
+                    final sFirst = sib.firstNameController.text.trim();
+                    final sMiddle = sib.middleNameController.text.trim();
+                    final sLast = sib.lastNameController.text.trim();
+                    final sOcc = sib.occupationController.text.trim();
+                    final sFullName = '$sFirst ${sMiddle.isNotEmpty ? "$sMiddle " : ""}$sLast'.trim();
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFDCFCE7),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '$idx',
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF15803D),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                text: sFullName.isNotEmpty ? sFullName : 'Sibling #$idx',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF111827),
+                                ),
+                                children: [
+                                  if (sOcc.isNotEmpty)
+                                    TextSpan(
+                                      text: '  •  $sOcc',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w400,
+                                        color: const Color(0xFF6B7280),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1756,6 +2203,499 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
   }
 
+  Widget _buildEditFamilySection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ─── Father Section ─────────────────────────────────────────────
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.user, color: Color(0xFF16A34A), size: 15),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Father Information',
+                style: GoogleFonts.inter(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: _fatherFirstNameController,
+                  label: 'Father First Name',
+                  hint: 'e.g. Roberto',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTextField(
+                  controller: _fatherMiddleNameController,
+                  label: 'Middle Name (Optional)',
+                  hint: 'e.g. Garcia',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _fatherLastNameController,
+            label: 'Father Last Name',
+            hint: 'e.g. Dela Cruz',
+          ),
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _fatherOccupationController,
+            label: 'Father Occupation / Income Source',
+            hint: 'e.g. Farmer / Construction / OFW / Deceased',
+          ),
+
+          const SizedBox(height: 20),
+          const Divider(height: 1, color: Color(0xFFF3F4F6)),
+          const SizedBox(height: 16),
+
+          // ─── Mother Section ─────────────────────────────────────────────
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFDF2F8),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.heart, color: Color(0xFFDB2777), size: 15),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Mother Information (Maiden Name)',
+                style: GoogleFonts.inter(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: _motherFirstNameController,
+                  label: 'Mother First Name',
+                  hint: 'e.g. Maria',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTextField(
+                  controller: _motherMiddleNameController,
+                  label: 'Maiden Middle Name (Optional)',
+                  hint: 'e.g. Gomez',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _motherLastNameController,
+            label: 'Mother Last Name (Maiden)',
+            hint: 'e.g. Santos',
+          ),
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _motherOccupationController,
+            label: 'Mother Occupation / Income Source',
+            hint: 'e.g. Housewife / Vendor / Teacher / Deceased',
+          ),
+
+          const SizedBox(height: 20),
+          const Divider(height: 1, color: Color(0xFFF3F4F6)),
+          const SizedBox(height: 16),
+
+          // ─── Guardian Section & Autofill ─────────────────────────────────
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.shieldCheck, color: Color(0xFF2563EB), size: 15),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Guardian Information',
+                style: GoogleFonts.inter(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Autofill Guardian from Parent helper buttons
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0FDF4),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFDCFCE7)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Is your guardian also your parent? Tap to autofill:',
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1E3D2F),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    GestureDetector(
+                      onTap: _autofillGuardianFromFather,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF16A34A)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(LucideIcons.user, size: 13, color: Color(0xFF16A34A)),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Same as Father',
+                              style: GoogleFonts.inter(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF16A34A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _autofillGuardianFromMother,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFDB2777)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(LucideIcons.heart, size: 13, color: Color(0xFFDB2777)),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Same as Mother',
+                              style: GoogleFonts.inter(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFDB2777),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _clearGuardianDetails,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF9CA3AF)),
+                        ),
+                        child: Text(
+                          'Clear',
+                          style: GoogleFonts.inter(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF6B7280),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: _guardianFirstNameController,
+                  label: 'Guardian First Name *',
+                  hint: 'e.g. Maria',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTextField(
+                  controller: _guardianMiddleNameController,
+                  label: 'Middle Name (Optional)',
+                  hint: 'e.g. Gomez',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _guardianLastNameController,
+            label: 'Guardian Last Name *',
+            hint: 'e.g. Dela Cruz',
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: _guardianRelationshipController,
+                  label: 'Relationship to Scholar *',
+                  hint: 'e.g. Mother / Father / Aunt',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTextField(
+                  controller: _guardianOccupationController,
+                  label: 'Guardian Occupation',
+                  hint: 'e.g. Vendor / Employee',
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+          const Divider(height: 1, color: Color(0xFFF3F4F6)),
+          const SizedBox(height: 16),
+
+          // ─── Siblings Section ───────────────────────────────────────────
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.users, color: Color(0xFFD97706), size: 15),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Siblings Information',
+                style: GoogleFonts.inter(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Number of Siblings *',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<int>(
+                isExpanded: true,
+                initialValue: _numberOfSiblings,
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  filled: true,
+                  fillColor: const Color(0xFFFAFCFA),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                ),
+                items: List.generate(
+                  11,
+                  (i) => DropdownMenuItem(
+                    value: i,
+                    child: Text(
+                      i == 0 ? '0 (No Siblings / Only Child)' : '$i Sibling${i == 1 ? "" : "s"}',
+                      style: GoogleFonts.inter(fontSize: 13),
+                    ),
+                  ),
+                ),
+                onChanged: (val) {
+                  if (val != null) {
+                    _updateSiblingCount(val);
+                  }
+                },
+              ),
+            ],
+          ),
+
+          // Dynamic Siblings Form List
+          if (_numberOfSiblings > 0) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Please provide details for each sibling:',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF6B7280),
+              ),
+            ),
+            const SizedBox(height: 10),
+            ..._siblingEntries.asMap().entries.map((entry) {
+              final idx = entry.key + 1;
+              final sib = entry.value;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Sibling #$idx',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF15803D),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTextField(
+                            controller: sib.firstNameController,
+                            label: 'First Name *',
+                            hint: 'e.g. Ana',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: sib.middleNameController,
+                            label: 'Middle Name (Optional)',
+                            hint: 'e.g. Gomez',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _buildTextField(
+                      controller: sib.lastNameController,
+                      label: 'Last Name *',
+                      hint: 'e.g. Dela Cruz',
+                    ),
+                    const SizedBox(height: 10),
+                    _buildTextField(
+                      controller: sib.occupationController,
+                      label: 'Occupation / Status',
+                      hint: 'e.g. Student / Employed / None',
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => setState(() => _editingFamily = false),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFE5E7EB)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: Text('Cancel', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF6B7280))),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _isSaving ? null : _saveFamilySection,
+                  icon: const Icon(LucideIcons.check, size: 14, color: Colors.white),
+                  label: Text('Save Family', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3D2F),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEditAcademicSection() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2072,6 +3012,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                           _buildAddressSection(),
                           const SizedBox(height: 20),
 
+                          _buildFamilySection(),
+                          const SizedBox(height: 20),
+
                           _buildSecuritySection(),
                         ],
                       ),
@@ -2178,10 +3121,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         _editingAcademic = false;
                         _editingPersonal = false;
                         _editingAddress = false;
+                        _editingFamily = false;
                       } else {
                         _editingAcademic = true;
                         _editingPersonal = true;
                         _editingAddress = true;
+                        _editingFamily = true;
                       }
                     });
                   },

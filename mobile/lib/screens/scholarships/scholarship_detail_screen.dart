@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:iskoako/services/duplicate_check_service.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -15,9 +16,41 @@ class ScholarshipDetailScreen extends StatefulWidget {
 
 class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
   bool _isCheckingApp = false;
+  bool _isPreCheckingDup = false;
   Map<String, dynamic>? _existingApp;
+  Map<String, dynamic>? _freshScholar;
   bool _hasCheckedApp = false;
   RealtimeChannel? _realtimeChannel;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFreshScholar();
+  }
+
+  Future<Map<String, dynamic>?> _loadFreshScholar() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      try {
+        final res = await Supabase.instance.client
+            .from('scholar')
+            .select()
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (res != null) {
+          if (mounted) {
+            setState(() {
+              _freshScholar = res;
+            });
+          }
+          return res;
+        }
+      } catch (e) {
+        debugPrint('[ScholarshipDetail] Error fetching fresh scholar: $e');
+      }
+    }
+    return _freshScholar;
+  }
 
   @override
   void dispose() {
@@ -39,6 +72,16 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
           callback: (payload) {
             if (mounted) {
               _checkExistingApplication(scholarId, cycleId, force: true);
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar',
+          callback: (payload) {
+            if (mounted) {
+              _loadFreshScholar();
             }
           },
         )
@@ -81,11 +124,97 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
     }
   }
 
+  Future<void> _handleApply({
+    required Map<String, dynamic>? program,
+    required Map<String, dynamic>? scholar,
+    required Map<String, dynamic>? activeCycle,
+    required String title,
+    required bool hasApplied,
+  }) async {
+    if (hasApplied) {
+      Navigator.pushNamed(context, AppRouter.applicationTracker);
+      return;
+    }
+
+    setState(() => _isPreCheckingDup = true);
+
+    // Fetch live scholar record directly from DB to prevent stale checks
+    final liveScholar = await _loadFreshScholar() ?? scholar;
+    final isComplete = EligibilityHelper.isProfileComplete(liveScholar);
+
+    if (!isComplete) {
+      if (mounted) setState(() => _isPreCheckingDup = false);
+      final missingFields = EligibilityHelper.getMissingFields(liveScholar);
+      if (!mounted) return;
+      _showIncompleteProfileModal(context, missingFields);
+      return;
+    }
+
+    // Check Profile Integrity (Current Profile Name vs Verified ID Name)
+    final integrityCheck = DuplicateCheckService.checkProfileIntegrity(scholar: liveScholar);
+    if (integrityCheck.isTampered) {
+      if (mounted) setState(() => _isPreCheckingDup = false);
+      if (!mounted) return;
+      await DuplicateCheckService.showProfileTamperedDialog(context, integrityCheck);
+      return;
+    }
+
+    final cycleId = activeCycle?['id']?.toString();
+    final scholarId = liveScholar?['id']?.toString();
+
+    // Pre-check for duplicate application across accounts
+    if (cycleId != null && liveScholar != null) {
+      try {
+        final dupCheck = await DuplicateCheckService.checkForDuplicate(
+          cycleId: cycleId,
+          currentScholarId: scholarId,
+          firstName: liveScholar['first_name']?.toString() ?? '',
+          middleName: liveScholar['middle_name']?.toString() ?? '',
+          lastName: liveScholar['last_name']?.toString() ?? '',
+          birthDate: liveScholar['birth_date'],
+          phone: liveScholar['phone']?.toString(),
+          programTitle: title,
+        );
+
+        if (!mounted) return;
+        setState(() => _isPreCheckingDup = false);
+
+        if (dupCheck.isDuplicate) {
+          if (!mounted) return;
+          await DuplicateCheckService.showDuplicateWarningDialog(
+            context,
+            dupCheck,
+            programTitle: title,
+          );
+          return;
+        }
+      } catch (e) {
+        debugPrint('Pre-check duplicate error: $e');
+        if (!mounted) return;
+        setState(() => _isPreCheckingDup = false);
+      }
+    } else {
+      if (mounted) setState(() => _isPreCheckingDup = false);
+    }
+
+    if (!mounted) return;
+    Navigator.pushNamed(
+      context,
+      AppRouter.documentUpload,
+      arguments: {
+        'program': program,
+        'scholar': liveScholar,
+        'cycle': activeCycle,
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final program = args?['program'] as Map<String, dynamic>?;
-    final scholar = args?['scholar'] as Map<String, dynamic>?;
+    final rawScholar = args?['scholar'] as Map<String, dynamic>?;
+    final scholar = _freshScholar ?? rawScholar;
 
     final provider = program?['provider'] as Map<String, dynamic>?;
     final providerName = provider?['name'] ?? 'Scholarship Provider';
@@ -309,6 +438,10 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
                   ),
                   const SizedBox(height: 16),
 
+                  // Application Readiness & Identity Check Section
+                  _buildReadinessCard(context, scholar),
+                  const SizedBox(height: 16),
+
                   // Documents to Prepare Section
                   _buildSectionCard(
                     title: 'Documents & Requirements',
@@ -343,82 +476,42 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (!hasApplied && !isComplete)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF8EE),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFFDE8D0), width: 1),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(LucideIcons.alertCircle, color: Color(0xFFD97706), size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Profile incomplete. Update your information to apply.',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFFB45309),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.pushNamed(context, AppRouter.profileEdit);
-                        },
-                        child: Text(
-                          'Update',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF1E3D2F),
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _buildBottomWarningBanner(context, scholar),
 
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    if (hasApplied) {
-                      Navigator.pushNamed(context, AppRouter.applicationTracker);
-                      return;
-                    }
-
-                    if (!isComplete) {
-                      final missingFields = EligibilityHelper.getMissingFields(scholar);
-                      _showIncompleteProfileModal(context, missingFields);
-                    } else {
-                      Navigator.pushNamed(
-                        context,
-                        AppRouter.documentUpload,
-                        arguments: {
-                          'program': program,
-                          'scholar': scholar,
-                          'cycle': activeCycle,
-                        },
-                      );
-                    }
-                  },
-                  icon: Icon(
-                    hasApplied
-                        ? LucideIcons.clipboardList
-                        : (!isComplete ? LucideIcons.userCheck : LucideIcons.send),
-                    size: 18,
-                  ),
+                  onPressed: _isPreCheckingDup
+                      ? null
+                      : () => _handleApply(
+                            program: program,
+                            scholar: scholar,
+                            activeCycle: activeCycle,
+                            title: title,
+                            hasApplied: hasApplied,
+                          ),
+                  icon: _isPreCheckingDup
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(
+                          hasApplied
+                              ? LucideIcons.clipboardList
+                              : (!isComplete ? LucideIcons.userCheck : LucideIcons.send),
+                          size: 18,
+                        ),
                   label: Text(
-                    hasApplied
-                        ? 'View Application Tracker (${_existingApp!['status']?.toString().toUpperCase()})'
-                        : (!isComplete ? 'Complete Profile to Apply' : 'Apply for this Scholarship'),
+                    _isPreCheckingDup
+                        ? 'Checking Eligibility...'
+                        : (hasApplied
+                            ? 'View Application Tracker (${_existingApp!['status']?.toString().toUpperCase()})'
+                            : (!isComplete ? 'Complete Profile to Apply' : 'Apply for this Scholarship')),
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -755,6 +848,236 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
     );
   }
 
+  Widget _buildReadinessCard(BuildContext context, Map<String, dynamic>? scholar) {
+    final isFaceVerified = scholar?['face_verification_status']?.toString() == 'verified';
+    final missingFields = EligibilityHelper.getMissingFields(scholar);
+    final isProfileInfoDone = missingFields.where((f) => !f.toLowerCase().contains('identity') && !f.toLowerCase().contains('face')).isEmpty;
+    final integrityCheck = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+    final isReady = isFaceVerified && isProfileInfoDone && !integrityCheck.isTampered;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isReady ? const Color(0xFFDCFCE7) : const Color(0xFFFED7AA),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: isReady ? const Color(0xFFF0FDF4) : const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isReady ? LucideIcons.shieldCheck : LucideIcons.shieldAlert,
+                  color: isReady ? const Color(0xFF16A34A) : const Color(0xFFEA580C),
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your Application Readiness',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF111827),
+                      ),
+                    ),
+                    Text(
+                      isReady
+                          ? 'You are fully verified and eligible to apply'
+                          : (integrityCheck.isTampered
+                              ? 'Profile name differs from verified ID'
+                              : 'Action required before you can apply'),
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        color: integrityCheck.isTampered ? const Color(0xFFDC2626) : const Color(0xFF6B7280),
+                        fontWeight: integrityCheck.isTampered ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Item 1: Face Verification
+          _buildReadinessItem(
+            title: 'Identity Verification (Face Check)',
+            subtitle: isFaceVerified
+                ? (integrityCheck.isTampered
+                    ? 'Mismatch: Name changed from verified ID (${integrityCheck.verifiedIdName})'
+                    : 'Face verified with matching valid ID')
+                : 'Face check required to prevent duplication',
+            isComplete: isFaceVerified && !integrityCheck.isTampered,
+            actionLabel: isFaceVerified
+                ? (integrityCheck.isTampered ? 'Re-verify ID' : null)
+                : 'Verify Face',
+            onAction: () => Navigator.pushNamed(context, AppRouter.faceVerification),
+          ),
+          const Divider(height: 16, color: Color(0xFFF3F4F6)),
+
+          // Item 2: Profile Details
+          _buildReadinessItem(
+            title: 'Profile Information',
+            subtitle: isProfileInfoDone ? 'Academic, personal & location info complete' : 'Demographic and academic details incomplete',
+            isComplete: isProfileInfoDone,
+            actionLabel: isProfileInfoDone ? null : 'Complete',
+            onAction: () => Navigator.pushNamed(context, AppRouter.profileEdit),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadinessItem({
+    required String title,
+    required String subtitle,
+    required bool isComplete,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(
+          isComplete ? LucideIcons.checkCircle2 : LucideIcons.xCircle,
+          size: 18,
+          color: isComplete ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+              Text(
+                subtitle,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: const Color(0xFF6B7280),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!isComplete && actionLabel != null && onAction != null) ...[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onAction,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3D2F),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                actionLabel,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildBottomWarningBanner(BuildContext context, Map<String, dynamic>? scholar) {
+    final isFaceVerified = scholar?['face_verification_status']?.toString() == 'verified';
+    final missingFields = EligibilityHelper.getMissingFields(scholar);
+    final isProfileInfoDone = missingFields.where((f) => !f.toLowerCase().contains('identity') && !f.toLowerCase().contains('face')).isEmpty;
+
+    String msg;
+    String actionText;
+    VoidCallback onAction;
+
+    if (!isFaceVerified && !isProfileInfoDone) {
+      msg = 'Identity check & profile completion required before applying.';
+      actionText = 'Verify Face';
+      onAction = () => Navigator.pushNamed(context, AppRouter.faceVerification);
+    } else if (!isFaceVerified) {
+      msg = 'Identity verification (face check) required before applying.';
+      actionText = 'Verify Face';
+      onAction = () => Navigator.pushNamed(context, AppRouter.faceVerification);
+    } else {
+      msg = 'Profile details incomplete. Please fill missing fields to apply.';
+      actionText = 'Complete';
+      onAction = () => Navigator.pushNamed(context, AppRouter.profileEdit);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8EE),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFDE8D0), width: 1),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.alertCircle, color: Color(0xFFD97706), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              msg,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFFB45309),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onAction,
+            child: Text(
+              actionText,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1E3D2F),
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCheckRow(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -903,26 +1226,49 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
               ),
             )),
             const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.pushNamed(context, AppRouter.profileEdit);
-                },
-                icon: const Icon(LucideIcons.userCheck, size: 16),
-                label: Text(
-                  'Update Profile Information',
-                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.pushNamed(context, AppRouter.profileEdit);
+                    },
+                    icon: const Icon(LucideIcons.userCheck, size: 15, color: Color(0xFF1E3D2F)),
+                    label: Text(
+                      'Update Profile',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF1E3D2F)),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF1E3D2F)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E3D2F),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 0,
-                ),
-              ),
+                if (missingFields.any((f) => f.toLowerCase().contains('identity') || f.toLowerCase().contains('face'))) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.pushNamed(context, AppRouter.faceVerification);
+                      },
+                      icon: const Icon(LucideIcons.shieldCheck, size: 15, color: Colors.white),
+                      label: Text(
+                        'Verify Face',
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1E3D2F),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
