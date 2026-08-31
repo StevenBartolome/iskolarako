@@ -1034,23 +1034,107 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
             {/* Applicant Personal Profile */}
             <div className="space-y-3 pt-2">
-              <h4 className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Contact & Demographics</h4>
+              <h4 className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider flex items-center gap-1.5">
+                <span>👤</span> Personal & Contact Information
+              </h4>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1.5 border-b border-[#EDE8DE]">
                   <span className="text-[#6C6C70]">Email Address</span>
                   <span className="font-semibold text-[#1A3C2E]">{application.email || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[#EDE8DE]">
-                  <span className="text-[#6C6C70]">Phone Number</span>
+                  <span className="text-[#6C6C70]">Mobile Number</span>
                   <span className="font-semibold text-[#1A3C2E]">{application.phone || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[#EDE8DE]">
+                  <span className="text-[#6C6C70]">Date of Birth</span>
+                  <span className="font-semibold text-[#1A3C2E]">
+                    {(() => {
+                      const raw = application.birthDate || application.rawApplication?.scholar?.birth_date;
+                      if (!raw) return 'Not Specified';
+                      try {
+                        const d = new Date(raw);
+                        return isNaN(d.getTime()) ? raw : d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+                      } catch {
+                        return raw;
+                      }
+                    })()}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[#EDE8DE]">
+                  <span className="text-[#6C6C70]">Gender</span>
+                  <span className="font-semibold text-[#1A3C2E] capitalize">
+                    {application.gender || application.rawApplication?.scholar?.gender || 'Not Specified'}
+                  </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[#EDE8DE]">
                   <span className="text-[#6C6C70]">Citizenship</span>
                   <span className="font-semibold text-[#1A3C2E]">{application.citizenship || 'Filipino'}</span>
                 </div>
                 <div className="flex flex-col sm:flex-row justify-between py-1.5 gap-1">
-                  <span className="text-[#6C6C70] shrink-0">Address / City</span>
-                  <span className="font-semibold text-[#1A3C2E] text-left sm:text-right break-words">{application.address || 'Metro Manila'}</span>
+                  <span className="text-[#6C6C70] shrink-0">Permanent Address</span>
+                  <span className="font-semibold text-[#1A3C2E] text-left sm:text-right break-words">{application.address || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Family & Household Background */}
+            <div className="space-y-3 pt-2 border-t border-[#EDE8DE]">
+              <h4 className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider flex items-center gap-1.5">
+                <span>👨‍👩‍👧</span> Family & Household Details
+              </h4>
+              <div className="space-y-2 text-xs bg-[#F9F5EF]/60 p-3.5 rounded-2xl border border-[#D9D2C5]/40">
+                <div className="flex justify-between py-1 border-b border-[#EDE8DE]/60">
+                  <span className="text-[#6C6C70]">Father's Name</span>
+                  <span className="font-semibold text-[#1A3C2E] text-right">
+                    {application.fatherName || [application.rawApplication?.scholar?.father_first_name, application.rawApplication?.scholar?.father_middle_name, application.rawApplication?.scholar?.father_last_name].filter(Boolean).join(' ').trim() || 'Not Provided'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-[#EDE8DE]/60">
+                  <span className="text-[#6C6C70]">Father's Occupation</span>
+                  <span className="font-semibold text-[#1A3C2E] text-right">
+                    {application.fatherOccupation || application.rawApplication?.scholar?.father_occupation || 'N/A'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-[#EDE8DE]/60">
+                  <span className="text-[#6C6C70]">Mother's Maiden Name</span>
+                  <span className="font-semibold text-[#1A3C2E] text-right">
+                    {application.motherName || [application.rawApplication?.scholar?.mother_first_name, application.rawApplication?.scholar?.mother_middle_name, application.rawApplication?.scholar?.mother_last_name].filter(Boolean).join(' ').trim() || 'Not Provided'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-[#EDE8DE]/60">
+                  <span className="text-[#6C6C70]">Mother's Occupation</span>
+                  <span className="font-semibold text-[#1A3C2E] text-right">
+                    {application.motherOccupation || application.rawApplication?.scholar?.mother_occupation || 'N/A'}
+                  </span>
+                </div>
+                {(() => {
+                  const gName = application.guardianName || [application.rawApplication?.scholar?.guardian_first_name, application.rawApplication?.scholar?.guardian_middle_name, application.rawApplication?.scholar?.guardian_last_name].filter(Boolean).join(' ').trim();
+                  const gRel = application.guardianRelationship || application.rawApplication?.scholar?.guardian_relationship;
+                  const gOcc = application.guardianOccupation || application.rawApplication?.scholar?.guardian_occupation;
+                  if (!gName) return null;
+                  return (
+                    <>
+                      <div className="flex justify-between py-1 border-b border-[#EDE8DE]/60">
+                        <span className="text-[#6C6C70]">Guardian</span>
+                        <span className="font-semibold text-[#1A3C2E] text-right">
+                          {gName} {gRel ? `(${gRel})` : ''}
+                        </span>
+                      </div>
+                      {gOcc && (
+                        <div className="flex justify-between py-1 border-b border-[#EDE8DE]/60">
+                          <span className="text-[#6C6C70]">Guardian Occupation</span>
+                          <span className="font-semibold text-[#1A3C2E] text-right">{gOcc}</span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+                <div className="flex justify-between py-1">
+                  <span className="text-[#6C6C70]">Number of Siblings</span>
+                  <span className="font-semibold text-[#1A3C2E] text-right">
+                    {String(application.siblingsCount ?? application.rawApplication?.scholar?.number_of_siblings ?? application.rawApplication?.scholar?.siblings_count ?? '0')}
+                  </span>
                 </div>
               </div>
             </div>

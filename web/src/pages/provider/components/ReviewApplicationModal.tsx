@@ -52,6 +52,9 @@ export interface ApplicationDetail {
   name: string;
   email?: string;
   phone?: string;
+  birthDate?: string;
+  gender?: string;
+  educationLevel?: string;
   program: string;
   program_id?: string;
   disbursement_mode?: string;
@@ -70,6 +73,18 @@ export interface ApplicationDetail {
   minimum_gwa?: string | number;
   citizenship?: string;
   address?: string;
+  barangay?: string;
+  municipality?: string;
+  province?: string;
+  region?: string;
+  fatherName?: string;
+  fatherOccupation?: string;
+  motherName?: string;
+  motherOccupation?: string;
+  guardianName?: string;
+  guardianRelationship?: string;
+  guardianOccupation?: string;
+  siblingsCount?: number | string;
   status: ApplicantStatus;
   date: string;
   submittedDocuments: SubmittedDocItem[];
@@ -1030,11 +1045,12 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
           {/* Section 1: Student Profile & Real GWA */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-[#F9F5EF]/60 p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2">
-              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block">Academic Credentials</span>
+              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block">🎓 Academic Dossier</span>
               <div className="space-y-1">
                 <div><span className="text-[#6C6C70]">Institution: </span><strong className="text-[#1C1C1E]">{application.school}</strong></div>
                 <div><span className="text-[#6C6C70]">Course: </span><strong className="text-[#1C1C1E]">{application.course}</strong></div>
                 <div><span className="text-[#6C6C70]">Year Level: </span><strong className="text-[#1C1C1E]">{application.yearLevel}</strong></div>
+                <div><span className="text-[#6C6C70]">Education Level: </span><strong className="text-[#1C1C1E] capitalize">{application.educationLevel || application.rawApplication?.scholar?.education_level || 'College'}</strong></div>
               </div>
             </div>
 
@@ -1043,15 +1059,96 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
               <div className="text-3xl font-extrabold text-[#1A3C2E] font-serif my-1">
                 {application.grade || '1.50'}
               </div>
-              <span className="text-[10px] text-[#2D5941] font-semibold">Verified Academic Standing</span>
+              <span className="text-[10px] text-[#2D5941] font-semibold">Verified Academic Standing ({application.gpaScale || 'scale_5'})</span>
             </div>
 
             <div className="bg-[#F9F5EF]/60 p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2">
-              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block">Contact Information</span>
+              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block">👤 Contact & Demographics</span>
               <div className="space-y-1">
                 <div><span className="text-[#6C6C70]">Email: </span><strong className="text-[#1C1C1E]">{application.email || 'N/A'}</strong></div>
                 <div><span className="text-[#6C6C70]">Phone: </span><strong className="text-[#1C1C1E]">{application.phone || 'N/A'}</strong></div>
-                <div><span className="text-[#6C6C70]">Applied On: </span><strong className="text-[#1C1C1E]">{application.date}</strong></div>
+                <div>
+                  <span className="text-[#6C6C70]">Birthdate: </span>
+                  <strong className="text-[#1C1C1E]">
+                    {(() => {
+                      const raw = application.birthDate || application.rawApplication?.scholar?.birth_date;
+                      if (!raw) return 'Not Specified';
+                      try {
+                        const d = new Date(raw);
+                        return isNaN(d.getTime()) ? raw : d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+                      } catch {
+                        return raw;
+                      }
+                    })()}
+                  </strong>
+                </div>
+                <div><span className="text-[#6C6C70]">Gender: </span><strong className="text-[#1C1C1E] capitalize">{application.gender || application.rawApplication?.scholar?.gender || 'Not Specified'}</strong></div>
+                <div><span className="text-[#6C6C70]">Citizenship: </span><strong className="text-[#1C1C1E]">{application.citizenship || 'Filipino'}</strong></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 1.2: Residential Address & Family Background (For Provider Reference) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-[#F9F5EF]/50 p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2">
+              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block flex items-center gap-1">
+                <span>📍</span> Permanent Address
+              </span>
+              <p className="text-xs font-semibold text-[#1A3C2E] leading-relaxed">
+                {application.address || 'N/A'}
+              </p>
+              {(application.barangay || application.municipality || application.province || application.region) && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#EDE8DE] text-[11px]">
+                  {application.barangay && <div><span className="text-[#6C6C70]">Barangay:</span> <strong className="text-[#1C1C1E]">{application.barangay}</strong></div>}
+                  {application.municipality && <div><span className="text-[#6C6C70]">Municipality:</span> <strong className="text-[#1C1C1E]">{application.municipality}</strong></div>}
+                  {application.province && <div><span className="text-[#6C6C70]">Province:</span> <strong className="text-[#1C1C1E]">{application.province}</strong></div>}
+                  {application.region && <div><span className="text-[#6C6C70]">Region:</span> <strong className="text-[#1C1C1E]">{application.region}</strong></div>}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-[#F9F5EF]/50 p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2">
+              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block flex items-center gap-1">
+                <span>👨‍👩‍👧</span> Family & Household Background
+              </span>
+              <div className="space-y-1 text-xs">
+                <div>
+                  <span className="text-[#6C6C70]">Father: </span>
+                  <strong className="text-[#1C1C1E]">
+                    {application.fatherName || [application.rawApplication?.scholar?.father_first_name, application.rawApplication?.scholar?.father_middle_name, application.rawApplication?.scholar?.father_last_name].filter(Boolean).join(' ').trim() || 'Not Provided'}
+                  </strong>
+                  {(application.fatherOccupation || application.rawApplication?.scholar?.father_occupation) && (
+                    <span className="text-[#6C6C70]"> ({application.fatherOccupation || application.rawApplication?.scholar?.father_occupation})</span>
+                  )}
+                </div>
+                <div>
+                  <span className="text-[#6C6C70]">Mother: </span>
+                  <strong className="text-[#1C1C1E]">
+                    {application.motherName || [application.rawApplication?.scholar?.mother_first_name, application.rawApplication?.scholar?.mother_middle_name, application.rawApplication?.scholar?.mother_last_name].filter(Boolean).join(' ').trim() || 'Not Provided'}
+                  </strong>
+                  {(application.motherOccupation || application.rawApplication?.scholar?.mother_occupation) && (
+                    <span className="text-[#6C6C70]"> ({application.motherOccupation || application.rawApplication?.scholar?.mother_occupation})</span>
+                  )}
+                </div>
+                {(() => {
+                  const gName = application.guardianName || [application.rawApplication?.scholar?.guardian_first_name, application.rawApplication?.scholar?.guardian_middle_name, application.rawApplication?.scholar?.guardian_last_name].filter(Boolean).join(' ').trim();
+                  const gRel = application.guardianRelationship || application.rawApplication?.scholar?.guardian_relationship;
+                  const gOcc = application.guardianOccupation || application.rawApplication?.scholar?.guardian_occupation;
+                  if (!gName) return null;
+                  return (
+                    <div>
+                      <span className="text-[#6C6C70]">Guardian: </span>
+                      <strong className="text-[#1C1C1E]">{gName}</strong>
+                      {(gRel || gOcc) && <span className="text-[#6C6C70]"> ({[gRel, gOcc].filter(Boolean).join(', ')})</span>}
+                    </div>
+                  );
+                })()}
+                <div>
+                  <span className="text-[#6C6C70]">Siblings Count: </span>
+                  <strong className="text-[#1C1C1E]">
+                    {String(application.siblingsCount ?? application.rawApplication?.scholar?.number_of_siblings ?? application.rawApplication?.scholar?.siblings_count ?? '0')}
+                  </strong>
+                </div>
               </div>
             </div>
           </div>

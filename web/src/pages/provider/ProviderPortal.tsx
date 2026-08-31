@@ -1411,12 +1411,19 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             }
             docs = uniqueDocsList;
 
+            const fatherFull = [scholar.father_first_name, scholar.father_middle_name, scholar.father_last_name].filter(Boolean).join(' ').trim();
+            const motherFull = [scholar.mother_first_name, scholar.mother_middle_name, scholar.mother_last_name].filter(Boolean).join(' ').trim();
+            const guardianFull = [scholar.guardian_first_name, scholar.guardian_middle_name, scholar.guardian_last_name].filter(Boolean).join(' ').trim();
+
             return {
               id: app.id,
               scholarId: scholar.id,
               name: scholarName,
               email: email,
               phone: phone,
+              birthDate: scholar.birth_date,
+              gender: scholar.gender,
+              educationLevel: scholar.education_level,
               program: prog.title || 'Scholarship Program',
               program_id: prog.id ? String(prog.id) : undefined,
               disbursement_mode: prog.disbursement_mode || 'online',
@@ -1433,6 +1440,18 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               gpaScale: app.gpa_scale || scholar.gpa_scale || scholar.gpaScale || 'scale_5',
               citizenship: citizenship,
               address: address,
+              barangay: scholar.barangay,
+              municipality: scholar.municipality,
+              province: scholar.province,
+              region: scholar.region,
+              fatherName: fatherFull || undefined,
+              fatherOccupation: scholar.father_occupation || undefined,
+              motherName: motherFull || undefined,
+              motherOccupation: scholar.mother_occupation || undefined,
+              guardianName: guardianFull || undefined,
+              guardianRelationship: scholar.guardian_relationship || undefined,
+              guardianOccupation: scholar.guardian_occupation || undefined,
+              siblingsCount: scholar.number_of_siblings || scholar.siblings_count,
               status: status,
               date: createdDate,
               submittedDocuments: docs,

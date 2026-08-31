@@ -27,6 +27,8 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   Map<String, dynamic>? _cycle;
   bool _isInitialized = false;
   bool _isSubmitting = false;
+  int _currentStep = 1; // 1: Profile Details, 2: Upload Requirements, 3: Overview & Review
+  bool _declaredAccurate = true;
 
   @override
   void didChangeDependencies() {
@@ -221,6 +223,104 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     return _scholar?['school'] ?? 'N/A';
   }
 
+  String get _scholarEmail {
+    final user = Supabase.instance.client.auth.currentUser;
+    return _scholar?['email'] ?? user?.email ?? 'N/A';
+  }
+
+  String get _scholarPhone {
+    final p = _scholar?['phone'] ?? _scholar?['mobile_number'];
+    if (p == null || p.toString().trim().isEmpty) return 'Not Provided';
+    return p.toString();
+  }
+
+  String get _scholarGender {
+    final g = _scholar?['gender']?.toString();
+    if (g == null || g.isEmpty) return 'Not Provided';
+    return g[0].toUpperCase() + g.substring(1).toLowerCase();
+  }
+
+  String get _scholarBirthDate {
+    if (_scholar?['birth_date'] == null) return 'Not Provided';
+    try {
+      final dt = DateTime.parse(_scholar!['birth_date'].toString());
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+    } catch (_) {
+      return _scholar!['birth_date'].toString();
+    }
+  }
+
+  String get _scholarCitizenship {
+    return _scholar?['citizenship'] ?? 'Filipino';
+  }
+
+  String get _scholarEducationLevel {
+    final lvl = _scholar?['education_level']?.toString().toLowerCase();
+    if (lvl == 'college') return 'College / University Undergraduate';
+    if (lvl == 'senior_high') return 'Senior High School (SHS)';
+    if (lvl == 'high_school') return 'Junior High School (JHS)';
+    if (lvl == 'elementary') return 'Elementary School';
+    if (lvl == 'graduate') return 'Graduate Studies (Masteral / PhD)';
+    if (lvl == 'vocational') return 'Vocational / Technical (TVET)';
+    return _scholar?['education_level']?.toString() ?? 'College Undergraduate';
+  }
+
+  String get _scholarGwa {
+    final gpa = _scholar?['gpa']?.toString() ?? _scholar?['gwa']?.toString();
+    final scale = _scholar?['gpa_scale']?.toString() ?? 'scale_5';
+    if (gpa == null || gpa.isEmpty) return 'Not yet recorded';
+    final scaleLabel = scale == 'percentage' ? '%' : (scale == 'scale_4' ? ' / 4.0' : ' / 5.0 (PH)');
+    return '$gpa$scaleLabel';
+  }
+
+  String get _scholarAddress {
+    final brgy = _scholar?['barangay']?.toString() ?? '';
+    final mun = _scholar?['municipality']?.toString() ?? '';
+    final prov = _scholar?['province']?.toString() ?? '';
+    final reg = _scholar?['region']?.toString() ?? '';
+    final parts = [brgy, mun, prov, reg].where((p) => p.trim().isNotEmpty).toList();
+    return parts.isEmpty ? 'Not Provided' : parts.join(', ');
+  }
+
+  String get _scholarFather {
+    final fFirst = _scholar?['father_first_name']?.toString() ?? '';
+    final fMiddle = _scholar?['father_middle_name']?.toString() ?? '';
+    final fLast = _scholar?['father_last_name']?.toString() ?? '';
+    final fOcc = _scholar?['father_occupation']?.toString() ?? '';
+    final name = [fFirst, fMiddle, fLast].where((p) => p.trim().isNotEmpty).join(' ').trim();
+    if (name.isEmpty) return 'Not Provided';
+    return fOcc.trim().isNotEmpty ? '$name ($fOcc)' : name;
+  }
+
+  String get _scholarMother {
+    final mFirst = _scholar?['mother_first_name']?.toString() ?? '';
+    final mMiddle = _scholar?['mother_middle_name']?.toString() ?? '';
+    final mLast = _scholar?['mother_last_name']?.toString() ?? '';
+    final mOcc = _scholar?['mother_occupation']?.toString() ?? '';
+    final name = [mFirst, mMiddle, mLast].where((p) => p.trim().isNotEmpty).join(' ').trim();
+    if (name.isEmpty) return 'Not Provided';
+    return mOcc.trim().isNotEmpty ? '$name ($mOcc)' : name;
+  }
+
+  String get _scholarGuardian {
+    final gFirst = _scholar?['guardian_first_name']?.toString() ?? '';
+    final gMiddle = _scholar?['guardian_middle_name']?.toString() ?? '';
+    final gLast = _scholar?['guardian_last_name']?.toString() ?? '';
+    final gRel = _scholar?['guardian_relationship']?.toString() ?? '';
+    final gOcc = _scholar?['guardian_occupation']?.toString() ?? '';
+    final name = [gFirst, gMiddle, gLast].where((p) => p.trim().isNotEmpty).join(' ').trim();
+    if (name.isEmpty) return 'None';
+    final extra = [gRel, gOcc].where((p) => p.trim().isNotEmpty).join(', ');
+    return extra.isNotEmpty ? '$name ($extra)' : name;
+  }
+
+  String get _scholarSiblingsCount {
+    final s = _scholar?['number_of_siblings'] ?? _scholar?['siblings_count'];
+    if (s == null) return '0';
+    return s.toString();
+  }
+
   int get _requiredCount => _docs.where((d) => d.status != _DocStatus.optional).length;
   int get _uploadedCount => _docs.where((d) =>
       d.status == _DocStatus.valid ||
@@ -238,6 +338,80 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         d.status == _DocStatus.valid ||
         d.status == _DocStatus.flagged ||
         d.isDisputeSubmitted);
+  }
+
+  bool get _canProceedToStep3 {
+    if (_hasRejectedDoc) return false;
+    final requiredDocs = _docs.where((d) => d.status != _DocStatus.optional);
+    if (requiredDocs.isEmpty) return true;
+    return requiredDocs.every((d) =>
+        d.status == _DocStatus.valid ||
+        d.status == _DocStatus.flagged ||
+        d.isDisputeSubmitted);
+  }
+
+  void _showCannotProceedDialog() {
+    if (_hasRejectedDoc) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(LucideIcons.alertCircle, color: Color(0xFFDC2626), size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Invalid / Rejected Document', style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ],
+          ),
+          content: Text(
+            'One or more of your uploaded documents was rejected during AI pre-scan. Please re-upload valid documents or submit an appeal before proceeding to the review overview.',
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF4B5563), height: 1.4),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3D2F),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text('Fix Document', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(LucideIcons.alertTriangle, color: Color(0xFFD97706), size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Incomplete Requirements', style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ],
+          ),
+          content: Text(
+            'You have uploaded $_uploadedCount of $_requiredCount required documents. Please attach all mandatory documents to proceed to the review overview.',
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF4B5563), height: 1.4),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3D2F),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text('Continue Uploading', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Future<Map<String, dynamic>?> _ensureScholarProfile() async {
@@ -1587,130 +1761,889 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
       body: Column(
         children: [
           _buildHeader(context, programTitle),
+          _buildStepperHeader(),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Application Summary Hero Card
-                  _buildUploadHeroCard(programTitle, providerName),
-                  const SizedBox(height: 20),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: _currentStep == 1
+                  ? _buildStep1Profile(programTitle, providerName)
+                  : (_currentStep == 2
+                      ? _buildStep2Requirements(programTitle, providerName)
+                      : _buildStep3Overview(programTitle, providerName)),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: _buildBottomBar(),
+    );
+  }
 
-                  // Required Documents Section Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'REQUIRED DOCUMENTS',
+  // ─── Stepper Header ─────────────────────────────────────────────────────────
+  Widget _buildStepperHeader() {
+    final steps = [
+      {'step': 1, 'title': 'Profile', 'icon': LucideIcons.user},
+      {'step': 2, 'title': 'Requirements', 'icon': LucideIcons.fileUp},
+      {'step': 3, 'title': 'Overview', 'icon': LucideIcons.clipboardCheck},
+    ];
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: steps.map((s) {
+          final stepNum = s['step'] as int;
+          final title = s['title'] as String;
+          final icon = s['icon'] as IconData;
+          final isActive = _currentStep == stepNum;
+          final isCompleted = _currentStep > stepNum;
+
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (stepNum < _currentStep) {
+                  setState(() => _currentStep = stepNum);
+                } else if (stepNum == 2 && _currentStep == 1) {
+                  setState(() => _currentStep = 2);
+                } else if (stepNum == 3) {
+                  if (_canProceedToStep3) {
+                    setState(() => _currentStep = 3);
+                  } else {
+                    _showCannotProceedDialog();
+                  }
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? const Color(0xFF1E3D2F)
+                      : (isCompleted ? const Color(0xFFDCFCE7) : Colors.transparent),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isCompleted ? LucideIcons.check : icon,
+                      size: 13,
+                      color: isActive
+                          ? Colors.white
+                          : (isCompleted ? const Color(0xFF15803D) : const Color(0xFF9CA3AF)),
+                    ),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF1E3D2F),
-                          letterSpacing: 0.5,
+                          fontSize: 11,
+                          fontWeight: isActive || isCompleted ? FontWeight.w700 : FontWeight.w500,
+                          color: isActive
+                              ? Colors.white
+                              : (isCompleted ? const Color(0xFF15803D) : const Color(0xFF6B7280)),
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _canSubmit ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '$_uploadedCount of $_requiredCount Uploaded',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: _canSubmit ? const Color(0xFF15803D) : const Color(0xFFD97706),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ─── Step 1: Profile Section ────────────────────────────────────────────────
+  Widget _buildStep1Profile(String programTitle, String providerName) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUploadHeroCard(programTitle, providerName, stepNum: 1),
+        const SizedBox(height: 16),
+        _buildProfileNoticeCard(),
+        const SizedBox(height: 16),
+        _buildSectionCard(
+          title: 'PERSONAL & CONTACT DETAILS',
+          icon: LucideIcons.user,
+          children: [
+            _buildReadOnlyField('Full Name', _scholarFullName, LucideIcons.userCheck),
+            _buildReadOnlyField('Email Address', _scholarEmail, LucideIcons.mail),
+            _buildReadOnlyField('Mobile Number', _scholarPhone, LucideIcons.phone),
+            _buildReadOnlyField('Gender', _scholarGender, LucideIcons.user),
+            _buildReadOnlyField('Date of Birth', _scholarBirthDate, LucideIcons.calendar),
+            _buildReadOnlyField('Citizenship', _scholarCitizenship, LucideIcons.flag),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildSectionCard(
+          title: 'ACADEMIC PROFILE',
+          icon: LucideIcons.graduationCap,
+          children: [
+            _buildReadOnlyField('School / University', _scholarSchool, LucideIcons.landmark),
+            _buildReadOnlyField('Target Education Level', _scholarEducationLevel, LucideIcons.bookOpen),
+            _buildReadOnlyField('Course / Degree Program / Strand', _scholar?['course']?.toString() ?? 'N/A', LucideIcons.award),
+            _buildReadOnlyField('Year Level', _scholarCourseAndYear, LucideIcons.layers),
+            _buildReadOnlyField('General Weighted Average (GWA)', _scholarGwa, LucideIcons.calculator),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildSectionCard(
+          title: 'PERMANENT RESIDENCE',
+          icon: LucideIcons.mapPin,
+          children: [
+            _buildReadOnlyField('Complete Address', _scholarAddress, LucideIcons.home),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildSectionCard(
+          title: 'FAMILY & HOUSEHOLD BACKGROUND',
+          icon: LucideIcons.users,
+          children: [
+            _buildReadOnlyField("Father's Name & Occupation", _scholarFather, LucideIcons.user),
+            _buildReadOnlyField("Mother's Name & Occupation", _scholarMother, LucideIcons.user),
+            _buildReadOnlyField('Guardian Details', _scholarGuardian, LucideIcons.shield),
+            _buildReadOnlyField('Number of Siblings', _scholarSiblingsCount, LucideIcons.users2),
+          ],
+        ),
+        const SizedBox(height: 100),
+      ],
+    );
+  }
+
+  Widget _buildProfileNoticeCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.info, size: 18, color: Color(0xFF1D4ED8)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Auto-filled Profile Information',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1E40AF),
                   ),
-                  const SizedBox(height: 12),
-
-                  // Document Tiles List
-                  ..._docs.map((d) => _buildDocTile(d)),
-                  const SizedBox(height: 20),
-
-                  // Scholar Verification Card
-                  _buildScholarInfoCard(),
-                  const SizedBox(height: 100),
-                ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'The details below are pulled directly from your IskoAko scholar profile and cannot be edited directly here. If you need to make changes, please edit your profile in settings.',
+            style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF1E3A8A), height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await Navigator.pushNamed(context, AppRouter.profileEdit);
+                await _ensureScholarProfile();
+              },
+              icon: const Icon(LucideIcons.edit3, size: 14, color: Color(0xFF1D4ED8)),
+              label: Text(
+                'Edit Profile in Settings',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF1D4ED8)),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF93C5FD)),
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
               ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 12,
-              offset: const Offset(0, -3),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+    Widget? trailing,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: const Color(0xFF1E3D2F)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1E3D2F),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              if (trailing != null) trailing,
+            ],
+          ),
+          const SizedBox(height: 14),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyField(String label, String value, IconData icon) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF6B7280)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: GoogleFonts.inter(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF9CA3AF),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: GoogleFonts.inter(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1F2937),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(LucideIcons.lock, size: 12, color: Color(0xFF9CA3AF)),
+        ],
+      ),
+    );
+  }
+
+  // ─── Step 2: Requirements Section ───────────────────────────────────────────
+  Widget _buildStep2Requirements(String programTitle, String providerName) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUploadHeroCard(programTitle, providerName, stepNum: 2),
+        const SizedBox(height: 20),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'REQUIRED DOCUMENTS',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1E3D2F),
+                letterSpacing: 0.5,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _canProceedToStep3 ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '$_uploadedCount of $_requiredCount Uploaded',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: _canProceedToStep3 ? const Color(0xFF15803D) : const Color(0xFFD97706),
+                ),
+              ),
             ),
           ],
         ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        const SizedBox(height: 12),
+        ..._docs.map((d) => _buildDocTile(d)),
+        const SizedBox(height: 16),
+        if (_hasRejectedDoc)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFCA5A5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.alertCircle, color: Color(0xFFDC2626), size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'One or more documents have been rejected. You must replace or appeal rejected documents before proceeding to the review overview.',
+                    style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF991B1B), fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 100),
+      ],
+    );
+  }
+
+  // ─── Step 3: Overview & Review Section ──────────────────────────────────────
+  Widget _buildStep3Overview(String programTitle, String providerName) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildUploadHeroCard(programTitle, providerName, stepNum: 3),
+        const SizedBox(height: 16),
+        _buildOverviewProgramCard(programTitle, providerName),
+        const SizedBox(height: 16),
+        _buildOverviewApplicantCard(),
+        const SizedBox(height: 16),
+        _buildOverviewDocumentsCard(),
+        const SizedBox(height: 16),
+        _buildOverviewDeclarationCard(),
+        const SizedBox(height: 100),
+      ],
+    );
+  }
+
+  Widget _buildOverviewProgramCard(String programTitle, String providerName) {
+    final coversTuition = _program?['covers_tuition'] == true || _program?['coverstuition'] == true;
+    final coversStipend = _program?['covers_stipend'] == true;
+    final coversAllowance = _program?['covers_allowance'] == true;
+    final stipendAmt = _program?['stipend_amount'] != null ? '₱${_program?['stipend_amount']}' : '₱0';
+    final allowanceAmt = _program?['allowance_amount'] != null ? '₱${_program?['allowance_amount']}' : '₱0';
+
+    final benefits = <String>[];
+    if (coversTuition) benefits.add('Tuition Subsidy / Fee Coverage');
+    if (coversStipend) benefits.add('Monthly Stipend ($stipendAmt)');
+    if (coversAllowance) benefits.add('Book / Device Allowance ($allowanceAmt)');
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
+              const Icon(LucideIcons.award, size: 16, color: Color(0xFF1E3D2F)),
+              const SizedBox(width: 8),
+              Text(
+                'TARGET SCHOLARSHIP PROGRAM',
+                style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: const Color(0xFF1E3D2F), letterSpacing: 0.5),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            programTitle,
+            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: const Color(0xFF111827)),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Provided by $providerName',
+            style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF6B7280)),
+          ),
+          if (_cycle?['cycle_name'] != null || _cycle?['name'] != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Application Cycle: ${_cycle?['cycle_name'] ?? _cycle?['name']}',
+              style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: const Color(0xFF15803D)),
+            ),
+          ],
+          if (benefits.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: benefits.map((b) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFDCFCE7)),
+                ),
+                child: Text(
+                  '✓ $b',
+                  style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: const Color(0xFF15803D)),
+                ),
+              )).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewApplicantCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.userCheck, size: 16, color: Color(0xFF1E3D2F)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'APPLICANT PROFILE SUMMARY',
+                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: const Color(0xFF1E3D2F), letterSpacing: 0.5),
+                  ),
+                ],
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _currentStep = 1),
+                child: Text(
+                  'Edit',
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF1D4ED8)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildInfoRow('Full Name', _scholarFullName),
+          const SizedBox(height: 6),
+          _buildInfoRow('Email Address', _scholarEmail),
+          const SizedBox(height: 6),
+          _buildInfoRow('Mobile Number', _scholarPhone),
+          const SizedBox(height: 6),
+          _buildInfoRow('School', _scholarSchool),
+          const SizedBox(height: 6),
+          _buildInfoRow('Course & Year', _scholarCourseAndYear),
+          const SizedBox(height: 6),
+          _buildInfoRow('General Weighted Average', _scholarGwa),
+          const SizedBox(height: 6),
+          _buildInfoRow('Permanent Address', _scholarAddress),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewDocumentsCard() {
+    final validUploadedDocs = _docs.where((d) => d.status == _DocStatus.valid || d.status == _DocStatus.flagged || d.isDisputeSubmitted).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.fileCheck, size: 16, color: Color(0xFF1E3D2F)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'ATTACHED REQUIREMENTS',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF1E3D2F),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${validUploadedDocs.length} Verified',
+                  style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFF15803D)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ...validUploadedDocs.map((d) {
+            final isValid = d.status == _DocStatus.valid;
+            final isDisputed = d.isDisputeSubmitted;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFAFCFA),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: isValid ? const Color(0xFFDCFCE7) : (isDisputed ? const Color(0xFFEDE9FE) : const Color(0xFFFEF3C7)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      isValid ? LucideIcons.checkCheck : (isDisputed ? LucideIcons.helpCircle : LucideIcons.alertTriangle),
+                      size: 15,
+                      color: isValid ? const Color(0xFF15803D) : (isDisputed ? const Color(0xFF7C3AED) : const Color(0xFFD97706)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          d.name,
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF111827)),
+                        ),
+                        if (d.filename != null)
+                          Text(
+                            '${d.filename} · ${d.filesize ?? ''}',
+                            style: GoogleFonts.inter(fontSize: 10.5, color: const Color(0xFF6B7280)),
+                          ),
+                        if (d.extractedGpa != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Extracted GWA: ${d.extractedGpa}',
+                                style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w700, color: const Color(0xFF1D4ED8)),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: isValid ? const Color(0xFFDCFCE7) : (isDisputed ? const Color(0xFFEDE9FE) : const Color(0xFFFEF3C7)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      isValid ? 'Verified' : (isDisputed ? 'Appealed' : 'Flagged'),
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: isValid ? const Color(0xFF15803D) : (isDisputed ? const Color(0xFF7C3AED) : const Color(0xFFD97706)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewDeclarationCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: _declaredAccurate,
+                activeColor: const Color(0xFF1E3D2F),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                onChanged: (val) {
+                  setState(() => _declaredAccurate = val ?? false);
+                },
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _declaredAccurate = !_declaredAccurate);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'I declare under penalty of perjury that all information provided in this application and all attached documents are true, correct, authentic, and complete.',
+                      style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF374151), height: 1.35),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Step-Based Bottom Bar ──────────────────────────────────────────────────
+  Widget _buildBottomBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_currentStep == 1)
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: _isSubmitting ? null : _submitApplication,
-                  icon: _isSubmitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Icon(
-                          _isForAppeal
-                              ? LucideIcons.helpCircle
-                              : (_hasRejectedDoc ? LucideIcons.xCircle : LucideIcons.send),
-                          size: 16,
-                        ),
+                  onPressed: () {
+                    setState(() => _currentStep = 2);
+                  },
+                  icon: const Icon(LucideIcons.arrowRight, size: 16),
                   label: Text(
-                    _isSubmitting
-                        ? (_isForAppeal ? 'Submitting Appeal...' : 'Submitting Application...')
-                        : (_isForAppeal
-                            ? 'Submit Appeal'
-                            : (_hasRejectedDoc
-                                ? 'Fix Rejected Document to Submit'
-                                : 'Submit Application')),
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    'Next: Upload Requirements →',
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isForAppeal
-                        ? const Color(0xFF7C3AED)
-                        : (_hasRejectedDoc ? const Color(0xFFDC2626) : const Color(0xFF1E3D2F)),
+                    backgroundColor: const Color(0xFF1E3D2F),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
                   ),
                 ),
+              )
+            else if (_currentStep == 2)
+              Row(
+                children: [
+                  Expanded(
+                    flex: 1,
+                    child: SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() => _currentStep = 1);
+                        },
+                        icon: const Icon(LucideIcons.arrowLeft, size: 15),
+                        label: Text(
+                          'Back',
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF1E3D2F),
+                          side: const BorderSide(color: Color(0xFFD1D5DB)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: _canProceedToStep3
+                            ? () {
+                                setState(() => _currentStep = 3);
+                              }
+                            : _showCannotProceedDialog,
+                        icon: Icon(
+                          _canProceedToStep3 ? LucideIcons.arrowRight : LucideIcons.lock,
+                          size: 16,
+                        ),
+                        label: Text(
+                          _canProceedToStep3 ? 'Next: Review Application →' : 'Fix Documents to Proceed',
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _canProceedToStep3 ? const Color(0xFF1E3D2F) : const Color(0xFF9CA3AF),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    flex: 1,
+                    child: SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() => _currentStep = 2);
+                        },
+                        icon: const Icon(LucideIcons.arrowLeft, size: 15),
+                        label: Text(
+                          'Back',
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF1E3D2F),
+                          side: const BorderSide(color: Color(0xFFD1D5DB)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: (_isSubmitting || !_declaredAccurate) ? null : _submitApplication,
+                        icon: _isSubmitting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : Icon(
+                                _isForAppeal ? LucideIcons.helpCircle : LucideIcons.send,
+                                size: 16,
+                              ),
+                        label: Text(
+                          _isSubmitting
+                              ? (_isForAppeal ? 'Submitting Appeal...' : 'Submitting Application...')
+                              : (_isForAppeal ? 'Submit Appeal' : 'Submit Application'),
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isForAppeal ? const Color(0xFF7C3AED) : const Color(0xFF1E3D2F),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                '$_uploadedCount of $_requiredCount required documents uploaded · All files encrypted',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 10.5,
-                  color: const Color(0xFF6B7280),
-                ),
+            const SizedBox(height: 8),
+            Text(
+              _currentStep == 1
+                  ? 'Step 1 of 3 · Profile Verified · Reviewing Details'
+                  : (_currentStep == 2
+                      ? '$_uploadedCount of $_requiredCount required documents uploaded · All files encrypted'
+                      : 'Step 3 of 3 · Final Overview & Legal Declaration'),
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 10.5,
+                color: const Color(0xFF6B7280),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1718,15 +2651,37 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 
   // ─── Header ─────────────────────────────────────────────────────────────────
   Widget _buildHeader(BuildContext context, String programTitle) {
+    String stepLabel = 'SUBMIT APPLICATION';
+    String stepHeading = 'Upload Requirements';
+    String stepSub = 'Attach documents for $programTitle';
+
+    if (_currentStep == 1) {
+      stepLabel = 'APPLICANT PROFILE';
+      stepHeading = 'Review Your Profile';
+      stepSub = 'Auto-filled details for $programTitle';
+    } else if (_currentStep == 3) {
+      stepLabel = 'APPLICATION OVERVIEW';
+      stepHeading = 'Review & Submit';
+      stepSub = 'Final check before sending to provider';
+    }
+
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GestureDetector(
-              onTap: () => Navigator.pop(context),
+              onTap: () {
+                if (_currentStep == 3) {
+                  setState(() => _currentStep = 2);
+                } else if (_currentStep == 2) {
+                  setState(() => _currentStep = 1);
+                } else {
+                  Navigator.pop(context);
+                }
+              },
               child: Container(
                 width: 40,
                 height: 40,
@@ -1765,7 +2720,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'SUBMIT APPLICATION',
+                        stepLabel,
                         style: GoogleFonts.inter(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
@@ -1777,9 +2732,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Upload Requirements',
+                    stepHeading,
                     style: GoogleFonts.inter(
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF111827),
                       height: 1.2,
@@ -1788,9 +2743,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Attach documents for $programTitle',
+                    stepSub,
                     style: GoogleFonts.inter(
-                      fontSize: 12,
+                      fontSize: 11.5,
                       color: const Color(0xFF6B7280),
                     ),
                     softWrap: true,
@@ -1801,8 +2756,8 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             const SizedBox(width: 8),
             Image.asset(
               'assets/books-hats-icon.png',
-              width: 75,
-              height: 65,
+              width: 65,
+              height: 55,
               fit: BoxFit.contain,
             ),
           ],
@@ -1812,12 +2767,12 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
   }
 
   // ─── Hero Progress Card ─────────────────────────────────────────────────────
-  Widget _buildUploadHeroCard(String programTitle, String providerName) {
+  Widget _buildUploadHeroCard(String programTitle, String providerName, {int stepNum = 2}) {
     final progress = _requiredCount > 0 ? _uploadedCount / _requiredCount : 0.0;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(24),
@@ -1842,7 +2797,11 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   color: Colors.white,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(LucideIcons.fileUp, color: Color(0xFF16A34A), size: 20),
+                child: Icon(
+                  stepNum == 1 ? LucideIcons.userCheck : (stepNum == 3 ? LucideIcons.clipboardCheck : LucideIcons.fileUp),
+                  color: const Color(0xFF16A34A),
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1852,7 +2811,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                     Text(
                       programTitle,
                       style: GoogleFonts.inter(
-                        fontSize: 15,
+                        fontSize: 14.5,
                         fontWeight: FontWeight.w800,
                         color: const Color(0xFF111827),
                       ),
@@ -1867,30 +2826,32 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Upload Progress',
-                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF15803D)),
-              ),
-              Text(
-                '${(progress * 100).toInt()}% Complete',
-                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: const Color(0xFF15803D)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: const Color(0xFFDCFCE7),
-              color: const Color(0xFF16A34A),
+          if (stepNum == 2) ...[
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Upload Progress',
+                  style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFF15803D)),
+                ),
+                Text(
+                  '${(progress * 100).toInt()}% Complete',
+                  style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: const Color(0xFF15803D)),
+                ),
+              ],
             ),
-          ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 7,
+                backgroundColor: const Color(0xFFDCFCE7),
+                color: const Color(0xFF16A34A),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2133,49 +3094,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
     );
   }
 
-  // ─── Scholar Info Card ──────────────────────────────────────────────────────
-  Widget _buildScholarInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(LucideIcons.userCheck, size: 16, color: Color(0xFF16A34A)),
-              const SizedBox(width: 8),
-              Text(
-                'APPLICANT VERIFICATION DETAILS',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF16A34A),
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _buildInfoRow('Full Name', _scholarFullName),
-          const SizedBox(height: 6),
-          _buildInfoRow(
-            'Identity (Face Check)',
-            _scholar?['face_verification_status']?.toString() == 'verified' ? '✓ Verified' : '✕ Unverified',
-            isVerified: _scholar?['face_verification_status']?.toString() == 'verified',
-          ),
-          const SizedBox(height: 6),
-          _buildInfoRow('School / University', _scholarSchool),
-          const SizedBox(height: 6),
-          _buildInfoRow('Course & Year Level', _scholarCourseAndYear),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildInfoRow(String label, String val, {bool? isVerified}) {
     return Row(
