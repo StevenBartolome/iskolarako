@@ -696,6 +696,8 @@ If a field is not present on the document (for instance, a COR has tuition fees 
 
     final geminiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
     final openRouterKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
+    final mistralKey = dotenv.env['MISTRAL_API_KEY'] ?? '';
+    final groqKey = dotenv.env['GROQ_API_KEY'] ?? '';
 
     List<Uint8List> visionImages = [];
     String visionMime = mimeType;
@@ -722,22 +724,48 @@ If a field is not present on the document (for instance, a COR has tuition fees 
         ? '\nADDITIONAL CONTEXT: The student\'s expected grading scale format is "$expectedScale". Please prioritize matching and extracting grades according to this scale format if applicable.'
         : '');
 
-    if (geminiKey.isNotEmpty) {
-      final result = await _extractAcademicWithGemini(
+    // 1. Try OpenRouter Vision
+    if (openRouterKey.isNotEmpty) {
+      final result = await _extractAcademicWithOpenRouter(
         images: visionImages,
         mimeType: visionMime,
-        apiKey: geminiKey,
+        apiKey: openRouterKey,
         prompt: customPrompt,
         expectedScale: expectedScale,
       );
       if (result != null && (result.gpa != null || result.extractedTuitionAmount != null)) return result;
     }
 
-    if (openRouterKey.isNotEmpty) {
-      final result = await _extractAcademicWithOpenRouter(
+    // 2. Try Mistral Direct Vision
+    if (mistralKey.isNotEmpty) {
+      final result = await _extractAcademicWithMistral(
         images: visionImages,
         mimeType: visionMime,
-        apiKey: openRouterKey,
+        apiKey: mistralKey,
+        prompt: customPrompt,
+        expectedScale: expectedScale,
+      );
+      if (result != null && (result.gpa != null || result.extractedTuitionAmount != null)) return result;
+    }
+
+    // 3. Try Groq Vision
+    if (groqKey.isNotEmpty) {
+      final result = await _extractAcademicWithGroq(
+        images: visionImages,
+        mimeType: visionMime,
+        apiKey: groqKey,
+        prompt: customPrompt,
+        expectedScale: expectedScale,
+      );
+      if (result != null && (result.gpa != null || result.extractedTuitionAmount != null)) return result;
+    }
+
+    // 4. Try Gemini Native Vision
+    if (geminiKey.isNotEmpty) {
+      final result = await _extractAcademicWithGemini(
+        images: visionImages,
+        mimeType: visionMime,
+        apiKey: geminiKey,
         prompt: customPrompt,
         expectedScale: expectedScale,
       );
@@ -790,7 +818,7 @@ If a field is not present on the document (for instance, a COR has tuition fees 
                 },
               }),
             )
-            .timeout(const Duration(seconds: 60));
+            .timeout(const Duration(seconds: 30));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
@@ -805,6 +833,114 @@ If a field is not present on the document (for instance, a COR has tuition fees 
     return null;
   }
 
+  static Future<ExtractedAcademicInfo?> _extractAcademicWithMistral({
+    required List<Uint8List> images,
+    required String mimeType,
+    required String apiKey,
+    required String prompt,
+    String? expectedScale,
+  }) async {
+    final url = Uri.parse('https://api.mistral.ai/v1/chat/completions');
+    const models = ['pixtral-12b-2409', 'pixtral-large-latest'];
+
+    for (final model in models) {
+      try {
+        final contentList = <Map<String, dynamic>>[
+          {'type': 'text', 'text': prompt},
+        ];
+
+        for (final img in images) {
+          contentList.add({
+            'type': 'image_url',
+            'image_url': {'url': 'data:$mimeType;base64,${base64Encode(img)}'},
+          });
+        }
+
+        final response = await http
+            .post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $apiKey',
+              },
+              body: jsonEncode({
+                'model': model,
+                'messages': [
+                  {'role': 'user', 'content': contentList}
+                ],
+                'response_format': {'type': 'json_object'},
+                'temperature': 0.1,
+              }),
+            )
+            .timeout(const Duration(seconds: 25));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final rawText = data['choices']?[0]?['message']?['content']?.toString() ?? '';
+          final parsed = _parseAcademicJsonResponse(rawText, 'Mistral $model', expectedScale);
+          if (parsed != null && (parsed.gpa != null || parsed.extractedTuitionAmount != null)) return parsed;
+        }
+      } catch (e) {
+        debugPrint('Mistral $model academic error: $e');
+      }
+    }
+    return null;
+  }
+
+  static Future<ExtractedAcademicInfo?> _extractAcademicWithGroq({
+    required List<Uint8List> images,
+    required String mimeType,
+    required String apiKey,
+    required String prompt,
+    String? expectedScale,
+  }) async {
+    final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
+    const models = ['llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview'];
+
+    for (final model in models) {
+      try {
+        final contentList = <Map<String, dynamic>>[
+          {'type': 'text', 'text': prompt},
+        ];
+
+        for (final img in images) {
+          contentList.add({
+            'type': 'image_url',
+            'image_url': {'url': 'data:$mimeType;base64,${base64Encode(img)}'},
+          });
+        }
+
+        final response = await http
+            .post(
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $apiKey',
+              },
+              body: jsonEncode({
+                'model': model,
+                'messages': [
+                  {'role': 'user', 'content': contentList}
+                ],
+                'response_format': {'type': 'json_object'},
+                'temperature': 0.1,
+              }),
+            )
+            .timeout(const Duration(seconds: 20));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          final rawText = data['choices']?[0]?['message']?['content']?.toString() ?? '';
+          final parsed = _parseAcademicJsonResponse(rawText, 'Groq $model', expectedScale);
+          if (parsed != null && (parsed.gpa != null || parsed.extractedTuitionAmount != null)) return parsed;
+        }
+      } catch (e) {
+        debugPrint('Groq $model academic error: $e');
+      }
+    }
+    return null;
+  }
+
   static Future<ExtractedAcademicInfo?> _extractAcademicWithOpenRouter({
     required List<Uint8List> images,
     required String mimeType,
@@ -814,11 +950,14 @@ If a field is not present on the document (for instance, a COR has tuition fees 
   }) async {
     final url = Uri.parse('https://openrouter.ai/api/v1/chat/completions');
     const models = [
-      'google/gemini-2.0-flash-001',
-      'google/gemini-flash-1.5',
       'google/gemini-2.5-flash',
       'openai/gpt-4o-mini',
-      'anthropic/claude-3.5-haiku',
+      'mistralai/pixtral-12b:free',
+      'mistralai/pixtral-12b',
+      'qwen/qwen-2.5-vl-72b-instruct:free',
+      'meta-llama/llama-3.2-11b-vision-instruct:free',
+      'google/gemini-2.5-flash:free',
+      'openai/gpt-4o',
     ];
 
     for (final model in models) {
