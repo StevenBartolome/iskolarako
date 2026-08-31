@@ -28,6 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Face verification
   String _faceVerificationStatus = 'unverified'; // unverified | verified | failed
   DateTime? _faceVerifiedAt;
+  RealtimeChannel? _realtimeChannel;
 
   static const Map<String, String> _eduLabels = {
     'college': 'Undergraduate / College',
@@ -41,6 +42,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadProfileData();
+    _subscribeRealtime();
+  }
+
+  @override
+  void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
+    super.dispose();
+  }
+
+  void _subscribeRealtime() {
+    _realtimeChannel = Supabase.instance.client
+        .channel('profile-screen-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar',
+          callback: (payload) {
+            if (mounted) _loadProfileData();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'users',
+          callback: (payload) {
+            if (mounted) _loadProfileData();
+          },
+        );
+    _realtimeChannel?.subscribe();
   }
 
   bool _hasCompletedProfileInfo(Map<String, dynamic>? scholar) {

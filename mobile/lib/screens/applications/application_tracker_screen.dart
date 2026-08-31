@@ -157,6 +157,22 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           callback: (payload) {
             if (mounted) _fetchApplications();
           },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'fund_releases',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'application_appeals',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
         );
     _realtimeChannel?.subscribe();
   }

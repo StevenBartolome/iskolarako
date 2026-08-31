@@ -95,6 +95,14 @@ class _NotificationScreenState extends State<NotificationScreen> {
           callback: (payload) {
             if (mounted) _fetchNotifications();
           },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'fund_releases',
+          callback: (payload) {
+            if (mounted) _fetchNotifications();
+          },
         );
     _realtimeChannel?.subscribe();
   }

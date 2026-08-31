@@ -44,6 +44,14 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
           callback: (payload) {
             if (mounted) _fetchFundReleases(true);
           },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar_payment_accounts',
+          callback: (payload) {
+            if (mounted) _fetchFundReleases(true);
+          },
         );
     _realtimeChannel?.subscribe();
   }

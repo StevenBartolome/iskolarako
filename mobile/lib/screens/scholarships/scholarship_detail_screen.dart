@@ -94,6 +94,26 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
               setState(() {});
             }
           },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'application_cycles',
+          callback: (payload) {
+            if (mounted) {
+              setState(() {});
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'application_appeals',
+          callback: (payload) {
+            if (mounted) {
+              _checkExistingApplication(scholarId, cycleId, force: true);
+            }
+          },
         );
     _realtimeChannel?.subscribe();
   }

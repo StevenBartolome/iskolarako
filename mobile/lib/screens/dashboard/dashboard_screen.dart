@@ -90,12 +90,30 @@ class DashboardScreenState extends State<DashboardScreen> {
             if (mounted) _loadDashboardData();
           },
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'application_cycles',
+          callback: (payload) {
+            if (mounted) _loadDashboardData();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'fund_releases',
+          callback: (payload) {
+            if (mounted) _loadDashboardData();
+          },
+        )
         .subscribe();
   }
 
   @override
   void dispose() {
-    _realtimeChannel?.unsubscribe();
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
     super.dispose();
   }
 
