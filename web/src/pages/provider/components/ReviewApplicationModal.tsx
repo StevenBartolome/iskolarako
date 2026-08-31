@@ -92,6 +92,7 @@ export interface ApplicationDetail {
   rawApplication?: any;
   isContinuingScholar?: boolean;
   hasPendingAppeal?: boolean;
+  payoutHistory?: any[];
   ai_scan_summary?: Record<string, any>;
   under_review_reasons?: Record<string, any>;
 }
@@ -1399,6 +1400,75 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Release Payout History Card */}
+          {application && (application.status === 'Approved' || (application as any).status === 'Maintaining' || (application.payoutHistory && application.payoutHistory.length > 0)) && (
+            <div className="bg-[#F9F5EF]/60 p-4 rounded-2xl border border-[#D9D2C5]/70 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">💰</span>
+                  <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider">
+                    Release Payout History
+                  </h4>
+                </div>
+                <span className="text-[10px] text-[#6C6C70] font-semibold">
+                  {application.payoutHistory && application.payoutHistory.length > 0
+                    ? `${application.payoutHistory.length} Release(s)`
+                    : 'No Payouts Disbursed Yet'}
+                </span>
+              </div>
+
+              {application.payoutHistory && application.payoutHistory.length > 0 ? (
+                <div className="overflow-x-auto rounded-xl border border-[#D9D2C5]/50 bg-white">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-[#F9F5EF] text-[#6C6C70] border-b border-[#D9D2C5]/50">
+                        <th className="px-3 py-2 text-[10px] font-bold uppercase">Date</th>
+                        <th className="px-3 py-2 text-[10px] font-bold uppercase">Cycle / Semester</th>
+                        <th className="px-3 py-2 text-[10px] font-bold uppercase">Amount</th>
+                        <th className="px-3 py-2 text-[10px] font-bold uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#D9D2C5]/30">
+                      {application.payoutHistory.map((payout: any, pIdx: number) => {
+                        const isReleased = payout.status === 'released' || payout.status === 'Completed' || payout.blockchain_verified;
+                        const isRefunded = payout.status === 'returned' || payout.status === 'failed' || payout.paymongoStatus === 'refunded' || String(payout.status).toLowerCase().includes('refund');
+
+                        return (
+                          <tr key={payout.id || pIdx} className="hover:bg-[#F9F5EF]/40 transition-colors">
+                            <td className="px-3 py-2 text-[#6C6C70] whitespace-nowrap">{payout.date || 'Recently'}</td>
+                            <td className="px-3 py-2 font-medium text-[#1C1C1E]">{payout.cycleName || payout.semester || 'Intake Cycle'}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-[#2D5941] whitespace-nowrap">
+                              ₱{Number(payout.amount || 0).toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {isRefunded ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200">
+                                  Refunded
+                                </span>
+                              ) : isReleased ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  ✅ Released
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                                  ⏳ Pending
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-3 bg-white rounded-xl border border-dashed border-[#D9D2C5] text-center text-xs text-[#6C6C70]">
+                  No fund releases or payout disbursements have been recorded for this scholar yet.
+                </div>
+              )}
             </div>
           )}
 

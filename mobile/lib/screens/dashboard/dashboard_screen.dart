@@ -597,8 +597,11 @@ class DashboardScreenState extends State<DashboardScreen> {
     final program = alert['program'] as Map<String, dynamic>?;
     final renewalCycle = alert['renewal_cycle'] as Map<String, dynamic>?;
     final programName = program?['title']?.toString() ?? 'Scholarship Program';
-    final sem = renewalCycle?['semester']?.toString() ?? '2nd Semester';
+    final rawSem = renewalCycle?['semester']?.toString() ?? '';
     final cycleName = renewalCycle?['cycle_name']?.toString() ?? 'Renewal Batch';
+    final sem = rawSem.isNotEmpty
+        ? rawSem
+        : (cycleName.toLowerCase().contains('2nd') ? '2nd Semester' : '1st Semester');
     final deadline = renewalCycle?['application_end_date']?.toString() ?? 'Open';
 
     return Container(

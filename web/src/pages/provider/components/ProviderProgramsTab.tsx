@@ -265,16 +265,40 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                   const freq = prog.fundingFrequency || prog.funding_frequency || 'Per Semester';
                   const isPerSemester = freq === 'Per Semester';
                   const cycles = prog.cycles || [];
-                  const sem1Cycle = cycles.find((c: any) =>
+                  if (cycles.length === 0) return null;
+
+                  // Do not show completion banner if there is any active or open cycle
+                  const hasActiveOpenCycle = cycles.some((c: any) => {
+                    const st = (c.status || '').toLowerCase();
+                    return st === 'open' || st === 'active' || st === 'draft' || st === 'pending';
+                  });
+
+                  if (hasActiveOpenCycle) {
+                    return null;
+                  }
+
+                  // Find the index of the most recent 1st semester cycle (initial or new academic year batch)
+                  const latestSem1CycleIndex = cycles.findLastIndex((c: any) =>
                     !(c.name || '').toLowerCase().includes('2nd') &&
                     !(c.semester || '').toLowerCase().includes('2nd') &&
                     c.cycleType !== 'renewal'
                   );
-                  const sem2Cycle = cycles.find((c: any) =>
-                    (c.name || '').toLowerCase().includes('2nd') ||
-                    (c.semester || '').toLowerCase().includes('2nd') ||
-                    c.cycleType === 'renewal'
-                  );
+
+                  const sem1Cycle = latestSem1CycleIndex !== -1 ? cycles[latestSem1CycleIndex] : null;
+
+                  // Find 2nd semester renewal cycle created specifically AFTER the latest 1st semester cycle
+                  const sem2CycleForCurrentAY = latestSem1CycleIndex !== -1
+                    ? cycles.slice(latestSem1CycleIndex + 1).find((c: any) =>
+                        (c.name || '').toLowerCase().includes('2nd') ||
+                        (c.semester || '').toLowerCase().includes('2nd') ||
+                        c.cycleType === 'renewal'
+                      )
+                    : cycles.find((c: any) =>
+                        ((c.name || '').toLowerCase().includes('2nd') ||
+                        (c.semester || '').toLowerCase().includes('2nd')) &&
+                        c.cycleType !== 'new_applicant'
+                      );
+
                   const latestCycle = cycles[cycles.length - 1];
 
                   if (!isPerSemester && latestCycle && (latestCycle.status === 'Closed' || latestCycle.status === 'closed')) {
@@ -300,9 +324,10 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
 
                   if (isPerSemester) {
                     const isSem1Closed = sem1Cycle && (sem1Cycle.status === 'Closed' || sem1Cycle.status === 'closed');
-                    const isSem2Closed = sem2Cycle && (sem2Cycle.status === 'Closed' || sem2Cycle.status === 'closed');
+                    const isSem2Closed = sem2CycleForCurrentAY && (sem2CycleForCurrentAY.status === 'Closed' || sem2CycleForCurrentAY.status === 'closed');
 
-                    if (isSem1Closed && !sem2Cycle) {
+                    // If 1st semester cycle is closed and 2nd semester cycle has not been created for this current AY batch yet
+                    if (isSem1Closed && !sem2CycleForCurrentAY) {
                       return (
                         <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 rounded-2xl p-3.5 my-2 space-y-2">
                           <div className="flex items-center gap-2">
@@ -323,7 +348,8 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                       );
                     }
 
-                    if (isSem2Closed || (isSem1Closed && sem2Cycle && isSem2Closed)) {
+                    // If 2nd semester cycle for the current AY has been created and is closed
+                    if (isSem2Closed) {
                       return (
                         <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 my-2 space-y-2">
                           <div className="flex items-center gap-2">

@@ -398,13 +398,24 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             ? `${item.scholar.first_name || ''} ${item.scholar.last_name || ''}`.trim()
             : 'Scholar Recipient';
           const baseProg = item.scholarship_programs?.title || 'Scholarship Grant';
-          const isRenewal = item.cycle?.cycle_type === 'renewal' ||
-            (item.cycle?.cycle_name || '').toLowerCase().includes('renewal') ||
-            (item.cycle?.cycle_name || '').toLowerCase().includes('2nd sem') ||
-            (item.cycle?.semester || '').toLowerCase().includes('2nd');
+          const isNewApp = item.cycle?.cycle_type === 'new_applicant';
+          let cycleNameClean = item.cycle?.cycle_name || 'Active Cycle';
+          if (isNewApp || item.cycle?.semester === '1st Semester') {
+            cycleNameClean = cycleNameClean
+              .replaceAll(/•\s*2nd\s*Sem(ester)?\s*Renewal/gi, '')
+              .replaceAll(/\(2nd\s*Sem(ester)?\s*Renewal\)/gi, '')
+              .replaceAll(/2nd\s*Sem(ester)?\s*Renewal/gi, '')
+              .replaceAll(/2nd\s*Sem(ester)?/gi, '')
+              .trim();
+          }
+          const cNameLower = cycleNameClean.toLowerCase();
+          const semLower = (item.cycle?.semester || '').toLowerCase();
+          const isRenewal = !isNewApp && (item.cycle?.cycle_type === 'renewal' || cNameLower.includes('renewal'));
+          const is2nd = !isNewApp && (cNameLower.includes('2nd') || semLower.includes('2nd') || semLower.includes('second'));
+          const semTag = is2nd ? '2nd Sem Renewal' : (isRenewal ? '1st Sem Renewal' : (item.cycle?.semester || '1st Sem'));
           const prog = isRenewal
-            ? `${baseProg} • 2nd Sem Renewal (${item.cycle?.cycle_name || '2nd Semester'})`
-            : (item.cycle?.cycle_name ? `${baseProg} (${item.cycle?.cycle_name})` : baseProg);
+            ? `${baseProg} • ${semTag} (${cycleNameClean})`
+            : (cycleNameClean ? `${baseProg} (${cycleNameClean})` : baseProg);
 
           const amt = item.amount
             ? `₱${Number(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
@@ -620,16 +631,26 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             : 'Approved Scholar';
 
           const baseProgTitle = progConfig.title || app.cycle?.program?.title || 'Scholarship Grant';
-          const cycleName = app.cycle?.cycle_name || 'Active Cycle';
+          const isNewApp = app.cycle?.cycle_type === 'new_applicant';
+          let cycleNameClean = app.cycle?.cycle_name || 'Active Cycle';
+          if (isNewApp || app.cycle?.semester === '1st Semester') {
+            cycleNameClean = cycleNameClean
+              .replaceAll(/•\s*2nd\s*Sem(ester)?\s*Renewal/gi, '')
+              .replaceAll(/\(2nd\s*Sem(ester)?\s*Renewal\)/gi, '')
+              .replaceAll(/2nd\s*Sem(ester)?\s*Renewal/gi, '')
+              .replaceAll(/2nd\s*Sem(ester)?/gi, '')
+              .trim();
+          }
           const semester = app.cycle?.semester || '1st Semester';
-          const isRenewal = app.cycle?.cycle_type === 'renewal' ||
-            cycleName.toLowerCase().includes('renewal') ||
-            cycleName.toLowerCase().includes('2nd sem') ||
-            semester.toLowerCase().includes('2nd');
+          const cNameLower = cycleNameClean.toLowerCase();
+          const semLower = semester.toLowerCase();
+          const isRenewal = !isNewApp && (app.cycle?.cycle_type === 'renewal' || cNameLower.includes('renewal'));
+          const is2nd = !isNewApp && (cNameLower.includes('2nd') || semLower.includes('2nd') || semLower.includes('second'));
+          const semTag = is2nd ? '2nd Sem Renewal' : (isRenewal ? '1st Sem Renewal' : semester);
 
           const formattedProgTitle = isRenewal
-            ? `${baseProgTitle} • 2nd Sem Renewal (${cycleName})`
-            : `${baseProgTitle} (${cycleName})`;
+            ? `${baseProgTitle} • ${semTag} (${cycleNameClean})`
+            : `${baseProgTitle} (${cycleNameClean})`;
 
           const bankingPolicy = progConfig.banking_policy || 'any_bank';
 

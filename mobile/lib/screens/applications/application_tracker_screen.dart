@@ -23,6 +23,7 @@ class AppliedScholarship {
   final String providerName;
   final String scholarshipName;
   final String cycleLabel;
+  final String academicYear;
   final String status;
   final StatusType statusType;
   final String appliedDate;
@@ -46,6 +47,7 @@ class AppliedScholarship {
     required this.providerName,
     required this.scholarshipName,
     this.cycleLabel = 'Initial Cycle',
+    this.academicYear = 'AY 2026-2027',
     required this.status,
     required this.statusType,
     required this.appliedDate,
@@ -56,6 +58,35 @@ class AppliedScholarship {
     this.isCycleOpen = true,
     this.cycleEndDate,
   });
+
+  AppliedScholarship copyWith({
+    String? cycleLabel,
+    String? academicYear,
+  }) {
+    return AppliedScholarship(
+      applicationId: applicationId,
+      scholarId: scholarId,
+      cycleId: cycleId,
+      programId: programId,
+      disbursementMode: disbursementMode,
+      activeRenewalCycle: activeRenewalCycle,
+      program: program,
+      scholar: scholar,
+      providerName: providerName,
+      scholarshipName: scholarshipName,
+      cycleLabel: cycleLabel ?? this.cycleLabel,
+      academicYear: academicYear ?? this.academicYear,
+      status: status,
+      statusType: statusType,
+      appliedDate: appliedDate,
+      compareDate: compareDate,
+      referenceNumber: referenceNumber,
+      steps: steps,
+      submittedDocuments: submittedDocuments,
+      isCycleOpen: isCycleOpen,
+      cycleEndDate: cycleEndDate,
+    );
+  }
 }
 
 class ProgramApplicationGroup {
@@ -329,25 +360,54 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           }
         }
 
-        if (scholarshipName.isEmpty) scholarshipName = 'Scholarship Program';
-        if (providerName.isEmpty) providerName = 'Scholarship Provider';
-
         final cycleType = cycle?['cycle_type']?.toString().toLowerCase() ?? '';
         final cycleName = cycle?['cycle_name']?.toString() ?? '';
+        final rawDate = row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : DateTime.now();
+        final compareDate = rawDate ?? DateTime.now();
+
+        // Extract Academic Year
+        String ay = '';
+        final ayMatch = RegExp(r'AY\s*20\d{2}[-–]20\d{2}|AY\s*20\d{2}[-–]\d{2}|20\d{2}[-–]20\d{2}|20\d{2}[-–]\d{2}', caseSensitive: false).firstMatch(cycleName);
+        if (ayMatch != null) {
+          final matched = ayMatch.group(0)!.trim();
+          ay = matched.toUpperCase().startsWith('AY') ? matched.toUpperCase() : 'AY $matched';
+        } else if (cycle?['academic_year'] != null && cycle!['academic_year'].toString().isNotEmpty) {
+          final cAy = cycle['academic_year'].toString().trim();
+          ay = cAy.toUpperCase().startsWith('AY') ? cAy.toUpperCase() : 'AY $cAy';
+        } else if (program?['academic_year'] != null && program!['academic_year'].toString().isNotEmpty) {
+          final pAy = program['academic_year'].toString().trim();
+          ay = pAy.toUpperCase().startsWith('AY') ? pAy.toUpperCase() : 'AY $pAy';
+        } else {
+          ay = 'AY ${compareDate.year}-${compareDate.year + 1}';
+        }
         final semester = cycle?['semester']?.toString() ?? '';
         final remarksStr = row['remarks']?.toString().toLowerCase() ?? '';
         final isRenewalApp = cycleType == 'renewal' ||
             cycleName.toLowerCase().contains('renewal') ||
-            cycleName.toLowerCase().contains('sem') ||
+            cycleName.toLowerCase().contains('2nd sem') ||
             remarksStr.contains('renewal');
 
-        String cycleLabel = 'Initial Cycle';
-        if (isRenewalApp) {
-          final semTitle = semester.isNotEmpty ? semester : '2nd Semester';
-          cycleLabel = '$semTitle Renewal';
+        // Determine Semester
+        String semTitle = '';
+        final semLower = semester.toLowerCase();
+        final cycleNameLower = cycleName.toLowerCase();
+        if (semLower.contains('1st') || semLower.contains('first') || cycleNameLower.contains('1st') || cycleNameLower.contains('1st sem')) {
+          semTitle = '1st Semester';
+        } else if (semLower.contains('2nd') || semLower.contains('second') || cycleNameLower.contains('2nd') || cycleNameLower.contains('2nd sem')) {
+          semTitle = '2nd Semester';
+        } else if (semLower.contains('summer') || cycleNameLower.contains('summer')) {
+          semTitle = 'Summer Term';
+        } else if (semester.isNotEmpty) {
+          semTitle = semester;
         } else {
-          final semTitle = semester.isNotEmpty ? semester : '1st Semester';
-          cycleLabel = '$semTitle Initial';
+          semTitle = '1st Semester';
+        }
+
+        String cycleLabel;
+        if (isRenewalApp) {
+          cycleLabel = ay.isNotEmpty ? '$semTitle $ay Renewal' : '$semTitle Renewal';
+        } else {
+          cycleLabel = ay.isNotEmpty ? '$semTitle $ay' : '$semTitle Initial';
         }
 
         final dbStatus = row['status']?.toString().toLowerCase() ?? 'pending';
@@ -385,10 +445,11 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                 .eq('status', 'open');
 
             if (renewalCycles.isNotEmpty) {
+              // First pass: find explicit renewal or semester cycle
               for (final c in renewalCycles) {
                 final cId = c['id']?.toString();
                 if (cId != null && submittedCycleIds.contains(cId)) {
-                  // Scholar has already submitted an application for this renewal cycle!
+                  // Scholar has already submitted an application for this cycle
                   continue;
                 }
                 final cType = c['cycle_type']?.toString().toLowerCase() ?? '';
@@ -398,14 +459,24 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                   break;
                 }
               }
+
+              // Second pass: for continuing approved scholars, if a new academic year / new cycle is open
+              // and the scholar has not applied yet, treat it as the continuing application window!
+              if (activeRenewalCycle == null) {
+                for (final c in renewalCycles) {
+                  final cId = c['id']?.toString();
+                  if (cId != null && submittedCycleIds.contains(cId)) {
+                    continue;
+                  }
+                  activeRenewalCycle = Map<String, dynamic>.from(c as Map);
+                  break;
+                }
+              }
             }
           } catch (rErr) {
             debugPrint('Renewal cycle query note: $rErr');
           }
         }
-
-        final rawDate = row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : DateTime.now();
-        final compareDate = rawDate ?? DateTime.now();
 
         final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         final appliedDate = '${months[compareDate.month - 1]} ${compareDate.day}, ${compareDate.year}';
@@ -618,6 +689,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           providerName: providerName,
           scholarshipName: scholarshipName,
           cycleLabel: cycleLabel,
+          academicYear: ay,
           status: statusLabel,
           statusType: statusType,
           appliedDate: appliedDate,
@@ -642,13 +714,41 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
       }
 
       final List<ProgramApplicationGroup> groups = [];
-      groupedMap.forEach((key, list) {
-        list.sort((a, b) => b.compareDate.compareTo(a.compareDate));
+      groupedMap.forEach((key, rawList) {
+        // Sort oldest to newest first to process chronologically per Academic Year
+        rawList.sort((a, b) => a.compareDate.compareTo(b.compareDate));
+
+        final Set<String> seenAYs = {};
+        final List<AppliedScholarship> refinedList = [];
+
+        for (final app in rawList) {
+          final ay = app.academicYear.isNotEmpty ? app.academicYear : 'AY ${app.compareDate.year}-${app.compareDate.year + 1}';
+          
+          if (!seenAYs.contains(ay)) {
+            // First application for this new Academic Year (e.g. AY 2027-2028)
+            seenAYs.add(ay);
+            
+            // If the label currently says 2nd Semester, refine it to 1st Semester for the new Academic Year!
+            String newLabel = app.cycleLabel;
+            if (newLabel.toLowerCase().contains('2nd sem') || newLabel.toLowerCase().contains('2nd semester')) {
+              newLabel = newLabel
+                  .replaceAll(RegExp(r'2nd\s*semester', caseSensitive: false), '1st Semester')
+                  .replaceAll(RegExp(r'2nd\s*sem', caseSensitive: false), '1st Sem');
+            }
+            refinedList.add(app.copyWith(cycleLabel: newLabel));
+          } else {
+            refinedList.add(app);
+          }
+        }
+
+        // Sort newest to oldest for display (Current cycle first at index 0)
+        refinedList.sort((a, b) => b.compareDate.compareTo(a.compareDate));
+
         groups.add(ProgramApplicationGroup(
-          programId: list.first.programId ?? key,
-          scholarshipName: list.first.scholarshipName,
-          providerName: list.first.providerName,
-          cycles: list,
+          programId: refinedList.first.programId ?? key,
+          scholarshipName: refinedList.first.scholarshipName,
+          providerName: refinedList.first.providerName,
+          cycles: refinedList,
           selectedCycleIndex: 0,
           selectedCardSectionTab: 0,
         ));
@@ -1145,8 +1245,11 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     final cycleName = cycle['cycle_name'] ?? 'Renewal Cycle';
     final deadline = cycle['application_end_date'] ?? '';
     
+    final cType = cycle['cycle_type']?.toString().toLowerCase() ?? '';
+    final isNewAyBatch = cType == 'new_applicant' || (!cycleName.toLowerCase().contains('renewal') && !cycleName.toLowerCase().contains('sem'));
+    
     // Parse requirements
-    final reqsObj = cycle['renewal_requirements'];
+    final reqsObj = cycle['renewal_requirements'] ?? cycle['application_requirements'];
     List<dynamic> reqs = [];
     if (reqsObj is List) {
       reqs = reqsObj;
@@ -1160,9 +1263,12 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: isNewAyBatch ? const Color(0xFFEBF5EE) : const Color(0xFFFFFBEB),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFDE68A), width: 1),
+        border: Border.all(
+          color: isNewAyBatch ? const Color(0xFF86EFAC) : const Color(0xFFFDE68A),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1172,14 +1278,14 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
               Container(
                 width: 36,
                 height: 36,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFEF3C7),
+                decoration: BoxDecoration(
+                  color: isNewAyBatch ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
                   shape: BoxShape.circle,
                 ),
-                child: const Center(
+                child: Center(
                   child: Icon(
-                    LucideIcons.rotateCw,
-                    color: Color(0xFFD97706),
+                    isNewAyBatch ? LucideIcons.sparkles : LucideIcons.rotateCw,
+                    color: isNewAyBatch ? const Color(0xFF15803D) : const Color(0xFFD97706),
                     size: 20,
                   ),
                 ),
@@ -1190,7 +1296,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Semestral Renewal Period Open!',
+                      isNewAyBatch ? 'New Academic Year Cycle Open!' : 'Semestral Renewal Period Open!',
                       style: GoogleFonts.inter(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -1203,7 +1309,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                       style: GoogleFonts.inter(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFFD97706),
+                        color: isNewAyBatch ? const Color(0xFF15803D) : const Color(0xFFD97706),
                       ),
                     ),
                     if (deadline.toString().isNotEmpty) ...[
@@ -1225,7 +1331,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
           if (reqs.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
-              'Required Documents for Renewal:',
+              isNewAyBatch ? 'Required Documents for Continuing Application:' : 'Required Documents for Renewal:',
               style: GoogleFonts.inter(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
@@ -1273,9 +1379,9 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                   },
                 );
               },
-              icon: const Icon(LucideIcons.send, size: 14),
+              icon: Icon(isNewAyBatch ? LucideIcons.arrowRight : LucideIcons.send, size: 14),
               label: Text(
-                'Submit Renewal Requirements →',
+                isNewAyBatch ? 'Apply for New Academic Year →' : 'Submit Renewal Requirements →',
                 style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
               ),
               style: ElevatedButton.styleFrom(
@@ -2157,7 +2263,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
               const Divider(height: 16, color: Color(0xFFF3F4F6)),
               _buildSummaryRow('Reference Number', scholarship.referenceNumber),
               const Divider(height: 16, color: Color(0xFFF3F4F6)),
-              _buildSummaryRow('Academic Year', 'AY 2025 - 2026'),
+              _buildSummaryRow('Academic Year', scholarship.academicYear.isNotEmpty ? scholarship.academicYear : 'AY 2026 - 2027'),
               const Divider(height: 16, color: Color(0xFFF3F4F6)),
               _buildSummaryRow('Current Semester', scholarship.cycleLabel),
               const Divider(height: 16, color: Color(0xFFF3F4F6)),

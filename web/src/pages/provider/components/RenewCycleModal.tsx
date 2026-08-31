@@ -79,6 +79,25 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
 
   const isEditing = Boolean(cycleToEdit);
 
+  // Helper to calculate the current academic year from existing cycles
+  const getCurrentAcademicYear = () => {
+    if (renewCycleName) {
+      const match = renewCycleName.match(/AY\s*(\d{4})[-–](\d{4})/i);
+      if (match) return `AY ${match[1]}-${match[2]}`;
+    }
+    if (program.cycles && program.cycles.length > 0) {
+      for (let i = program.cycles.length - 1; i >= 0; i--) {
+        const c = program.cycles[i];
+        const match = (c.name || '').match(/AY\s*(\d{4})[-–](\d{4})/i);
+        if (match) return `AY ${match[1]}-${match[2]}`;
+        const yrs = (c.name || '').match(/\d{4}/g);
+        if (yrs && yrs.length >= 2) return `AY ${yrs[0]}-${yrs[1]}`;
+      }
+    }
+    const curYear = new Date().getFullYear();
+    return `AY ${curYear}-${curYear + 1}`;
+  };
+
   // Helper to calculate the next academic year progression from existing cycles
   const getNextAcademicYear = () => {
     let nextStartYear = new Date().getFullYear();
@@ -161,8 +180,9 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                   onClick={() => {
                     setRenewCycleType('renewal');
                     if (!isEditing) {
-                      const curYear = new Date().getFullYear();
-                      setRenewCycleName(`AY ${curYear}-${curYear + 1} • ${renewSemester || '2nd Sem'} Renewal`);
+                      const curAY = getCurrentAcademicYear();
+                      const semTag = renewSemester === '2nd Semester' ? '2nd Sem' : (renewSemester || '2nd Sem');
+                      setRenewCycleName(`${curAY} • ${semTag} Renewal`);
                     }
                   }}
                   className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
@@ -183,6 +203,7 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                   type="button"
                   onClick={() => {
                     setRenewCycleType('new_applicant');
+                    setRenewSemester('1st Semester');
                     if (!isEditing) {
                       const nextAy = getNextAcademicYear();
                       setRenewCycleName(`AY ${nextAy}`);
@@ -205,25 +226,26 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
             </div>
 
             {/* Semester Selection */}
-            {renewCycleType === 'renewal' && (
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Academic Term / Semester *</label>
-                <select
-                  value={renewSemester}
-                  onChange={(e) => {
-                    const newSem = e.target.value;
-                    setRenewSemester(newSem);
-                    const year = new Date().getFullYear();
-                    setRenewCycleName(`AY ${year}-${year + 1} • ${newSem} Renewal`);
-                  }}
-                  className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-xs font-bold font-sans"
-                >
-                  <option value="2nd Semester">2nd Semester (Mid-Year Renewal)</option>
-                  <option value="1st Semester">1st Semester (Annual Continuing Renewal)</option>
-                  <option value="Summer Term">Summer / Midyear Term</option>
-                </select>
-              </div>
-            )}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider block">Academic Term / Semester *</label>
+              <select
+                value={renewSemester}
+                onChange={(e) => {
+                  const newSem = e.target.value;
+                  setRenewSemester(newSem);
+                  if (renewCycleType === 'renewal') {
+                    const curAY = getCurrentAcademicYear();
+                    const semTag = newSem === '2nd Semester' ? '2nd Sem' : newSem;
+                    setRenewCycleName(`${curAY} • ${semTag} Renewal`);
+                  }
+                }}
+                className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-xs font-bold font-sans"
+              >
+                <option value="1st Semester">1st Semester (Annual Continuing Renewal / Initial Batch)</option>
+                <option value="2nd Semester">2nd Semester (Mid-Year Renewal)</option>
+                <option value="Summer Term">Summer / Midyear Term</option>
+              </select>
+            </div>
 
             {/* Cycle Name */}
             <div className="space-y-1">
@@ -233,7 +255,7 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                 required
                 value={renewCycleName}
                 onChange={(e) => setRenewCycleName(e.target.value)}
-                placeholder="e.g. AY 2026-2027 • 2nd Sem Renewal"
+                placeholder="e.g. AY 2027-2028 • 2nd Sem Renewal"
                 className="w-full px-4 py-3 rounded-xl border border-[#D9D2C5] focus:outline-none focus:border-[#2D5941] bg-[#F9F5EF]/30 text-sm font-sans"
               />
             </div>

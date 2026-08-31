@@ -716,7 +716,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [renewEndDate, setRenewEndDate] = useState('');
   const [renewSlots, setRenewSlots] = useState('');
   const [renewCycleType, setRenewCycleType] = useState<'new_applicant' | 'renewal'>('renewal');
-  const [renewSemester, setRenewSemester] = useState<string>('2nd Semester');
+  const [renewSemester, setRenewSemester] = useState<string>('1st Semester');
   const [renewRequirements, setRenewRequirements] = useState<Array<{ name: string; description: string }>>([
     {
       name: '1st Semester Official Grade Slip / Report of Grades',
@@ -1160,7 +1160,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   blockchain_verified,
                   fund_type,
                   created_at,
-                  cycle:cycle_id(cycle_name, semester, cycle_type)
+                  cycle:cycle_id(program_id, cycle_name, semester, cycle_type)
                 `)
                 .in('scholar_id', scholarIds)
                 .order('created_at', { ascending: true });
@@ -1680,22 +1680,21 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             };
 
             const payouts = (scholarPayoutsMap[scholar.id] || []).filter((p: any) => {
-              if (p.program_id && prog.id) {
-                return String(p.program_id) === String(prog.id);
+              const pProgId = p.program_id || p.cycle?.program_id;
+              if (pProgId && prog.id) {
+                return String(pProgId) === String(prog.id);
               }
               if (p.application_id && app.id) {
                 return String(p.application_id) === String(app.id);
               }
-              if (p.cycle?.program_id && prog.id) {
-                return String(p.cycle.program_id) === String(prog.id);
-              }
-              return false;
+              return true;
             });
             const releaseHistory = payouts.map(p => ({
               id: p.id,
               applicationId: p.application_id,
               cycleId: p.cycle_id,
               cycleName: p.cycle?.cycle_name || 'Intake Cycle',
+              academicYear: p.cycle?.academic_year || p.cycle?.program?.academic_year || '',
               semester: p.cycle?.semester || '1st Semester',
               amount: Number(p.amount) || 0,
               status: p.status || (p.blockchain_verified ? 'released' : 'pending'),
@@ -1706,6 +1705,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 (p.cycle?.cycle_name || '').toLowerCase().includes('2nd sem') ||
                 (p.cycle?.semester || '').toLowerCase().includes('2nd')
             }));
+
+            appDetail.payoutHistory = releaseHistory;
 
             return {
               id: app.id,
@@ -1724,6 +1725,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           });
 
           // Strictly deduplicate scholars by scholar ID (or name) + program title
+          // We prioritize the most recent approved application (data is already sorted by created_at DESC)
           const scholarMap = new Map<string, ScholarAward>();
           for (const sch of mappedScholars) {
             const scholarKey = `${sch.appDetail.scholarId || sch.scholarName}_${sch.programTitle}`;
@@ -1731,21 +1733,19 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               scholarMap.set(scholarKey, sch);
             } else {
               const existing = scholarMap.get(scholarKey)!;
-              // If existing lacks payment account but this row has it, merge it
+              // If existing lacks payment account but this older row has it, merge it
               if (!existing.paymentAccount && sch.paymentAccount) {
                 existing.paymentAccount = sch.paymentAccount;
                 existing.appDetail.paymentAccount = sch.paymentAccount;
               }
-              // Merge payout history
+              // Merge payout history without duplicates
               if (sch.payoutHistory && sch.payoutHistory.length > 0) {
                 const existingIds = new Set((existing.payoutHistory || []).map((p: any) => p.id));
                 const newPayouts = sch.payoutHistory.filter((p: any) => !existingIds.has(p.id));
                 existing.payoutHistory = [...(existing.payoutHistory || []), ...newPayouts];
-              }
-              // If this row is more recent or is a renewal cycle, update cycleJoined and docs
-              if (sch.cycleJoined && (sch.cycleJoined.toLowerCase().includes('renewal') || sch.cycleJoined.toLowerCase().includes('sem'))) {
-                existing.cycleJoined = sch.cycleJoined;
-                existing.appDetail.cycle = sch.cycleJoined;
+                if (existing.appDetail) {
+                  existing.appDetail.payoutHistory = existing.payoutHistory;
+                }
               }
             }
           }
@@ -2340,30 +2340,41 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     setSelectedProgramForRenewal(prog);
     setCycleToEdit(null);
     
-    // Auto-calculate next academic year
-    let nextStartYear = new Date().getFullYear();
+    // Extract current / latest Academic Year from existing program cycles
+    let currentAYString = '';
+    let latestEndYear = 0;
+
     if (prog.cycles && prog.cycles.length > 0) {
-      for (const c of prog.cycles) {
-        const match = (c.name || '').match(/20\d{2}/g);
-        if (match && match.length > 0) {
-          const parsedYears = match.map((y: string) => parseInt(y, 10));
-          const maxYear = Math.max(...parsedYears);
-          if (maxYear >= nextStartYear) {
-            nextStartYear = maxYear;
+      for (let i = prog.cycles.length - 1; i >= 0; i--) {
+        const c = prog.cycles[i];
+        const ayMatch = (c.name || '').match(/AY\s*(\d{4})[-–](\d{4})/i);
+        if (ayMatch) {
+          if (!currentAYString) currentAYString = `AY ${ayMatch[1]}-${ayMatch[2]}`;
+          const endY = parseInt(ayMatch[2], 10);
+          if (endY > latestEndYear) latestEndYear = endY;
+        } else {
+          const yrs = (c.name || '').match(/\d{4}/g);
+          if (yrs && yrs.length >= 2) {
+            if (!currentAYString) currentAYString = `AY ${yrs[0]}-${yrs[1]}`;
+            const endY = parseInt(yrs[1], 10);
+            if (endY > latestEndYear) latestEndYear = endY;
           }
         }
       }
     }
-      
-    const freq = prog.fundingFrequency || prog.funding_frequency || 'Per Semester';
-    const isPerSemester = freq === 'Per Semester';
-    const isRenewal2ndSem = targetMode === 'renewal_2nd_sem' || (isPerSemester && targetMode !== 'next_academic_year');
+
+    if (!currentAYString) {
+      const curYear = new Date().getFullYear();
+      currentAYString = `AY ${curYear}-${curYear + 1}`;
+      latestEndYear = curYear + 1;
+    }
+
+    const isRenewal2ndSem = targetMode === 'renewal_2nd_sem';
 
     if (isRenewal2ndSem) {
-      const currentYear = new Date().getFullYear();
       setRenewCycleType('renewal');
       setRenewSemester('2nd Semester');
-      setRenewCycleName(`AY ${currentYear}-${currentYear + 1} (2nd Sem Renewal)`);
+      setRenewCycleName(`${currentAYString} • 2nd Sem Renewal`);
       setRenewRequirements([
         {
           name: '1st Semester Official Grade Slip / Report of Grades',
@@ -2375,7 +2386,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         },
       ]);
     } else {
-      const nextAY = `AY ${nextStartYear + 1}-${nextStartYear + 2}`;
+      const nextStartYear = latestEndYear > 0 ? latestEndYear : new Date().getFullYear();
+      const nextAY = `AY ${nextStartYear}-${nextStartYear + 1}`;
       setRenewCycleType('new_applicant');
       setRenewSemester('1st Semester');
       setRenewCycleName(nextAY);
@@ -2407,7 +2419,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     
     const isRenewal = cyc.cycleType === 'renewal' || (cyc.name && cyc.name.toLowerCase().includes('renewal'));
     setRenewCycleType(isRenewal ? 'renewal' : 'new_applicant');
-    setRenewSemester(cyc.semester || '2nd Semester');
+    setRenewSemester(cyc.semester || '1st Semester');
 
     const rawReqs = (cyc.renewalRequirements && Array.isArray(cyc.renewalRequirements) && cyc.renewalRequirements.length > 0)
       ? cyc.renewalRequirements
@@ -2698,7 +2710,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       setRenewEndDate('');
       setRenewSlots('');
       setRenewCycleType('renewal');
-      setRenewSemester('2nd Semester');
+      setRenewSemester('1st Semester');
       setRenewRequirements([
         {
           name: '1st Semester Official Grade Slip / Report of Grades',

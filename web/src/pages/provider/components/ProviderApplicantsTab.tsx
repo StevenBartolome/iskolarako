@@ -696,9 +696,14 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedAppForReview(app);
+                            const matchSch = scholarsList.find(s => (s.appDetail?.scholarId && app.scholarId && String(s.appDetail.scholarId) === String(app.scholarId)) || s.scholarName === app.name);
+                            const appWithHistory = {
+                              ...app,
+                              payoutHistory: app.payoutHistory || matchSch?.payoutHistory || matchSch?.appDetail?.payoutHistory || []
+                            };
+                            setSelectedAppForReview(appWithHistory);
                             if (onOpenViewTab) {
-                              onOpenViewTab(app);
+                              onOpenViewTab(appWithHistory);
                             } else {
                               setIsReviewModalOpen(true);
                             }
@@ -787,11 +792,38 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                   <td className="px-6 py-4 text-[#1C1C1E]">
                     <div className="flex flex-col items-start gap-1">
                       <span className="font-semibold">{sch.programTitle}</span>
-                      {((sch.cycleJoined || '').toLowerCase().includes('renewal') || (sch.cycleJoined || '').toLowerCase().includes('2nd sem')) && (
-                        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          🔄 2nd Semester Renewal
-                        </span>
-                      )}
+                      {(() => {
+                        const cycleStr = (sch.cycleJoined || sch.appDetail?.cycle || '').toLowerCase();
+                        const isRenewal = cycleStr.includes('renewal') || cycleStr.includes('sem');
+                        if (!isRenewal && !cycleStr.includes('ay')) return null;
+
+                        // Extract semester
+                        let semLabel = '';
+                        if (cycleStr.includes('2nd sem') || cycleStr.includes('2nd semester') || cycleStr.includes('second')) {
+                          semLabel = '2nd Semester';
+                        } else if (cycleStr.includes('1st sem') || cycleStr.includes('1st semester') || cycleStr.includes('first')) {
+                          semLabel = '1st Semester';
+                        } else if (cycleStr.includes('summer')) {
+                          semLabel = 'Summer Term';
+                        }
+
+                        // Extract AY
+                        const ayMatch = (sch.cycleJoined || sch.appDetail?.cycle || '').match(/AY\s*20\d{2}[-–]20\d{2}|AY\s*20\d{2}[-–]\d{2}|20\d{2}[-–]20\d{2}|20\d{2}[-–]\d{2}/i);
+                        const ayLabel = ayMatch ? (ayMatch[0].toUpperCase().startsWith('AY') ? ayMatch[0].toUpperCase() : `AY ${ayMatch[0]}`) : '';
+
+                        if (isRenewal) {
+                          const badgeText = semLabel 
+                            ? (ayLabel ? `🔄 ${semLabel} Renewal • ${ayLabel}` : `🔄 ${semLabel} Renewal`)
+                            : (ayLabel ? `🔄 Renewal • ${ayLabel}` : '🔄 Renewal');
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              {badgeText}
+                            </span>
+                          );
+                        }
+
+                        return null;
+                      })()}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-xs font-semibold text-[#6C6C70]">{sch.cycleJoined || sch.batchName || 'Default Batch'}</td>
@@ -828,12 +860,50 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
 
                         const expectedSems = isPerSemester ? ['1st Sem', '2nd Sem'] : [sch.cycleJoined || 'Payout'];
                         
+                        // Filter payout history to the scholar's CURRENT academic year / cycle batch so new AY resets to pending
+                        const currentCycleId = sch.appDetail?.rawApplication?.cycle_id || sch.appDetail?.rawApplication?.cycle?.id;
+                        const currentAppId = sch.id || sch.appDetail?.id;
+                        const currentCycleName = sch.cycleJoined || sch.appDetail?.cycle || '';
+                        
+                        const extractAY = (str: string) => {
+                          if (!str) return '';
+                          const m = str.match(/AY\s*20\d{2}[-–]20\d{2}|AY\s*20\d{2}[-–]\d{2}|20\d{2}[-–]20\d{2}|20\d{2}[-–]\d{2}/i);
+                          if (m) {
+                            const val = m[0].trim();
+                            return val.toUpperCase().startsWith('AY') ? val.toUpperCase() : `AY ${val}`;
+                          }
+                          return '';
+                        };
+
+                        const currentAY = extractAY(currentCycleName) || sch.appDetail?.rawApplication?.cycle?.academic_year || '';
+
                         return (
                           <div className="flex flex-col gap-1">
                             {expectedSems.map((sem, semIdx) => {
                               const match = (sch.payoutHistory || []).find((p: any) => {
+                                const payoutCycleName = p.cycleName || '';
+                                const payoutAY = extractAY(payoutCycleName) || p.academicYear || '';
+
+                                // Match payouts that belong to the same application/cycle OR same Academic Year
+                                const isSameAppOrCycle = 
+                                  (currentAppId && p.applicationId && String(p.applicationId) === String(currentAppId)) ||
+                                  (currentCycleId && p.cycleId && String(p.cycleId) === String(currentCycleId)) ||
+                                  (currentCycleName && payoutCycleName && currentCycleName === payoutCycleName);
+
+                                const isSameAcademicYear = currentAY && payoutAY && currentAY === payoutAY;
+
+                                if (!isSameAppOrCycle && !isSameAcademicYear) return false;
+
                                 if (isPerSemester) {
-                                  const pSemLabel = p.isRenewal || p.semester?.includes('2nd') ? '2nd Sem' : '1st Sem';
+                                  const pSemLower = (p.semester || payoutCycleName).toLowerCase();
+                                  let pSemLabel = '1st Sem';
+                                  if (pSemLower.includes('2nd') || pSemLower.includes('second')) {
+                                    pSemLabel = '2nd Sem';
+                                  } else if (pSemLower.includes('1st') || pSemLower.includes('first')) {
+                                    pSemLabel = '1st Sem';
+                                  } else {
+                                    pSemLabel = (p.semester?.includes('2nd') || (!pSemLower.includes('1st') && p.isRenewal && !pSemLower.includes('annual'))) ? '2nd Sem' : '1st Sem';
+                                  }
                                   return pSemLabel === sem;
                                 }
                                 return true;
@@ -890,7 +960,11 @@ export const ProviderApplicantsTab: React.FC<ProviderApplicantsTabProps> = ({
                       type="button"
                       onClick={() => {
                         if (sch.appDetail) {
-                          setSelectedAppForReview(sch.appDetail);
+                          const appDetailWithHistory = {
+                            ...sch.appDetail,
+                            payoutHistory: sch.payoutHistory || sch.appDetail.payoutHistory || []
+                          };
+                          setSelectedAppForReview(appDetailWithHistory);
                           setIsReviewModalOpen(true);
                         }
                       }}

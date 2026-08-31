@@ -348,14 +348,27 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
       const semester = currentCycle?.semester || '1st Semester';
       const selectedProgram = availablePrograms.find(p => String(p.id) === String(progId));
       const isPerSemester = (selectedProgram?.funding_frequency || selectedProgram?.fundingFrequency) === 'Per Semester';
-      const isRenewal = isPerSemester && (currentCycle?.cycle_type === 'renewal' ||
-        cycleName.toLowerCase().includes('renewal') ||
-        cycleName.toLowerCase().includes('2nd sem') ||
-        semester.toLowerCase().includes('2nd'));
+      const isNewApp = currentCycle?.cycle_type === 'new_applicant';
+      let displayCycleName = currentCycle?.cycle_name || 'Active Cycle';
+
+      if (isNewApp || semester === '1st Semester') {
+        displayCycleName = displayCycleName
+          .replaceAll(/•\s*2nd\s*Sem(ester)?\s*Renewal/gi, '')
+          .replaceAll(/\(2nd\s*Sem(ester)?\s*Renewal\)/gi, '')
+          .replaceAll(/2nd\s*Sem(ester)?\s*Renewal/gi, '')
+          .replaceAll(/2nd\s*Sem(ester)?/gi, '')
+          .trim();
+      }
+
+      const cNameLower = displayCycleName.toLowerCase();
+      const semLower = semester.toLowerCase();
+      const isRenewal = !isNewApp && isPerSemester && (currentCycle?.cycle_type === 'renewal' || cNameLower.includes('renewal'));
+      const is2nd = !isNewApp && (cNameLower.includes('2nd') || semLower.includes('2nd') || semLower.includes('second'));
+      const semTag = is2nd ? '2nd Sem Renewal' : (isRenewal ? '1st Sem Renewal' : semester);
 
       const formattedProgTitle = isRenewal
-        ? `${progTitle} • 2nd Sem Renewal (${cycleName})`
-        : `${progTitle} (${cycleName})`;
+        ? `${progTitle} • ${semTag} (${displayCycleName})`
+        : `${progTitle} (${displayCycleName})`;
 
       const parseTuitionVal = (v: any): number => {
         if (!v) return 0;
@@ -1059,15 +1072,29 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                   {cycles.map((cyc) => {
                     const selectedProgram = availablePrograms.find(p => String(p.id) === String(selectedProgramId));
                     const isPerSemester = (selectedProgram?.funding_frequency || selectedProgram?.fundingFrequency) === 'Per Semester';
-                    const isRenewal = isPerSemester && (cyc.cycle_type === 'renewal' ||
-                      (cyc.cycle_name || '').toLowerCase().includes('renewal') ||
-                      (cyc.cycle_name || '').toLowerCase().includes('2nd sem') ||
-                      (cyc.semester || '').toLowerCase().includes('2nd'));
+                    const isNewApp = cyc.cycle_type === 'new_applicant';
+                    let rawName = cyc.cycle_name || 'Active Cycle';
+
+                    if (isNewApp || cyc.semester === '1st Semester') {
+                      rawName = rawName
+                        .replaceAll(/•\s*2nd\s*Sem(ester)?\s*Renewal/gi, '')
+                        .replaceAll(/\(2nd\s*Sem(ester)?\s*Renewal\)/gi, '')
+                        .replaceAll(/2nd\s*Sem(ester)?\s*Renewal/gi, '')
+                        .replaceAll(/2nd\s*Sem(ester)?/gi, '')
+                        .trim();
+                    }
+
+                    const cNameLower = rawName.toLowerCase();
+                    const semLower = (cyc.semester || '').toLowerCase();
+                    const is2nd = !isNewApp && (cNameLower.includes('2nd') || semLower.includes('2nd') || semLower.includes('second'));
+                    const isRenewal = !isNewApp && isPerSemester && (cyc.cycle_type === 'renewal' || cNameLower.includes('renewal'));
+                    const semTag = is2nd ? ' • 2nd Semester Renewal' : (isRenewal ? ' • 1st Semester Renewal' : '');
+
                     return (
                       <option key={cyc.id} value={cyc.id}>
                         {isRenewal ? '🔄 ' : '📅 '}
-                        {cyc.cycle_name || 'Active Cycle'}
-                        {isPerSemester ? (isRenewal ? ' • 2nd Semester Renewal' : ` (${cyc.semester || '1st Sem'})`) : ''}
+                        {rawName}
+                        {isPerSemester && semTag ? semTag : ''}
                       </option>
                     );
                   })}
