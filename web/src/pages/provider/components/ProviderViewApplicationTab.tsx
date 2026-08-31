@@ -64,6 +64,11 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
   const [newReqName, setNewReqName] = useState('');
   const [newReqInstruction, setNewReqInstruction] = useState('');
 
+  // Editing tuition states
+  const [editingTuitionDocIdx, setEditingTuitionDocIdx] = useState<number | null>(null);
+  const [editingTuitionVal, setEditingTuitionVal] = useState<string>('');
+  const [isSavingTuition, setIsSavingTuition] = useState(false);
+
   const commonRequirementPresets = [
     'Barangay Certificate of Indigency',
     'Parent / Guardian Income Tax Return (ITR)',
@@ -624,6 +629,76 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
       }
     } catch (err) {
       console.warn('[Save Doc Status Note in Tab]:', err);
+    }
+  };
+
+  const handleSaveExtractedTuition = async (docIndex: number) => {
+    const targetDoc = documentsList[docIndex];
+    if (!targetDoc || !application?.id) return;
+    setIsSavingTuition(true);
+    try {
+      const cleanVal = editingTuitionVal.replace(/[^0-9.]/g, '');
+      const newTuitionNum = parseFloat(cleanVal);
+      const newTuitionStr = !isNaN(newTuitionNum) && newTuitionNum > 0 ? String(newTuitionNum) : '';
+
+      const updatedDocs = documentsList.map((d, idx) => {
+        if (idx !== docIndex) return d;
+        const currentAi = d.aiVerification || ({} as any);
+        return {
+          ...d,
+          extractedTuitionAmount: newTuitionStr ? newTuitionNum : undefined,
+          extracted_tuition_amount: newTuitionStr ? newTuitionNum : undefined,
+          aiVerification: {
+            ...currentAi,
+            extractedTuitionAmount: newTuitionStr,
+            ai_extracted_data: {
+              ...(currentAi.ai_extracted_data || {}),
+              extractedTuitionAmount: newTuitionStr,
+            },
+          },
+        };
+      });
+
+      setDocumentsList(updatedDocs);
+      if (application) {
+        application.submittedDocuments = updatedDocs;
+      }
+
+      await supabase
+        .from('scholarship_applications')
+        .update({
+          submitted_documents: { documents: updatedDocs },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', application.id);
+
+      if (targetDoc.id && typeof targetDoc.id === 'string' && targetDoc.id.includes('-') && targetDoc.id.length > 20) {
+        await supabase
+          .from('scholar_documents')
+          .update({
+            ai_extracted_data: {
+              ...((targetDoc.aiVerification as any)?.ai_extracted_data || {}),
+              extractedTuitionAmount: newTuitionStr,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', targetDoc.id);
+      }
+
+      const { data: userData } = await supabase.auth.getUser();
+      const actor = userData?.user?.email || 'Provider';
+      createAuditLog(
+        'UPDATED TUITION AMOUNT',
+        `Doc: ${targetDoc.name} - New Matriculation: ₱${Number(newTuitionStr || 0).toLocaleString()} - Applicant: ${application.name}`,
+        actor
+      );
+
+      setEditingTuitionDocIdx(null);
+      setEditingTuitionVal('');
+    } catch (err) {
+      console.error('Error saving adjusted tuition amount:', err);
+    } finally {
+      setIsSavingTuition(false);
     }
   };
 
@@ -1647,10 +1722,59 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                          </div>
                                        </div>
                                      )}
-                                    {aiRes.extractedTuitionAmount && (
-                                      <div className="flex justify-between items-center">
+                                    {editingTuitionDocIdx === idx ? (
+                                      <div className="p-2 bg-[#F9F5EF] rounded-xl border border-[#D9D2C5] space-y-1.5 mt-1">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[11px] font-bold text-[#1A3C2E]">Set Matriculation Fee:</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingTuitionDocIdx(null)}
+                                            className="text-[10px] text-[#6C6C70] hover:text-[#1C1C1E] cursor-pointer"
+                                          >
+                                            ✕ Cancel
+                                          </button>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-xs font-bold text-[#1A3C2E]">₱</span>
+                                          <input
+                                            type="text"
+                                            value={editingTuitionVal}
+                                            onChange={(e) => setEditingTuitionVal(e.target.value)}
+                                            placeholder="e.g. 25000"
+                                            className="w-full px-2 py-1 text-xs font-bold border border-[#D9D2C5] rounded-lg bg-white text-[#1A3C2E] focus:outline-hidden focus:border-[#1A3C2E]"
+                                            autoFocus
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSaveExtractedTuition(idx)}
+                                            disabled={isSavingTuition}
+                                            className="px-2.5 py-1 bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[11px] font-bold rounded-lg cursor-pointer transition-all disabled:opacity-50 shrink-0"
+                                          >
+                                            {isSavingTuition ? 'Saving...' : 'Save'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex justify-between items-center group">
                                         <span className="text-[#6C6C70]">Extracted Tuition Fee:</span>
-                                        <strong className="text-[#1A3C2E] font-bold">₱{Number(aiRes.extractedTuitionAmount).toLocaleString()}</strong>
+                                        <div className="flex items-center gap-1.5">
+                                          <strong className="text-[#1A3C2E] font-bold">
+                                            {aiRes.extractedTuitionAmount && Number(aiRes.extractedTuitionAmount) > 0
+                                              ? `₱${Number(aiRes.extractedTuitionAmount).toLocaleString()}`
+                                              : 'Not Extracted / ₱0'}
+                                          </strong>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingTuitionDocIdx(idx);
+                                              setEditingTuitionVal(aiRes.extractedTuitionAmount && Number(aiRes.extractedTuitionAmount) > 0 ? String(aiRes.extractedTuitionAmount) : '');
+                                            }}
+                                            className="text-[10px] text-[#2D5941] hover:underline cursor-pointer font-bold px-1.5 py-0.5 bg-[#EBF5EE] rounded-md border border-[#2D5941]/20"
+                                            title="Edit or enter assessed tuition fee"
+                                          >
+                                            ✏️ Edit
+                                          </button>
+                                        </div>
                                       </div>
                                     )}
                                   </div>

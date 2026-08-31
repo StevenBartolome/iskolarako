@@ -398,7 +398,11 @@ Carefully read and analyze the document image/PDF to perform four critical check
     - If this document contains academic grades, GWA, GPA, or General Average (e.g. Transcript of Records (TOR), Certificate of Grades, True Copy of Grades (TCG), Report Card, Form 138, Grade Slip, etc.):
     - Locate and extract the overall GWA / GPA / General Average printed on the document into "extracted_gwa" (e.g. 1.75, 88.5, 3.5).
     - Identify the grading scale used in the document ("scale_5", "scale_4", or "percentage") into "extracted_gwa_scale".
-    - If this document is a Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, or Billing Statement, extract the total tuition amount or matriculation fees into "extracted_tuition_amount" (numeric only e.g. 35638.00).
+    - If this document is a Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, or Billing Statement:
+      * Extract the total assessed tuition amount or total matriculation fees into "extracted_tuition_amount" (numeric only e.g. 35638.00).
+      * LOOK FOR: "Total Assessment", "Gross Assessment", "Total Tuition", "Total Fees", "Total School Fees", "Assessment Amount", "Total Matriculation".
+      * CRITICAL PHILIPPINE SUC / SUBSIDY RULE: In State Universities & Colleges (PUP, PLM, UP, etc.) or colleges under the Free Higher Education Act (RA 10931), documents display "Total Assessment: ₱15,000.00", "CHED/UniFAST Subsidy: -₱15,000.00", and "Balance / Net Payable: ₱0.00". DO NOT extract 0.00! Extract the GROSS ASSESSED TUITION / TOTAL ASSESSMENT (e.g. 15000.00).
+      * If there is no tuition or assessment fee present on this document, set "extracted_tuition_amount" to null (DO NOT return 0 or 0.00).
     - Extract the school name into "extracted_school".
 
     STEP A — DETERMINE EQUIVALENT PERCENTAGE (compute ONCE, store as [equiv_pct], use everywhere below):
@@ -885,7 +889,12 @@ Return ONLY valid JSON with no markdown backticks, commentary, or extra text:
         final cleanTuitionStr = rawTuition
             .toString()
             .replaceAll(RegExp(r'[^0-9.]'), '');
-        extractedTuition = double.tryParse(cleanTuitionStr);
+        final parsedTuition = double.tryParse(cleanTuitionStr);
+        if (parsedTuition != null && parsedTuition > 0) {
+          extractedTuition = parsedTuition;
+        } else {
+          extractedTuition = null;
+        }
       }
 
       // Extracted school name

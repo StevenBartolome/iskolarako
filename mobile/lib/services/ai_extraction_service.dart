@@ -657,7 +657,10 @@ Your tasks are:
 1. Extract the overall GWA / GPA / General Average of the student if printed on the document (return null if no grade is printed on this document).
 2. Determine the grading scale used by the school ("scale_5", "scale_4", or "percentage").
 3. Identify the school name if visible.
-4. If this document is a Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, Billing Statement, or Enrollment Receipt, extract the total tuition amount or total matriculation fees (look for labels like "NET AMOUNT", "TOTAL AMOUNT", "Total Assessment", "Total Tuition", "Gross Assessment", "Total Fees", "Net Payable", "Amount Due", "Amount Payable", "Tuition Fee", "Total Assessment Amount", "Assessment Balance", "Full Payment"). If multiple payment options or discounts are shown (e.g., Full Payment Option vs Installment), extract the Net Amount or Total Amount (e.g., 35638.00).
+4. If this document is a Certificate of Registration (COR), Statement of Account (SOA), Assessment Form, Billing Statement, or Enrollment Receipt, extract the total tuition amount or total matriculation fees:
+   - Look for labels like "Total Assessment", "Gross Assessment", "Total Tuition", "Total Fees", "Total School Fees", "Assessment Amount", "Total Matriculation", "Net Amount", "Amount Due", "Amount Payable".
+   - CRITICAL PHILIPPINE SUC / SUBSIDY RULE: In State Universities & Colleges (e.g. PUP, PLM, UP, etc.) or schools under RA 10931 (Free Higher Education), documents display "Total Assessment: ₱15,000.00", "CHED/UniFAST Subsidy: -₱15,000.00", and "Balance / Net Payable: ₱0.00". DO NOT extract 0.00! Extract the GROSS ASSESSED TUITION / TOTAL ASSESSMENT (e.g. 15000.00).
+   - If no tuition or matriculation fee is printed on the document, return null (DO NOT return 0 or 0.00).
 
 Return ONLY valid, raw JSON without markdown backticks or commentary in this exact format:
 {
@@ -1050,7 +1053,10 @@ If a field is not present on the document (for instance, a COR has tuition fees 
       double? tuitionVal;
       if (rawTuition != null) {
         final cleanTuitionStr = rawTuition.toString().replaceAll(RegExp(r'[^0-9.]'), '');
-        tuitionVal = double.tryParse(cleanTuitionStr);
+        final parsed = double.tryParse(cleanTuitionStr);
+        if (parsed != null && parsed > 0) {
+          tuitionVal = parsed;
+        }
       }
       final conf = double.tryParse(data['confidence_score']?.toString() ?? '0.95') ?? 0.95;
 

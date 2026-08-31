@@ -704,7 +704,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
         double? tempExtractedTuition = validationRes.extractedTuitionAmount;
 
         // If Step 1 didn't find the GWA or Tuition, run secondary AiExtractionService
-        if (isAcademicDoc && (tempExtractedGpa == null || tempExtractedTuition == null)) {
+        if (isAcademicDoc && (tempExtractedGpa == null || tempExtractedTuition == null || tempExtractedTuition <= 0)) {
           try {
             final scholarScaleRaw = scholar?['gpa_scale']?.toString() ?? _scholar?['gpa_scale']?.toString() ?? '';
             final scholarGpaScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
@@ -720,7 +720,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             );
 
             if (extracted != null) {
-              if (tempExtractedTuition == null && extracted.extractedTuitionAmount != null && extracted.extractedTuitionAmount! > 0) {
+              if ((tempExtractedTuition == null || tempExtractedTuition <= 0) && extracted.extractedTuitionAmount != null && extracted.extractedTuitionAmount! > 0) {
                 tempExtractedTuition = extracted.extractedTuitionAmount;
               }
 
@@ -1168,7 +1168,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                               vRes.extractedGwa != null ||
                                               vRes.extractedTuitionAmount != null;
 
-                                          if (isAcademicDoc && (extractedGpaVal == null || tempModalTuition == null)) {
+                                          if (isAcademicDoc && (extractedGpaVal == null || tempModalTuition == null || tempModalTuition <= 0)) {
                                             final scholarScaleRaw = _scholar?['gpa_scale']?.toString() ?? '';
                                             final scholarGpaScale = (scholarScaleRaw.isNotEmpty && scholarScaleRaw != 'null' && scholarScaleRaw != 'unknown')
                                                 ? scholarScaleRaw
@@ -1185,7 +1185,7 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                                                     ? scholarScaleRaw
                                                     : (ex.gpaScale ?? scholarGpaScale);
                                               }
-                                              if (tempModalTuition == null && ex.extractedTuitionAmount != null && ex.extractedTuitionAmount! > 0) {
+                                              if ((tempModalTuition == null || tempModalTuition <= 0) && ex.extractedTuitionAmount != null && ex.extractedTuitionAmount! > 0) {
                                                 tempModalTuition = ex.extractedTuitionAmount;
                                               }
                                             }

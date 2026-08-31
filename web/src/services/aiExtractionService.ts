@@ -212,9 +212,11 @@ Perform forensic and content verification:
      b) Extract the overall GWA/GPA if printed on the document.
      c) If overall GWA/GPA is NOT explicitly printed, or to back it up, extract all individual subject grades listed with their subject name, units/credits, and numeric grade value. Output this list as "subject_grades" array.
      d) Compare extracted GWA with declared GWA: "${context.gwa || ''}".
+   - If this document is a Certificate of Registration (COR), Statement of Account (SOA), Tuition Assessment, or Billing Statement:
+     * Extract the total assessed tuition amount or total matriculation fees (look for labels like "Total Assessment", "Gross Assessment", "Total Tuition", "Total Fees", "Total School Fees", "Assessment Amount", "Total Matriculation").
+     * CRITICAL PHILIPPINE SUC / SUBSIDY RULE: In State Universities & Colleges (PUP, PLM, UP, etc.) or colleges under the Free Higher Education Act (RA 10931), documents display "Total Assessment: ₱15,000.00", "CHED/UniFAST Subsidy: -₱15,000.00", and "Balance / Net Payable: ₱0.00". DO NOT extract 0.00! Extract the GROSS ASSESSED TUITION / TOTAL ASSESSMENT (e.g. 15000.00).
+     * If no tuition or assessment fee is present on this document, return an empty string "" for extracted_tuition_amount (DO NOT return "0" or "0.00").
    - If Indigency / ITR, extract the income amount.
-   - If this document is a Certificate of Registration (COR), Statement of Account (SOA), Tuition Assessment, or Billing Statement, extract the total tuition amount or total matriculation fees (look for labels like "Total Assessment", "Total Tuition", "Gross Assessment", "Total Fees", "Balance", "Net Due", "Amount Payable").
-4. RELEVANCE & INTEGRITY: Is this upload valid and directly relevant to "${docName}", or is it irrelevant/corrupted?
 
 Return ONLY raw valid JSON (no markdown backticks, no commentary) in this exact format:
 {
@@ -860,7 +862,12 @@ export async function verifyDocumentAuthenticity({
     extractedSchool: rawResult.extracted_school || '',
     extractedGwa: rawResult.extracted_gwa || '',
     extractedIncome: rawResult.extracted_income || '',
-    extractedTuitionAmount: rawResult.extracted_tuition_amount || '',
+    extractedTuitionAmount: (() => {
+      const raw = rawResult.extracted_tuition_amount;
+      if (!raw) return '';
+      const num = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+      return isNaN(num) || num <= 0 ? '' : String(num);
+    })(),
     extractedDocType: rawResult.extracted_doc_type || documentName,
     verificationStatus: finalStatus,
     confidenceScore: calculatedScore,
