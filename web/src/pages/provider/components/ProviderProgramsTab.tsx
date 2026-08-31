@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Program, ProviderDetails } from '../types';
 import { supabase } from '@/services/supabaseClient';
 import { createAuditLog } from '@/services/auditLogService';
+import { sortCyclesNewestFirst } from '../utils/cycleUtils';
 
 interface ProviderProgramsTabProps {
   providerDetails: ProviderDetails | null;
@@ -224,7 +225,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                   <div className="space-y-1.5 pt-1">
                     <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wide block">Registered Cycles</span>
                     <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                      {prog.cycles?.map((cyc: any) => (
+                      {sortCyclesNewestFirst(prog.cycles)?.map((cyc: any) => (
                         <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
                           <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
                           <div className="flex items-center gap-2">

@@ -26,6 +26,7 @@ import { sendProviderAnnouncement, fetchProviderBroadcasts, deleteNotification, 
 import { createAuditLog } from '@/services/auditLogService';
 import { verifyDocumentAuthenticity, type ApplicantVerificationContext } from '@/services/aiExtractionService';
 import { sanitizeRequirementsSubmitted } from './utils/sanitizeUtils';
+import { sortCyclesNewestFirst } from './utils/cycleUtils';
 import type {
   ProviderPortalProps,
   TabType,
@@ -494,41 +495,45 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       approved_count: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
       approvedCount: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
       scholars_count: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
-      cycles: (dbProg.cycles || []).map((cyc: any) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+      cycles: sortCyclesNewestFirst(
+        (dbProg.cycles || []).map((cyc: any) => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-        const end = cyc.application_end_date ? new Date(cyc.application_end_date + 'T00:00:00') : null;
-        const start = cyc.application_start_date ? new Date(cyc.application_start_date + 'T00:00:00') : null;
+          const end = cyc.application_end_date ? new Date(cyc.application_end_date + 'T00:00:00') : null;
+          const start = cyc.application_start_date ? new Date(cyc.application_start_date + 'T00:00:00') : null;
 
-        let dynamicStatus = 'Closed';
-        const rawStatus = (cyc.status || '').toLowerCase().trim();
+          let dynamicStatus = 'Closed';
+          const rawStatus = (cyc.status || '').toLowerCase().trim();
 
-        if (rawStatus === 'closed' || rawStatus === 'archived') {
-          dynamicStatus = 'Closed';
-        } else if (end && end < today) {
-          // Deadline has passed! Automatically mark as Closed
-          dynamicStatus = 'Closed';
-        } else if (start && start > today) {
-          dynamicStatus = 'Upcoming';
-        } else if (rawStatus === 'evaluating') {
-          dynamicStatus = 'Evaluating';
-        } else {
-          dynamicStatus = 'Open';
-        }
+          if (rawStatus === 'closed' || rawStatus === 'archived') {
+            dynamicStatus = 'Closed';
+          } else if (end && end < today) {
+            // Deadline has passed! Automatically mark as Closed
+            dynamicStatus = 'Closed';
+          } else if (start && start > today) {
+            dynamicStatus = 'Upcoming';
+          } else if (rawStatus === 'evaluating') {
+            dynamicStatus = 'Evaluating';
+          } else {
+            dynamicStatus = 'Open';
+          }
 
-        return {
-          id: cyc.id,
-          name: cyc.cycle_name,
-          startDate: cyc.application_start_date,
-          endDate: cyc.application_end_date,
-          status: dynamicStatus,
-          cycleType: cyc.cycle_type,
-          semester: cyc.semester,
-          slotsAvailable: cyc.slots_available,
-          renewalRequirements: cyc.renewal_requirements,
-        };
-      }),
+          return {
+            id: cyc.id,
+            name: cyc.cycle_name,
+            startDate: cyc.application_start_date,
+            endDate: cyc.application_end_date,
+            status: dynamicStatus,
+            cycleType: cyc.cycle_type,
+            semester: cyc.semester,
+            slotsAvailable: cyc.slots_available,
+            renewalRequirements: cyc.renewal_requirements,
+            created_at: cyc.created_at,
+            createdAt: cyc.created_at,
+          };
+        })
+      ),
       budgetUsed: dbProg.disbursed_total ? `₱${Number(dbProg.disbursed_total).toLocaleString()}` : '₱0',
       budgetTotal: dbProg.budget_total ? `₱${Number(dbProg.budget_total).toLocaleString()}` : '₱0',
       disbursed_total: dbProg.disbursed_total || 0,
@@ -3948,7 +3953,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {selectedProgram.cycles?.map((cyc: any) => (
+                  {sortCyclesNewestFirst(selectedProgram.cycles)?.map((cyc: any) => (
                     <div key={cyc.id} className="flex justify-between items-center bg-white px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
                       <div>
                         <span className="font-bold text-[#1C1C1E] block">{cyc.name}</span>
@@ -4024,8 +4029,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             </p>
 
             <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-              {(programForCycleSelect.cycles || [])
-                .filter((c: any) => (c.status || '').toLowerCase() === 'open')
+              {sortCyclesNewestFirst((programForCycleSelect.cycles || []).filter((c: any) => (c.status || '').toLowerCase() === 'open'))
                 .map((cyc: any) => (
                   <button
                     key={cyc.id}
