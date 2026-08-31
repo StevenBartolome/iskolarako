@@ -39,6 +39,15 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activePreviewDoc, setActivePreviewDoc] = useState<SubmittedDocItem | null>(null);
 
+  // Sync state when application prop updates in real time
+  useEffect(() => {
+    if (application) {
+      setSelectedStatus(application.status || 'Pending');
+      setRemarks(application.remarks || '');
+      setDocumentsList(application.submittedDocuments || []);
+    }
+  }, [application]);
+
   // AI Verification states
   const [isBatchScanning, setIsBatchScanning] = useState(false);
   const [batchProgressMsg, setBatchProgressMsg] = useState('');

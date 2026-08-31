@@ -15,6 +15,28 @@ export const AdminDocumentsTab: React.FC<AdminDocumentsTabProps> = () => {
 
   useEffect(() => {
     fetchDocuments();
+
+    const channel = supabase
+      .channel('admin-docs-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchDocuments();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholar_documents' },
+        () => {
+          fetchDocuments();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchDocuments = async () => {

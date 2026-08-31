@@ -27,6 +27,28 @@ export const AdminFundsTab: React.FC = () => {
 
   useEffect(() => {
     fetchBlockchainEvents();
+
+    const channel = supabase
+      .channel('admin-funds-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fund_releases' },
+        () => {
+          fetchBlockchainEvents();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholar_payment_accounts' },
+        () => {
+          fetchBlockchainEvents();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchBlockchainEvents = async () => {

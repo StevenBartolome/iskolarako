@@ -102,6 +102,28 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
 
   useEffect(() => {
     fetchAppeals();
+
+    const channel = supabase
+      .channel(`provider-appeals-realtime-${providerId || 'all'}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'application_appeals' },
+        () => {
+          fetchAppeals();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchAppeals();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [providerId]);
 
   const fetchAppeals = async () => {

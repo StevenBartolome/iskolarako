@@ -356,6 +356,31 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     fetchStudentsAndScholars();
   }, [activeTab]);
 
+  // Subscribe to realtime database updates for scholars and users
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-students-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholar' },
+        () => {
+          fetchStudentsAndScholars();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        () => {
+          fetchStudentsAndScholars();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const [reports, setReports] = useState<AdminReport[]>([]);
 
 
@@ -750,6 +775,52 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
       fetchDashboardMetrics();
     }
   }, [activeTab]);
+
+  // Subscribe to realtime updates for dashboard metrics across relevant tables
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-dashboard-metrics-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholar' },
+        () => {
+          fetchDashboardMetrics();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'provider' },
+        () => {
+          fetchDashboardMetrics();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_programs' },
+        () => {
+          fetchDashboardMetrics();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchDashboardMetrics();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fund_releases' },
+        () => {
+          fetchDashboardMetrics();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Subscribe to realtime database updates for real scholarships
   useEffect(() => {

@@ -662,6 +662,20 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           fetchPrograms();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fund_releases' },
+        () => {
+          fetchPrograms();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchPrograms();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -1776,12 +1790,33 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
           fetchApplicantsAndScholars();
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'application_appeals'
+        },
+        () => {
+          fetchApplicantsAndScholars();
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(appChannel);
     };
   }, [providerDetails?.id]);
+
+  // Keep selectedAppForReview synchronized in real-time when applicantsList updates
+  useEffect(() => {
+    if (selectedAppForReview) {
+      const updated = applicantsList.find(a => a.id === selectedAppForReview.id);
+      if (updated && updated !== selectedAppForReview) {
+        setSelectedAppForReview(updated);
+      }
+    }
+  }, [applicantsList, selectedAppForReview]);
 
 
 

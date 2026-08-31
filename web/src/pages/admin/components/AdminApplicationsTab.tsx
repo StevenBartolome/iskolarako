@@ -11,6 +11,28 @@ export const AdminApplicationsTab: React.FC = () => {
 
   useEffect(() => {
     fetchApplications();
+
+    const channel = supabase
+      .channel('admin-apps-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchApplications();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'application_appeals' },
+        () => {
+          fetchApplications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchApplications = async () => {
