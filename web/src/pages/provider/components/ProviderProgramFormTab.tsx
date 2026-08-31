@@ -1362,7 +1362,10 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                       className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
                     >
                       <option value="direct_to_student">📱 Direct to Scholar E-Wallet / Bank (In System Scope)</option>
-                      <option value="direct_to_school_off_system">🏛️ Direct to University Treasury (Institutional Voucher / Off-System)</option>
+                      {/* Hidden as requested, preserved in codebase for backward compatibility */}
+                      {tuitionPayoutMode === 'direct_to_school_off_system' && (
+                        <option value="direct_to_school_off_system" hidden>🏛️ Direct to University Treasury (Institutional Voucher / Off-System)</option>
+                      )}
                     </select>
                     {tuitionPayoutMode === 'direct_to_school_off_system' && (
                       <p className="text-[10px] text-[#C97B2E] font-medium mt-1">
