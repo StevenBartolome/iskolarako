@@ -231,18 +231,18 @@ class DocumentValidationService {
     final firstTokens = first.split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
     final lastTokens = last.split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
 
-    // 1. SURNAME VALIDATION (HIGHEST PRIORITY):
-    // In Philippine records, the declared surname MUST match the document's legal surname (docSurname)
-    // or appear in docTokens.
+    // 1. SURNAME VALIDATION (Token-Set Presence Matching):
+    // In Philippine documents, names may be formatted as [LASTNAME, FIRSTNAME], [FIRSTNAME MIDDLENAME LASTNAME], or [LASTNAME FIRSTNAME MIDDLENAME].
+    // Check if the declared surname appears in docSurname, docTokens, or anywhere in the raw document string.
     bool surnameMatches = false;
     for (final l in lastTokens) {
-      if (docSurname.contains(l) || l == docSurname || (docTokens.isNotEmpty && docTokens.last == l)) {
+      if (docSurname.contains(l) || l == docSurname || docTokens.contains(l)) {
         surnameMatches = true;
         break;
       }
     }
 
-    // Married woman validation: Declared Maiden Last Name appears in the document before spouse surname
+    // Married woman validation: Declared Maiden Last Name appears in docTokens before spouse surname
     // e.g. Declared Last Name "Dela Cruz" is inside docTokens in "Maria Dela Cruz Reyes"
     bool marriedMaidenSurnameMatches = false;
     for (final l in lastTokens) {
@@ -256,7 +256,7 @@ class DocumentValidationService {
     // The primary first name token MUST match between declared and document
     bool firstMatches = false;
     for (final f in firstTokens) {
-      if (docGiven.contains(f) || (docTokens.contains(f) && f != docSurname)) {
+      if (docGiven.contains(f) || docTokens.contains(f)) {
         firstMatches = true;
         break;
       }

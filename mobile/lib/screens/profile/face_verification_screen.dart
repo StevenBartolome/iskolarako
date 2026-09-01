@@ -1,11 +1,13 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/services/face_verification_service.dart';
 import 'package:iskoako/services/audit_log_service.dart';
@@ -28,11 +30,9 @@ enum _VerificationStep {
 
 enum _LivenessStatus {
   idle,
-  capturingBaseline,
   waitingAction,
   actionPassed,
   analyzing,
-  failed,
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -81,6 +81,23 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   bool _isClassifyingPhoto = false;
   String? _cameraScanError;
 
+  // ML Kit Face Detector & Live Tracking
+  late final FaceDetector _faceDetector;
+  int _detectedFaceCount = 0;
+  bool _isFocusVerified = false;
+  int _focusContinuousTicks = 0;
+  static const int _requiredFocusTicks = 30; // 3.0 seconds (30 * 100ms)
+  double _focusHoldProgress = 0.0;
+  double _liveActionProgress = 0.0;
+  String _liveActionHint = '';
+  bool _isActionWrongDirection = false;
+  bool _isStreamingFrames = false;
+  bool _isProcessingFrame = false;
+  bool _isActionPassedNow = false;
+  double? _baselineYaw;
+  int _completionHoldFrames = 0;
+  bool _eyesOpenObserved = false;
+
   // Selfie
   Uint8List? _selfieBytes;
 
@@ -91,8 +108,6 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   bool _turnRightDone = false;
   bool _faceDetected = false;
   bool _isCheckingLiveness = false;
-  bool _isAnalyzingFrame = false;
-  String _livenessHint = '';
   Timer? _livenessTimer;
 
   // Result
@@ -107,7 +122,6 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   late AnimationController _checkController;
   late Animation<double> _checkScale;
   late AnimationController _turnProgressController;
-  late Animation<double> _turnProgressAnimation;
   late AnimationController _actionPassedController;
   late Animation<double> _actionPassedScale;
 
@@ -115,6 +129,18 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   void initState() {
     super.initState();
     _loadScholarDetails();
+
+    _faceDetector = FaceDetector(
+      options: FaceDetectorOptions(
+        enableClassification: true,
+        enableLandmarks: false,
+        enableContours: false,
+        enableTracking: true,
+        performanceMode: FaceDetectorMode.fast,
+        minFaceSize: 0.15,
+      ),
+    );
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -131,10 +157,6 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     _turnProgressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    );
-    _turnProgressAnimation = CurvedAnimation(
-      parent: _turnProgressController,
-      curve: Curves.easeInOutCubic,
     );
 
     _actionPassedController = AnimationController(
@@ -154,7 +176,9 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     _turnProgressController.dispose();
     _actionPassedController.dispose();
     _livenessTimer?.cancel();
+    _stopLiveFaceDetection();
     _cameraController?.dispose();
+    _faceDetector.close();
     _customIdController.dispose();
     super.dispose();
   }
@@ -234,7 +258,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // CAMERA
+  // CAMERA & REAL-TIME ML KIT FACE DETECTION
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _initCamera({bool front = true}) async {
@@ -249,6 +273,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       final currentDirection = _cameraController!.description.lensDirection;
       final targetDirection = front ? CameraLensDirection.front : CameraLensDirection.back;
       if (currentDirection != targetDirection) {
+        await _stopLiveFaceDetection();
         _disposeCamera();
       } else {
         // Already initialized to the correct camera
@@ -269,11 +294,16 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         orElse: () => _cameras!.first,
       );
       
+      final isAndroid = Platform.isAndroid;
+      final formatGroup = front
+          ? (isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888)
+          : ImageFormatGroup.jpeg;
+
       _cameraController = CameraController(
         selectedCam,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        imageFormatGroup: formatGroup,
       );
       await _cameraController!.initialize();
       if (mounted) setState(() => _cameraReady = true);
@@ -289,132 +319,221 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     _cameraReady = false;
   }
 
+  InputImage? _inputImageFromCameraImage(CameraImage image, CameraDescription camera) {
+    final sensorOrientation = camera.sensorOrientation;
+    final rotation = InputImageRotationValue.fromRawValue(sensorOrientation) ??
+        InputImageRotation.rotation0deg;
 
+    final format = InputImageFormatValue.fromRawValue(image.format.raw) ??
+        InputImageFormat.nv21;
+
+    final allBytes = WriteBuffer();
+    for (final Plane plane in image.planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
+    final bytes = allBytes.done().buffer.asUint8List();
+
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: format,
+        bytesPerRow: image.planes.first.bytesPerRow,
+      ),
+    );
+  }
+
+  Future<void> _startLiveFaceDetection() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    if (_isStreamingFrames) return;
+
+    _isStreamingFrames = true;
+    _isProcessingFrame = false;
+    _isActionPassedNow = false;
+
+    try {
+      await _cameraController!.startImageStream(_processLiveCameraImage);
+    } catch (e) {
+      debugPrint('[FaceVerification] Start stream error: $e');
+      _isStreamingFrames = false;
+    }
+  }
+
+  Future<void> _stopLiveFaceDetection() async {
+    if (!_isStreamingFrames || _cameraController == null) return;
+    try {
+      if (_cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+      }
+    } catch (e) {
+      debugPrint('[FaceVerification] Stop stream error: $e');
+    } finally {
+      _isStreamingFrames = false;
+    }
+  }
+
+  Future<void> _processLiveCameraImage(CameraImage image) async {
+    if (_isProcessingFrame || !mounted || _cameraController == null) return;
+    _isProcessingFrame = true;
+
+    try {
+      final camera = _cameras?.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => _cameraController!.description,
+      ) ?? _cameraController!.description;
+
+      final inputImage = _inputImageFromCameraImage(image, camera);
+      if (inputImage == null) return;
+
+      final faces = await _faceDetector.processImage(inputImage);
+      if (!mounted) return;
+
+      final count = faces.length;
+
+      if (count == 1) {
+        final face = faces.first;
+
+        // Accumulate continuous 1-face focus hold (3.0 seconds total)
+        if (!_isFocusVerified) {
+          _focusContinuousTicks++;
+          _focusHoldProgress = (_focusContinuousTicks / _requiredFocusTicks).clamp(0.0, 1.0);
+          if (_focusContinuousTicks >= _requiredFocusTicks) {
+            _isFocusVerified = true;
+          }
+        }
+
+        // Track live action progress if on a liveness action step
+        if (_step == _VerificationStep.blink ||
+            _step == _VerificationStep.turnLeft ||
+            _step == _VerificationStep.turnRight) {
+          final expectedAction = _step == _VerificationStep.blink
+              ? LivenessAction.blink
+              : (_step == _VerificationStep.turnLeft
+                  ? LivenessAction.turnLeft
+                  : LivenessAction.turnRight);
+
+          if (_isCheckingLiveness && !_isActionPassedNow) {
+            // Lock baseline forward yaw when starting turn measurement
+            _baselineYaw ??= face.headEulerAngleY;
+
+            // For blink: verify eyes are open first before accepting a blink closure
+            if (expectedAction == LivenessAction.blink && !_eyesOpenObserved) {
+              final left = face.leftEyeOpenProbability ?? 0.0;
+              final right = face.rightEyeOpenProbability ?? 0.0;
+              if (left >= 0.65 && right >= 0.65) {
+                _eyesOpenObserved = true;
+              }
+            }
+
+            final actionResult = FaceVerificationService.calculateActionProgress(
+              expectedAction: expectedAction,
+              face: face,
+              baselineYaw: _baselineYaw,
+              eyesOpenObserved: _eyesOpenObserved,
+            );
+
+            _liveActionProgress = actionResult.progress;
+            _liveActionHint = actionResult.hint;
+            _isActionWrongDirection = actionResult.isWrongDirection;
+
+            if (actionResult.isCompleted && _liveActionProgress >= 1.0) {
+              _completionHoldFrames++;
+              // For blink: 1 frame is enough; for turns: require 2 frames to avoid accidental transient jerks
+              if (_completionHoldFrames >= (expectedAction == LivenessAction.blink ? 1 : 2)) {
+                _handleLivenessActionCompleted(expectedAction);
+              }
+            } else {
+              _completionHoldFrames = 0;
+            }
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _detectedFaceCount = 1;
+            _faceDetected = true;
+          });
+        }
+      } else {
+        // Either 0 faces or 2+ faces
+        _focusContinuousTicks = 0;
+        _focusHoldProgress = 0.0;
+        _isFocusVerified = false;
+        _liveActionProgress = 0.0;
+        _liveActionHint = '';
+        _isActionWrongDirection = false;
+        _baselineYaw = null;
+        _completionHoldFrames = 0;
+        _eyesOpenObserved = false;
+
+        if (mounted) {
+          setState(() {
+            _detectedFaceCount = count;
+            _faceDetected = count > 0;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[FaceVerification] Stream process error: $e');
+    } finally {
+      _isProcessingFrame = false;
+    }
+  }
+
+  void _handleLivenessActionCompleted(LivenessAction action) async {
+    if (_isActionPassedNow) return;
+    _isActionPassedNow = true;
+
+    setState(() {
+      _livenessStatus = _LivenessStatus.actionPassed;
+      _liveActionHint = action == LivenessAction.blink
+          ? 'Blink detected! ✓'
+          : 'Action Passed 100%! ✓';
+      if (action == LivenessAction.blink) _blinkDone = true;
+      if (action == LivenessAction.turnLeft) _turnLeftDone = true;
+      if (action == LivenessAction.turnRight) _turnRightDone = true;
+    });
+
+    _actionPassedController.forward();
+    _checkController.forward();
+
+    await Future.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+
+    _advanceLivenessStep(action);
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // LIVENESS
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _runGuidedLivenessCheck(LivenessAction action) async {
-    if (!_cameraReady || _cameraController == null || _isAnalyzingFrame) return;
-    _isAnalyzingFrame = true;
+    if (!_cameraReady || _cameraController == null) return;
+    if (_detectedFaceCount != 1 || !_isFocusVerified) return;
+
     _turnProgressController.reset();
     _actionPassedController.reset();
+    _liveActionProgress = 0.0;
+    _isActionPassedNow = false;
+    _baselineYaw = null;
+    _completionHoldFrames = 0;
+    _eyesOpenObserved = false;
 
     setState(() {
       _isCheckingLiveness = true;
-      _faceDetected = false;
-      _livenessStatus = _LivenessStatus.capturingBaseline;
-      _livenessHint = 'Step 1: Hold still facing forward...';
+      _livenessStatus = _LivenessStatus.waitingAction;
+      if (action == LivenessAction.blink) {
+        _liveActionHint = 'Blink both eyes now';
+      } else if (action == LivenessAction.turnLeft) {
+        _liveActionHint = 'Slowly turn your head to the LEFT';
+      } else {
+        _liveActionHint = 'Slowly turn your head to the RIGHT';
+      }
     });
 
-    try {
-      // Step 1: Capture baseline frame (facing forward)
-      await Future.delayed(const Duration(milliseconds: 350));
-      if (!mounted) return;
-      final baselineFile = await _cameraController!.takePicture();
-      final baselineBytes = await baselineFile.readAsBytes();
-
-      if (!mounted) return;
-
-      setState(() {
-        _faceDetected = true; // Forward face locked
-        _livenessStatus = _LivenessStatus.waitingAction;
-        if (action == LivenessAction.blink) {
-          _livenessHint = 'Step 2: Blink your eyes once now!';
-        } else if (action == LivenessAction.turnLeft) {
-          _livenessHint = 'Step 2: Turn your head to the LEFT';
-          _turnProgressController.forward();
-        } else {
-          _livenessHint = 'Step 2: Turn your head to the RIGHT';
-          _turnProgressController.forward();
-        }
-      });
-
-      Uint8List actionBytes;
-      List<Uint8List> additionalFrames = [];
-
-      if (action == LivenessAction.blink) {
-        // Capture 2 rapid frames across the single natural blink (at ~380ms and ~760ms)
-        await Future.delayed(const Duration(milliseconds: 380));
-        if (!mounted) return;
-        final f1 = await _cameraController!.takePicture();
-        actionBytes = await f1.readAsBytes();
-
-        await Future.delayed(const Duration(milliseconds: 380));
-        if (!mounted) return;
-        final f2 = await _cameraController!.takePicture();
-        final f2Bytes = await f2.readAsBytes();
-        additionalFrames.add(f2Bytes);
-      } else {
-        // For turn actions: allow 1100ms for head turn
-        await Future.delayed(const Duration(milliseconds: 1100));
-        if (!mounted) return;
-        final f = await _cameraController!.takePicture();
-        actionBytes = await f.readAsBytes();
-      }
-
-      if (!mounted) return;
-
-      // Start analyzing immediately after user blinks once / turns
-      setState(() {
-        _livenessStatus = _LivenessStatus.analyzing;
-        _livenessHint = action == LivenessAction.blink
-            ? 'Analyzing blink...'
-            : 'Analyzing movement...';
-      });
-
-      // Step 3: Send comparative frames to AI for verification
-      final result = await FaceVerificationService.checkLiveness(
-        frameBytes: actionBytes,
-        baselineFrameBytes: baselineBytes,
-        additionalActionFramesBytes: additionalFrames.isNotEmpty ? additionalFrames : null,
-        expectedAction: action,
-      );
-
-      if (!mounted) return;
-
-      if (result.actionDetected) {
-        // Show "Action Passed" confirmation state
-        setState(() {
-          _faceDetected = true;
-          _livenessStatus = _LivenessStatus.actionPassed;
-          _livenessHint = 'Action Passed! ✓';
-          if (action == LivenessAction.blink) _blinkDone = true;
-          if (action == LivenessAction.turnLeft) _turnLeftDone = true;
-          if (action == LivenessAction.turnRight) _turnRightDone = true;
-        });
-        _actionPassedController.forward();
-        _checkController.forward();
-
-        // Display "Action Passed" for ~1000ms then advance
-        await Future.delayed(const Duration(milliseconds: 1000));
-        if (!mounted) return;
-
-        _advanceLivenessStep(action);
-      } else {
-        setState(() {
-          _isCheckingLiveness = false;
-          _faceDetected = false;
-          _livenessStatus = _LivenessStatus.failed;
-          _livenessHint = result.reason.isNotEmpty
-              ? 'AI: ${result.reason}\nTap "Start Check" to retry.'
-              : 'Action not detected. Please tap "Start Check" to retry.';
-        });
-        _turnProgressController.reset();
-      }
-    } catch (e) {
-      debugPrint('[FaceVerification] Guided check error: $e');
-      if (mounted) {
-        setState(() {
-          _isCheckingLiveness = false;
-          _faceDetected = false;
-          _livenessStatus = _LivenessStatus.failed;
-          _livenessHint = 'Camera error. Please tap "Start Check" to try again.';
-        });
-      }
-    } finally {
-      _isAnalyzingFrame = false;
+    if (!_isStreamingFrames) {
+      await _startLiveFaceDetection();
     }
   }
 
@@ -437,7 +556,11 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
 
   Future<void> _captureSelfie() async {
     if (!_cameraReady || _cameraController == null) return;
+    if (_detectedFaceCount != 1 || !_isFocusVerified) return;
+
     try {
+      await _stopLiveFaceDetection();
+      await Future.delayed(const Duration(milliseconds: 100));
       final xFile = await _cameraController!.takePicture();
       final bytes = await xFile.readAsBytes();
       if (mounted) {
@@ -643,21 +766,24 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     _actionPassedController.reset();
     _checkController.reset();
 
-    String defaultHint = '';
-    if (step == _VerificationStep.blink) {
-      defaultHint = 'Look straight at the camera, then tap "Start Check"';
-    } else if (step == _VerificationStep.turnLeft) {
-      defaultHint = 'Look straight at the camera, then tap "Start Check"';
-    } else if (step == _VerificationStep.turnRight) {
-      defaultHint = 'Look straight at the camera, then tap "Start Check"';
-    }
+    await _stopLiveFaceDetection();
 
     setState(() {
       _step = step;
       _livenessStatus = _LivenessStatus.idle;
-      _livenessHint = defaultHint;
       _isCheckingLiveness = false;
       _faceDetected = false;
+      _detectedFaceCount = 0;
+      _isFocusVerified = false;
+      _focusContinuousTicks = 0;
+      _focusHoldProgress = 0.0;
+      _liveActionProgress = 0.0;
+      _liveActionHint = '';
+      _isActionWrongDirection = false;
+      _isActionPassedNow = false;
+      _baselineYaw = null;
+      _completionHoldFrames = 0;
+      _eyesOpenObserved = false;
     });
 
     // Init camera when entering a camera step
@@ -676,11 +802,17 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         _VerificationStep.idCaptureBack,
       ].contains(step);
       await _initCamera(front: useFront);
+
+      // Start live ML Kit streaming for front-camera liveness/selfie steps
+      if (useFront && _cameraReady) {
+        await _startLiveFaceDetection();
+      }
     }
   }
 
-  void _resetAll() {
+  void _resetAll() async {
     _livenessTimer?.cancel();
+    await _stopLiveFaceDetection();
     _disposeCamera();
     _checkController.reset();
     _turnProgressController.reset();
@@ -699,12 +831,22 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       _turnLeftDone = false;
       _turnRightDone = false;
       _faceDetected = false;
+      _detectedFaceCount = 0;
+      _isFocusVerified = false;
+      _focusContinuousTicks = 0;
+      _focusHoldProgress = 0.0;
+      _liveActionProgress = 0.0;
+      _liveActionHint = '';
+      _isActionWrongDirection = false;
+      _isActionPassedNow = false;
       _isCheckingLiveness = false;
-      _livenessHint = '';
       _verificationSuccess = false;
       _matchConfidence = 0.0;
       _resultReason = '';
       _modelUsed = '';
+      _baselineYaw = null;
+      _completionHoldFrames = 0;
+      _eyesOpenObserved = false;
     });
   }
 
@@ -1498,6 +1640,314 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     );
   }
 
+  Widget _buildStatusBanner() {
+    if (_detectedFaceCount >= 2) {
+      // RED BANNER
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFEF2F2),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(LucideIcons.users, color: Color(0xFFDC2626), size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Multiple Faces Detected ($_detectedFaceCount People)',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF991B1B),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Only 1 person must be in the camera frame. Please ensure you are alone.',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFB91C1C),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (_detectedFaceCount == 1) {
+      // BLUE BANNER
+      final isVerified = _isFocusVerified;
+      final remainingSeconds = ((1.0 - _focusHoldProgress) * 3.0).ceil().clamp(1, 3);
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isVerified ? const Color(0xFF3B82F6) : const Color(0xFF60A5FA),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: isVerified ? const Color(0xFFDBEAFE) : const Color(0xFFE0F2FE),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isVerified ? LucideIcons.checkCircle2 : LucideIcons.userCheck,
+                    color: const Color(0xFF2563EB),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isVerified
+                            ? '1 Face Detected — Alone Verified ✓'
+                            : 'Focusing on Face (${remainingSeconds}s)...',
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF1E40AF),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isVerified
+                            ? 'You are alone in the camera frame. Ready to proceed.'
+                            : 'Hold still for 3 seconds to verify you are alone.',
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF3B82F6),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (!isVerified) ...[
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: _focusHoldProgress,
+                  backgroundColor: const Color(0xFFDBEAFE),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                  minHeight: 4,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    } else {
+      // 0 FACES - AMBER BANNER
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBEB),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFFBBF24), width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEF3C7),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(LucideIcons.scanFace, color: Color(0xFFD97706), size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No Face Detected',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF92400E),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Please look directly into the camera and position your face inside the circle.',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFB45309),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Widget _buildActionProgressBar(LivenessAction action) {
+    final isTurnLeft = action == LivenessAction.turnLeft;
+    final actionTitle = action == LivenessAction.blink
+        ? 'Blink Action Progress'
+        : (isTurnLeft ? 'Turn Left Progress' : 'Turn Right Progress');
+
+    final percent = (_liveActionProgress * 100).toInt().clamp(0, 100);
+    final isCompleted = _liveActionProgress >= 1.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isCompleted
+              ? AppColors.primary
+              : (_isActionWrongDirection ? AppColors.error : const Color(0xFFE5E7EB)),
+          width: isCompleted ? 2.0 : 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isCompleted ? AppColors.primary : Colors.black).withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    action == LivenessAction.blink
+                        ? LucideIcons.eye
+                        : (isTurnLeft ? LucideIcons.arrowLeft : LucideIcons.arrowRight),
+                    size: 16,
+                    color: isCompleted ? AppColors.primary : AppColors.textPrimary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    actionTitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isCompleted
+                      ? const Color(0xFFDCFCE7)
+                      : (_isActionWrongDirection ? const Color(0xFFFEE2E2) : const Color(0xFFEFF6FF)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$percent%',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: isCompleted
+                        ? const Color(0xFF166534)
+                        : (_isActionWrongDirection ? const Color(0xFF991B1B) : const Color(0xFF1E40AF)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: _liveActionProgress,
+              minHeight: 10,
+              backgroundColor: const Color(0xFFF3F4F6),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                isCompleted
+                    ? AppColors.primary
+                    : (_isActionWrongDirection ? AppColors.error : const Color(0xFF3B82F6)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              _liveActionHint.isNotEmpty
+                  ? _liveActionHint
+                  : (action == LivenessAction.blink
+                      ? 'Blink both eyes to reach 100%'
+                      : (isTurnLeft
+                          ? 'Slowly turn head left to reach 100%'
+                          : 'Slowly turn head right to reach 100%')),
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _isActionWrongDirection
+                    ? AppColors.error
+                    : (isCompleted ? AppColors.primary : AppColors.textSecondary),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLivenessStep({
     required Key key,
     required int stepNumber,
@@ -1507,27 +1957,25 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     required LivenessAction action,
     required bool done,
   }) {
-    final isTurnAction = action == LivenessAction.turnLeft || action == LivenessAction.turnRight;
-    final isTurnLeft = action == LivenessAction.turnLeft;
-    final isActionPassed = done || _livenessStatus == _LivenessStatus.actionPassed;
+    final isActionPassed = done || _livenessStatus == _LivenessStatus.actionPassed || _isActionPassedNow;
     final isAnalyzing = _livenessStatus == _LivenessStatus.analyzing;
 
     return AnimatedBuilder(
-      animation: Listenable.merge([_pulseController, _turnProgressAnimation, _actionPassedScale]),
+      animation: Listenable.merge([_pulseController, _actionPassedScale]),
       builder: (context, _) {
         return Container(
           key: key,
           color: AppColors.background,
           child: SafeArea(
-            child: Column(
-              children: [
-                _buildProgressBar(stepNumber, 6),
-                const SizedBox(height: 12),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Column(
+                children: [
+                  _buildProgressBar(stepNumber, 6),
+                  const SizedBox(height: 10),
 
-                // Top instruction badge
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Container(
+                  // Top instruction badge
+                  Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
@@ -1535,7 +1983,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                       border: Border.all(color: AppColors.rule),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withAlpha(6),
+                          color: Colors.black.withValues(alpha: 0.03),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -1579,35 +2027,40 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                       ],
                     ),
                   ),
-                ),
 
-                const Spacer(),
+                  const SizedBox(height: 10),
 
-                // Center Oval Face Cutout Viewport with Side Turn Indicator
-                _buildOvalFaceViewport(
-                  child: _buildCameraWidget(),
-                  isActionPassed: isActionPassed,
-                  isFaceDetected: _faceDetected,
-                  isTurnAction: isTurnAction,
-                  isTurnLeft: isTurnLeft,
-                  turnProgress: _turnProgressAnimation.value,
-                ),
+                  // Live Status Banner (Red / Blue / Amber)
+                  _buildStatusBanner(),
 
-                const Spacer(),
+                  const SizedBox(height: 12),
 
-                // Status / Guidance Card & Controls
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _buildLivenessFeedback(
+                  // Center Oval Face Cutout Viewport
+                  _buildOvalFaceViewport(
+                    child: _buildCameraWidget(),
+                    isActionPassed: isActionPassed,
+                    isFaceDetected: _faceDetected,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Live Action Progress Bar (0% - 100%) - Only for Turn Actions
+                  if (action != LivenessAction.blink) ...[
+                    _buildActionProgressBar(action),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // Status / Guidance Card & Controls
+                  _buildLivenessFeedback(
                     action: action,
                     done: done,
                     isActionPassed: isActionPassed,
                     isAnalyzing: isAnalyzing,
                   ),
-                ),
 
-                const SizedBox(height: 20),
-              ],
+                  const SizedBox(height: 16),
+                ],
+              ),
             ),
           ),
         );
@@ -1619,35 +2072,51 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     required Widget child,
     required bool isActionPassed,
     required bool isFaceDetected,
-    required bool isTurnAction,
-    required bool isTurnLeft,
-    double turnProgress = 0.0,
   }) {
     const ovalWidth = 230.0;
-    const ovalHeight = 300.0;
+    const ovalHeight = 290.0;
     const ovalRadius = 115.0;
 
+    Color borderColor;
+    double borderWidth = 3.0;
     List<BoxShadow> shadows = [];
+
     if (isActionPassed) {
+      borderColor = AppColors.primary;
+      borderWidth = 4.5;
       shadows = [
         BoxShadow(
-          color: AppColors.primary.withAlpha(90),
+          color: AppColors.primary.withValues(alpha: 0.35),
           blurRadius: 24,
           spreadRadius: 3,
         ),
       ];
-    } else if (isFaceDetected) {
+    } else if (_detectedFaceCount >= 2) {
+      borderColor = const Color(0xFFEF4444);
+      borderWidth = 3.5;
       shadows = [
         BoxShadow(
-          color: Colors.blueAccent.withAlpha(70),
+          color: const Color(0xFFEF4444).withValues(alpha: 0.25),
+          blurRadius: 18,
+          spreadRadius: 2,
+        ),
+      ];
+    } else if (_detectedFaceCount == 1) {
+      borderColor = const Color(0xFF3B82F6);
+      borderWidth = 3.5;
+      shadows = [
+        BoxShadow(
+          color: const Color(0xFF3B82F6).withValues(alpha: 0.25),
           blurRadius: 18,
           spreadRadius: 2,
         ),
       ];
     } else {
+      borderColor = const Color(0xFFD1D5DB);
+      borderWidth = 2.5;
       shadows = [
         BoxShadow(
-          color: Colors.black.withAlpha(15),
+          color: Colors.black.withValues(alpha: 0.06),
           blurRadius: 12,
           offset: const Offset(0, 4),
         ),
@@ -1662,39 +2131,27 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           height: ovalHeight,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(ovalRadius),
+            border: Border.all(color: borderColor, width: borderWidth),
             boxShadow: shadows,
           ),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 1. Camera preview inside the oval (pure video, NO lines inside)
+              // 1. Camera preview inside the oval (pure video with clean border)
               ClipRRect(
-                borderRadius: BorderRadius.circular(ovalRadius - 3),
+                borderRadius: BorderRadius.circular(ovalRadius - borderWidth),
                 child: Container(
                   color: AppColors.surfaceAlt,
                   child: child,
                 ),
               ),
 
-              // 2. Circle line itself as the dynamic indicator
-              CustomPaint(
-                painter: _CircleBorderPainter(
-                  baseColor: AppColors.primary.withAlpha(130),
-                  activeColor: AppColors.primary,
-                  progress: turnProgress,
-                  isTurnLeft: isTurnAction && isTurnLeft,
-                  isTurnRight: isTurnAction && !isTurnLeft,
-                  isActionPassed: isActionPassed,
-                  isFaceDetected: isFaceDetected,
-                ),
-              ),
-
-              // 3. Action Passed Checkmark Overlay
+              // 2. Action Passed Checkmark Overlay
               if (isActionPassed)
                 Container(
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withAlpha(35),
-                    borderRadius: BorderRadius.circular(ovalRadius - 3),
+                    color: AppColors.primary.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(ovalRadius - borderWidth),
                   ),
                   child: Center(
                     child: ScaleTransition(
@@ -1707,7 +2164,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withAlpha(100),
+                              color: AppColors.primary.withValues(alpha: 0.4),
                               blurRadius: 16,
                             ),
                           ],
@@ -1780,143 +2237,57 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     required bool isAnalyzing,
   }) {
     if (isActionPassed) {
-      return ScaleTransition(
-        scale: _actionPassedScale,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          decoration: BoxDecoration(
-            color: AppColors.successBg,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.primary, width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withAlpha(30),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(LucideIcons.checkCircle, color: AppColors.primary, size: 20),
-              const SizedBox(width: 10),
-              Text(
-                'Action Passed!',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.primary,
-                  fontSize: 15,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
-    if (isAnalyzing) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.primary.withAlpha(60), width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(8),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              _livenessHint.isNotEmpty ? _livenessHint : 'Analyzing Face Movement...',
-              style: GoogleFonts.inter(
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryDark,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      );
+    final bool canStart = _detectedFaceCount == 1 && _isFocusVerified;
+
+    String buttonLabel = 'Start Check';
+    if (_isCheckingLiveness) {
+      if (action == LivenessAction.blink) {
+        buttonLabel = 'Waiting for Blink...';
+      } else {
+        final percent = (_liveActionProgress * 100).toInt().clamp(0, 100);
+        buttonLabel = 'Tracking Action ($percent%)...';
+      }
+    } else if (_detectedFaceCount >= 2) {
+      buttonLabel = 'Disabled: Multiple People in Camera';
+    } else if (_detectedFaceCount == 0) {
+      buttonLabel = 'Disabled: Align Face to Enable';
+    } else if (_detectedFaceCount == 1 && !_isFocusVerified) {
+      final remaining = ((1.0 - _focusHoldProgress) * 3.0).ceil().clamp(1, 3);
+      buttonLabel = 'Hold Still (${remaining}s remaining)...';
     }
 
     return Column(
       children: [
-        if (_livenessHint.isNotEmpty) ...[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: _livenessStatus == _LivenessStatus.failed
-                  ? AppColors.errorBg
-                  : AppColors.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: _livenessStatus == _LivenessStatus.failed
-                    ? AppColors.error
-                    : AppColors.rule,
-                width: 1,
-              ),
-            ),
-            child: Text(
-              _livenessHint,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: _livenessStatus == _LivenessStatus.failed
-                    ? AppColors.error
-                    : AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-                height: 1.4,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
         _buildPrimaryButton(
-          label: _isAnalyzingFrame
-              ? 'Analyzing Movement...'
-              : (_isCheckingLiveness ? 'Checking In Progress...' : 'Start Check'),
-          icon: LucideIcons.play,
-          onTap: _isAnalyzingFrame || _isCheckingLiveness
-              ? null
-              : () => _runGuidedLivenessCheck(action),
+          label: buttonLabel,
+          icon: _isCheckingLiveness ? LucideIcons.scanLine : LucideIcons.play,
+          onTap: canStart && !_isCheckingLiveness
+              ? () => _runGuidedLivenessCheck(action)
+              : null,
         ),
       ],
     );
   }
 
   Widget _buildSelfieStep() {
+    final canTakeSelfie = _detectedFaceCount == 1 && _isFocusVerified;
+
     return Container(
       key: const ValueKey('selfie'),
       color: AppColors.background,
       child: SafeArea(
-        child: Column(
-          children: [
-            _buildProgressBar(6, 6),
-            const SizedBox(height: 12),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Column(
+            children: [
+              _buildProgressBar(6, 6),
+              const SizedBox(height: 10),
 
-            // Top instruction badge
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Container(
+              // Top instruction badge
+              Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: AppColors.surface,
@@ -1924,7 +2295,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                   border: Border.all(color: AppColors.rule),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withAlpha(6),
+                      color: Colors.black.withValues(alpha: 0.03),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -1947,7 +2318,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _selfieBytes != null ? 'Selfie Captured' : 'Take a Selfie',
+                            _selfieBytes != null ? 'Selfie Captured' : 'Take a Portrait Selfie',
                             style: GoogleFonts.inter(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
@@ -1957,7 +2328,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                           const SizedBox(height: 2),
                           Text(
                             _selfieBytes != null
-                                ? 'Looking good! Proceed or retake.'
+                                ? 'Looking good! Proceed to final AI match or retake.'
                                 : 'Look straight at the camera and take your photo',
                             style: GoogleFonts.inter(
                               fontSize: 12,
@@ -1970,37 +2341,41 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                   ],
                 ),
               ),
-            ),
 
-            const Spacer(),
+              const SizedBox(height: 10),
 
-            // Center Oval Face Cutout Viewport
-            _buildOvalFaceViewport(
-              child: _selfieBytes != null
-                  ? Image.memory(
-                      _selfieBytes!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                    )
-                  : _buildCameraWidget(),
-              isActionPassed: false,
-              isFaceDetected: _selfieBytes != null,
-              isTurnAction: false,
-              isTurnLeft: false,
-            ),
+              // Status Banner
+              if (_selfieBytes == null) ...[
+                _buildStatusBanner(),
+                const SizedBox(height: 12),
+              ],
 
-            const Spacer(),
+              // Center Oval Face Cutout Viewport
+              _buildOvalFaceViewport(
+                child: _selfieBytes != null
+                    ? Image.memory(
+                        _selfieBytes!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                      )
+                    : _buildCameraWidget(),
+                isActionPassed: false,
+                isFaceDetected: _selfieBytes != null || _faceDetected,
+              ),
 
-            // Bottom action buttons
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: _selfieBytes != null
+              const SizedBox(height: 16),
+
+              // Bottom action buttons
+              _selfieBytes != null
                   ? Row(
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: () => setState(() => _selfieBytes = null),
+                            onPressed: () async {
+                              setState(() => _selfieBytes = null);
+                              await _startLiveFaceDetection();
+                            },
                             icon: const Icon(LucideIcons.refreshCw, size: 16),
                             label: Text(
                               'Retake',
@@ -2043,36 +2418,60 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                         ),
                       ],
                     )
-                  : Center(
-                      child: GestureDetector(
-                        onTap: _captureSelfie,
-                        child: Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                            border: Border.all(color: AppColors.primary, width: 3),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withAlpha(80),
-                                blurRadius: 16,
-                                spreadRadius: 2,
+                  : Column(
+                      children: [
+                        Center(
+                          child: GestureDetector(
+                            onTap: canTakeSelfie ? _captureSelfie : null,
+                            child: Container(
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: canTakeSelfie ? Colors.white : const Color(0xFFF3F4F6),
+                                border: Border.all(
+                                  color: canTakeSelfie ? AppColors.primary : const Color(0xFFD1D5DB),
+                                  width: 3.5,
+                                ),
+                                boxShadow: canTakeSelfie
+                                    ? [
+                                        BoxShadow(
+                                          color: AppColors.primary.withValues(alpha: 0.35),
+                                          blurRadius: 16,
+                                          spreadRadius: 2,
+                                        ),
+                                      ]
+                                    : [],
                               ),
-                            ],
-                          ),
-                          child: const Icon(
-                            LucideIcons.camera,
-                            color: AppColors.primary,
-                            size: 28,
+                              child: Icon(
+                                LucideIcons.camera,
+                                color: canTakeSelfie ? AppColors.primary : const Color(0xFF9CA3AF),
+                                size: 28,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        Text(
+                          canTakeSelfie
+                              ? 'Tap camera button to capture selfie'
+                              : (_detectedFaceCount >= 2
+                                  ? 'Disabled: Multiple faces detected'
+                                  : (_detectedFaceCount == 1
+                                      ? 'Hold still for 3s focus check...'
+                                      : 'Position face inside circle to enable')),
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: canTakeSelfie ? AppColors.textPrimary : AppColors.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
-            ),
 
-            const SizedBox(height: 20),
-          ],
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );
@@ -2866,67 +3265,4 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       ],
     );
   }
-}
-
-// ─── Reticle Painter ──────────────────────────────────────────────────────────
-
-class _CircleBorderPainter extends CustomPainter {
-  final Color baseColor;
-  final Color activeColor;
-  final double progress;
-  final bool isTurnLeft;
-  final bool isTurnRight;
-  final bool isActionPassed;
-  final bool isFaceDetected;
-
-  const _CircleBorderPainter({
-    required this.baseColor,
-    required this.activeColor,
-    required this.progress,
-    required this.isTurnLeft,
-    required this.isTurnRight,
-    required this.isActionPassed,
-    required this.isFaceDetected,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(2, 2, size.width - 4, size.height - 4);
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular((size.width - 4) / 2));
-
-    final basePaint = Paint()
-      ..color = isActionPassed
-          ? activeColor
-          : (isFaceDetected ? Colors.blueAccent : baseColor)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = isActionPassed || isFaceDetected ? 4.0 : 2.5;
-
-    canvas.drawRRect(rrect, basePaint);
-
-    if ((isTurnLeft || isTurnRight) && progress > 0.0 && !isActionPassed) {
-      final turnPaint = Paint()
-        ..color = Color.lerp(Colors.blueAccent, activeColor, progress) ?? activeColor
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = 4.5;
-
-      const startAngle = -3.14159265 / 2;
-      final sweepAngle = isTurnLeft
-          ? -3.14159265 * progress
-          : 3.14159265 * progress;
-
-      final path = Path()..addArc(rect, startAngle, sweepAngle);
-      canvas.drawPath(path, turnPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _CircleBorderPainter oldDelegate) =>
-      oldDelegate.progress != progress ||
-      oldDelegate.isActionPassed != isActionPassed ||
-      oldDelegate.isFaceDetected != isFaceDetected ||
-      oldDelegate.isTurnLeft != isTurnLeft ||
-      oldDelegate.isTurnRight != isTurnRight ||
-      oldDelegate.baseColor != baseColor ||
-      oldDelegate.activeColor != activeColor;
 }

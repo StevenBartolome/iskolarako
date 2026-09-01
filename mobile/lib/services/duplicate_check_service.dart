@@ -1,8 +1,10 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/utils/app_router.dart';
+import 'package:iskoako/services/face_verification_service.dart';
 
 class ProfileIntegrityResult {
   final bool isTampered;
@@ -51,6 +53,24 @@ class DuplicateCheckResult {
 }
 
 class DuplicateCheckService {
+  /// STEP 4: AI Cross-Account Facial Biometric Tie-Breaker (Final Step)
+  /// Compares candidate scholar's stored selfie / face photo against current scholar's selfie
+  static Future<bool> checkCrossAccountFaceDuplicate({
+    required Uint8List candidateSelfieBytes,
+    required Uint8List currentSelfieBytes,
+  }) async {
+    try {
+      final matchResult = await FaceVerificationService.matchFaces(
+        idImageBytes: candidateSelfieBytes,
+        selfieBytes: currentSelfieBytes,
+      );
+      return matchResult.isMatch && matchResult.confidence >= 0.80;
+    } catch (e) {
+      debugPrint('[DuplicateCheckService] Cross-account face check error: $e');
+      return false;
+    }
+  }
+
   /// Normalize text: lowercase, trimmed, collapsed whitespace
   static String _normalize(String? s) {
     if (s == null) return '';
@@ -174,10 +194,13 @@ class DuplicateCheckService {
     final sharedAllTokens = candAllTokens.intersection(normAllTokens);
     final sharedFirstTokens = candFirstTokens.intersection(normFirstTokens);
 
-    // Check if First Names overlap (e.g. "mark steven" vs "mark", or similarity >= 75%)
+    // Check if First Names overlap (with 85% threshold for short names <= 4 letters)
+    final double firstThreshold = (candFirst.length <= 4 || normFirst.length <= 4) ? 0.85 : 0.75;
+    final double lastThreshold = (candLast.length <= 4 || normLast.length <= 4) ? 0.85 : 0.75;
+
     final hasSharedFirst = sharedFirstTokens.isNotEmpty ||
         (candFirst.isNotEmpty && normFirst.isNotEmpty && (candFirst.contains(normFirst) || normFirst.contains(candFirst))) ||
-        _nameSimilarity(candFirst, normFirst) >= 0.75;
+        _nameSimilarity(candFirst, normFirst) >= firstThreshold;
 
     // Check Last / Middle Name links (including Middle Initial matching e.g. "M." / "M" vs "Mendoza")
     final cleanCandMiddle = candMiddle.replaceAll('.', '').trim();
@@ -186,7 +209,7 @@ class DuplicateCheckService {
         (cleanNormMiddle.length == 1 && cleanCandMiddle.startsWith(cleanNormMiddle));
 
     final hasLastMatch = candLast.isNotEmpty && normLast.isNotEmpty &&
-        (candLast == normLast || _nameSimilarity(candLast, normLast) >= 0.75);
+        (candLast == normLast || _nameSimilarity(candLast, normLast) >= lastThreshold);
     final hasMiddleMatch = candMiddle.isNotEmpty && normMiddle.isNotEmpty &&
         (candMiddle == normMiddle || hasMiddleInitialMatch || _nameSimilarity(candMiddle, normMiddle) >= 0.75);
 
@@ -217,7 +240,7 @@ class DuplicateCheckService {
     }
 
     // ─── RULE 2: SAME BIRTH DATE + MULTIPLE SHARED NAME TOKENS (e.g. Mark + Mendoza) ───
-    if (hasBirthMatch && sharedAllTokens.length >= 2) {
+    if (hasBirthMatch && hasSharedFirst && sharedAllTokens.length >= 2) {
       return true;
     }
 
@@ -230,6 +253,11 @@ class DuplicateCheckService {
     // Prevent birthday alteration evasion when legal First + Last name matches and middle names don't conflict
     final bool hasExactFirstAndLast = hasLastMatch && (candFirst == normFirst || _nameSimilarity(candFirst, normFirst) >= 0.85);
     if (hasExactFirstAndLast) {
+      // If both middle names are blank AND birth date & phone differ, defer to AI Face Verification
+      final bool bothMiddleEmpty = candMiddle.isEmpty && normMiddle.isEmpty;
+      if (bothMiddleEmpty && !hasBirthMatch && !hasPhoneMatch) {
+        return false;
+      }
       // If middle names match or one/both omitted, exact full name match is blocked as duplicate
       if (hasMiddleMatch || candMiddle.isEmpty || normMiddle.isEmpty || hasBirthMatch || hasPhoneMatch) {
         return true;

@@ -65,6 +65,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   String _userEmail = '';
   String? _avatarUrl;
   bool _isUploadingPhoto = false;
+  String? _faceVerificationStatus;
+  bool get _isFaceVerified => _faceVerificationStatus == 'verified';
 
   // Personal Info
   final _firstNameController = TextEditingController();
@@ -327,6 +329,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         _selectedGender = dataList['gender'];
         _educationLevel = dataList['education_level'] ?? 'college';
         _gradingScale = dataList['gpa_scale'] ?? 'scale_5';
+        _faceVerificationStatus = dataList['face_verification_status']?.toString().toLowerCase().trim();
 
         final loadedSchool = dataList['school']?.toString() ?? '';
         final matchedIndex = philippineSchools.indexWhere(
@@ -1925,11 +1928,36 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_isFaceVerified) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.shieldCheck, size: 18, color: Color(0xFFD97706)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Official Identity Verified: Your legal name, birth date, and gender are locked to match your verified ID.',
+                      style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: const Color(0xFF92400E), height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           _buildTextField(
             controller: _firstNameController,
             label: 'First Name *',
             hint: 'e.g. Juan',
+            enabled: !_isFaceVerified,
             validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
           ),
           const SizedBox(height: 12),
@@ -1937,6 +1965,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             controller: _lastNameController,
             label: 'Last Name *',
             hint: 'e.g. Dela Cruz',
+            enabled: !_isFaceVerified,
             validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
           ),
           const SizedBox(height: 12),
@@ -1947,6 +1976,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   controller: _middleNameController,
                   label: 'Middle Name',
                   hint: 'e.g. Santos',
+                  enabled: !_isFaceVerified,
                 ),
               ),
               const SizedBox(width: 12),
@@ -1955,6 +1985,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   controller: _suffixController,
                   label: 'Suffix',
                   hint: 'e.g. Jr.',
+                  enabled: !_isFaceVerified,
                 ),
               ),
             ],
@@ -1981,14 +2012,28 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Birth Date *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Birth Date *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _isFaceVerified ? const Color(0xFF6B7280) : const Color(0xFF111827))),
+                        if (_isFaceVerified)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(LucideIcons.lock, size: 11, color: Color(0xFFD97706)),
+                              const SizedBox(width: 3),
+                              Text('Locked', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFFD97706))),
+                            ],
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 6),
                     GestureDetector(
-                      onTap: () => _selectBirthDate(context),
+                      onTap: _isFaceVerified ? null : () => _selectBirthDate(context),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFAFCFA),
+                          color: _isFaceVerified ? const Color(0xFFF3F4F6) : const Color(0xFFFAFCFA),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: const Color(0xFFE5E7EB)),
                         ),
@@ -2001,10 +2046,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                   : 'Select Date',
                               style: GoogleFonts.inter(
                                 fontSize: 13,
-                                color: _selectedBirthDate != null ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+                                color: _isFaceVerified
+                                    ? const Color(0xFF6B7280)
+                                    : (_selectedBirthDate != null ? const Color(0xFF111827) : const Color(0xFF9CA3AF)),
                               ),
                             ),
-                            const Icon(LucideIcons.calendar, size: 16, color: Color(0xFF1E3D2F)),
+                            Icon(
+                              _isFaceVerified ? LucideIcons.lock : LucideIcons.calendar,
+                              size: 16,
+                              color: _isFaceVerified ? const Color(0xFF9CA3AF) : const Color(0xFF1E3D2F),
+                            ),
                           ],
                         ),
                       ),
@@ -2017,7 +2068,21 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Gender *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Gender *', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: _isFaceVerified ? const Color(0xFF6B7280) : const Color(0xFF111827))),
+                        if (_isFaceVerified)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(LucideIcons.lock, size: 11, color: Color(0xFFD97706)),
+                              const SizedBox(width: 3),
+                              Text('Locked', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFFD97706))),
+                            ],
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
                       isExpanded: true,
@@ -2025,9 +2090,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       decoration: InputDecoration(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         filled: true,
-                        fillColor: const Color(0xFFFAFCFA),
+                        fillColor: _isFaceVerified ? const Color(0xFFF3F4F6) : const Color(0xFFFAFCFA),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                        disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
                       ),
                       hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF9CA3AF))),
                       items: const [
@@ -2036,13 +2102,39 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         DropdownMenuItem(value: 'other', child: Text('Other')),
                         DropdownMenuItem(value: 'prefer_not_to_say', child: Text('Prefer not to say')),
                       ],
-                      onChanged: (val) => setState(() => _selectedGender = val),
+                      onChanged: _isFaceVerified ? null : (val) => setState(() => _selectedGender = val),
                     ),
                   ],
                 ),
               ),
             ],
           ),
+          if (_isFaceVerified) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Identity correction request submitted for admin review.'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                icon: const Icon(LucideIcons.fileText, size: 14, color: Color(0xFF1E3D2F)),
+                label: Text(
+                  'Request Identity Correction / Re-verify ID',
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF1E3D2F)),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  side: const BorderSide(color: Color(0xFF1E3D2F)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -2923,23 +3015,41 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     required String hint,
     TextInputType keyboardType = TextInputType.text,
     String? Function(String?)? validator,
+    bool enabled = true,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF111827))),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: enabled ? const Color(0xFF111827) : const Color(0xFF6B7280))),
+            if (!enabled)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(LucideIcons.lock, size: 11, color: Color(0xFFD97706)),
+                  const SizedBox(width: 3),
+                  Text('Locked', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFFD97706))),
+                ],
+              ),
+          ],
+        ),
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
+          enabled: enabled,
           keyboardType: keyboardType,
           validator: validator,
+          style: GoogleFonts.inter(fontSize: 13, color: enabled ? const Color(0xFF111827) : const Color(0xFF6B7280)),
           decoration: InputDecoration(
             hintText: hint,
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             filled: true,
-            fillColor: const Color(0xFFFAFCFA),
+            fillColor: enabled ? const Color(0xFFFAFCFA) : const Color(0xFFF3F4F6),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+            disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
           ),
         ),
       ],

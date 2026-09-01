@@ -36,6 +36,20 @@ class LivenessCheckResult {
 
 enum LivenessAction { blink, turnLeft, turnRight }
 
+class ActionProgressResult {
+  final double progress; // 0.0 to 1.0
+  final bool isCompleted; // true when progress >= 1.0
+  final bool isWrongDirection;
+  final String hint;
+
+  const ActionProgressResult({
+    required this.progress,
+    required this.isCompleted,
+    this.isWrongDirection = false,
+    required this.hint,
+  });
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 class FaceVerificationService {
@@ -51,7 +65,7 @@ class FaceVerificationService {
   static const String _openRouterUrl =
       'https://openrouter.ai/api/v1/chat/completions';
   static const String _groqUrl =
-      'https://api.groq.com/openai/v1/chat/completions';
+      'https://groq.com/openai/v1/chat/completions';
 
   static const List<Map<String, String>> _safetySettings = [
     {'category': 'HARM_CATEGORY_HARASSMENT', 'threshold': 'BLOCK_NONE'},
@@ -204,6 +218,111 @@ CRITICAL MATCHING RULES:
   // 2. LIVENESS CHECK
   // ─────────────────────────────────────────────────────────────────────────
 
+  static ActionProgressResult calculateActionProgress({
+    required LivenessAction expectedAction,
+    required Face face,
+    double? baselineYaw,
+    double targetTurnDegrees = 32.0,
+    bool eyesOpenObserved = false,
+  }) {
+    switch (expectedAction) {
+      case LivenessAction.blink:
+        final leftEye = face.leftEyeOpenProbability;
+        final rightEye = face.rightEyeOpenProbability;
+
+        if (leftEye == null || rightEye == null) {
+          return const ActionProgressResult(
+            progress: 0.0,
+            isCompleted: false,
+            hint: 'Look straight at camera with eyes open',
+          );
+        }
+
+        // Both eyes must close simultaneously (<= 0.25) AFTER being verified open
+        final bothEyesClosed = leftEye <= 0.25 && rightEye <= 0.25;
+        final isCompleted = eyesOpenObserved && bothEyesClosed;
+
+        final maxEye = leftEye > rightEye ? leftEye : rightEye;
+        final progress = isCompleted ? 1.0 : ((0.70 - maxEye) / 0.50).clamp(0.0, 1.0);
+
+        return ActionProgressResult(
+          progress: progress,
+          isCompleted: isCompleted,
+          hint: isCompleted
+              ? 'Blink detected! ✓'
+              : (!eyesOpenObserved
+                  ? 'Keep eyes open, looking at camera'
+                  : 'Blink both eyes naturally now'),
+        );
+
+      case LivenessAction.turnLeft:
+        final currentYaw = face.headEulerAngleY ?? 0.0;
+        final base = baselineYaw ?? 0.0;
+        final deltaYaw = currentYaw - base;
+
+        // In front camera mirror: turning to user's physical LEFT produces positive deltaYaw
+        // If user turns significantly to the RIGHT instead of LEFT
+        if (deltaYaw < -12.0) {
+          return const ActionProgressResult(
+            progress: 0.0,
+            isCompleted: false,
+            isWrongDirection: true,
+            hint: 'Wrong direction! Turn your head to the LEFT',
+          );
+        }
+
+        final turnAngle = deltaYaw; // positive value when turning left in mirrored camera
+        final effectiveAngle = turnAngle - 5.0;
+        final progress = effectiveAngle > 0.0
+            ? (effectiveAngle / (targetTurnDegrees - 5.0)).clamp(0.0, 1.0)
+            : 0.0;
+        final isCompleted = progress >= 1.0;
+
+        return ActionProgressResult(
+          progress: progress,
+          isCompleted: isCompleted,
+          hint: isCompleted
+              ? 'Turn Left completed 100%! ✓'
+              : progress > 0.05
+                  ? 'Turning Left: ${(progress * 100).toInt()}% (Turn more to reach 100%)'
+                  : 'Slowly turn your head to the LEFT',
+        );
+
+      case LivenessAction.turnRight:
+        final currentYaw = face.headEulerAngleY ?? 0.0;
+        final base = baselineYaw ?? 0.0;
+        final deltaYaw = currentYaw - base;
+
+        // In front camera mirror: turning to user's physical RIGHT produces negative deltaYaw
+        // If user turns significantly to the LEFT instead of RIGHT
+        if (deltaYaw > 12.0) {
+          return const ActionProgressResult(
+            progress: 0.0,
+            isCompleted: false,
+            isWrongDirection: true,
+            hint: 'Wrong direction! Turn your head to the RIGHT',
+          );
+        }
+
+        final turnAngle = -deltaYaw; // positive value when turning right in mirrored camera
+        final effectiveAngle = turnAngle - 5.0;
+        final progress = effectiveAngle > 0.0
+            ? (effectiveAngle / (targetTurnDegrees - 5.0)).clamp(0.0, 1.0)
+            : 0.0;
+        final isCompleted = progress >= 1.0;
+
+        return ActionProgressResult(
+          progress: progress,
+          isCompleted: isCompleted,
+          hint: isCompleted
+              ? 'Turn Right completed 100%! ✓'
+              : progress > 0.05
+                  ? 'Turning Right: ${(progress * 100).toInt()}% (Turn more to reach 100%)'
+                  : 'Slowly turn your head to the RIGHT',
+        );
+    }
+  }
+
   /// 100% Free On-Device Real-Time ML Kit Liveness Detection
   static LivenessCheckResult? checkLivenessWithMlKit({
     required LivenessAction expectedAction,
@@ -218,46 +337,27 @@ CRITICAL MATCHING RULES:
       );
     }
 
-    final face = detectedFaces.first;
-
-    switch (expectedAction) {
-      case LivenessAction.blink:
-        final leftEye = face.leftEyeOpenProbability ?? 1.0;
-        final rightEye = face.rightEyeOpenProbability ?? 1.0;
-        final isBlinking = leftEye < 0.35 || rightEye < 0.35;
-        return LivenessCheckResult(
-          faceDetected: true,
-          actionDetected: isBlinking,
-          reason: isBlinking
-              ? 'Eye blink detected on-device (Left: ${leftEye.toStringAsFixed(2)}, Right: ${rightEye.toStringAsFixed(2)})'
-              : 'Please blink your eyes clearly.',
-          modelUsed: 'Google ML Kit (On-Device)',
-        );
-
-      case LivenessAction.turnLeft:
-        final headRotY = face.headEulerAngleY ?? 0.0;
-        final isTurnedLeft = headRotY > 12.0;
-        return LivenessCheckResult(
-          faceDetected: true,
-          actionDetected: isTurnedLeft,
-          reason: isTurnedLeft
-              ? 'Head turn left detected on-device (${headRotY.toStringAsFixed(1)}°)'
-              : 'Please slowly turn your head to the left.',
-          modelUsed: 'Google ML Kit (On-Device)',
-        );
-
-      case LivenessAction.turnRight:
-        final headRotY = face.headEulerAngleY ?? 0.0;
-        final isTurnedRight = headRotY < -12.0;
-        return LivenessCheckResult(
-          faceDetected: true,
-          actionDetected: isTurnedRight,
-          reason: isTurnedRight
-              ? 'Head turn right detected on-device (${headRotY.toStringAsFixed(1)}°)'
-              : 'Please slowly turn your head to the right.',
-          modelUsed: 'Google ML Kit (On-Device)',
-        );
+    if (detectedFaces.length > 1) {
+      return LivenessCheckResult(
+        faceDetected: false,
+        actionDetected: false,
+        reason: 'Multiple faces detected (${detectedFaces.length}). Only 1 person should be in camera.',
+        modelUsed: 'Google ML Kit (On-Device)',
+      );
     }
+
+    final face = detectedFaces.first;
+    final progressResult = calculateActionProgress(
+      expectedAction: expectedAction,
+      face: face,
+    );
+
+    return LivenessCheckResult(
+      faceDetected: true,
+      actionDetected: progressResult.isCompleted,
+      reason: progressResult.hint,
+      modelUsed: 'Google ML Kit (On-Device)',
+    );
   }
 
   static Future<LivenessCheckResult> checkLiveness({
@@ -1837,17 +1937,29 @@ Return ONLY raw JSON (no markdown, no backticks):
     final normExt = _normalizeString(extName);
 
     if (normReg == normExt) return true;
-    if (normExt.contains(normReg) || normReg.contains(normExt)) return true;
 
     final regTokens = normReg.split(' ').where((t) => t.length > 1).toList();
     final extTokens = normExt.split(' ').where((t) => t.length > 1).toList();
 
-    if (regTokens.isEmpty) return true;
+    if (regTokens.isEmpty || extTokens.isEmpty) return false;
 
+    // 1. Verify every token in registered profile name exists in ID extracted name
     for (final regToken in regTokens) {
       bool found = false;
       for (final extToken in extTokens) {
         if (extToken == regToken || extToken.contains(regToken) || regToken.contains(extToken)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) return false;
+    }
+
+    // 2. Bi-directional check: Verify every token in ID extracted name exists in registered profile name
+    for (final extToken in extTokens) {
+      bool found = false;
+      for (final regToken in regTokens) {
+        if (regToken == extToken || regToken.contains(extToken) || extToken.contains(regToken)) {
           found = true;
           break;
         }

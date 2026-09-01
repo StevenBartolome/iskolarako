@@ -359,6 +359,52 @@ void main() {
         final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
         expect(integrity.isTampered, isFalse);
       });
+
+      test("Token-Set Document Name Matching: Document 'BARTOLOME MENDOZA MARK' vs Declared 'Mark' / 'Mendoza' / 'Bartolome' MUST BE ACCEPTED", () {
+        final isMatch = DocumentValidationService.validateStudentNameMatch(
+          declaredFullName: 'Mark Mendoza Bartolome',
+          declaredFirstName: 'Mark',
+          declaredMiddleName: 'Mendoza',
+          declaredLastName: 'Bartolome',
+          documentStudentName: 'BARTOLOME MENDOZA MARK',
+        );
+
+        expect(isMatch, isTrue);
+      });
+
+      test("Short Name Similarity Threshold: Short name 'Ana' vs 'Ann' with same birth date MUST NOT trigger false duplicate match", () {
+        final isDup = DuplicateCheckService.isIdentityDuplicateForTesting(
+          candFirst: 'Ana',
+          candMiddle: 'Santos',
+          candLast: 'Cruz',
+          candBirth: '2003-05-10',
+          candPhone: '09170001122',
+          normFirst: 'Ann',
+          normMiddle: 'Santos',
+          normLast: 'Cruz',
+          normBirthDate: '2003-05-10',
+          normPhone: '09170001122',
+        );
+
+        expect(isDup, isFalse);
+      });
+
+      test("Blank Middle Name Handling: Same name 'Juan Dela Cruz' with blank middle names and different birth date & phone MUST DEFER to Step 4 AI Face Check", () {
+        final isDup = DuplicateCheckService.isIdentityDuplicateForTesting(
+          candFirst: 'Juan',
+          candMiddle: '',
+          candLast: 'Dela Cruz',
+          candBirth: '2001-01-01',
+          candPhone: '09171112233',
+          normFirst: 'Juan',
+          normMiddle: '',
+          normLast: 'Dela Cruz',
+          normBirthDate: '2004-11-20',
+          normPhone: '09189998877',
+        );
+
+        expect(isDup, isFalse);
+      });
     });
   });
 }
