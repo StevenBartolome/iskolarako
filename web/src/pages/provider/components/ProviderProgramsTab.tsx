@@ -263,8 +263,8 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
 
                 {/* Smart Program Cycle Completion Banners & Re-Opening Prompts */}
                 {(() => {
-                  const freq = prog.fundingFrequency || prog.funding_frequency || 'Per Semester';
-                  const isPerSemester = freq === 'Per Semester';
+                  const rawFreq = String(prog.fundingFrequency || prog.funding_frequency || 'Per Semester');
+                  const isPerSemester = rawFreq.toLowerCase().includes('sem');
                   const cycles = prog.cycles || [];
                   if (cycles.length === 0) return null;
 
@@ -278,38 +278,19 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                     return null;
                   }
 
-                  // Find the index of the most recent 1st semester cycle (initial or new academic year batch)
-                  const latestSem1CycleIndex = cycles.findLastIndex((c: any) =>
-                    !(c.name || '').toLowerCase().includes('2nd') &&
-                    !(c.semester || '').toLowerCase().includes('2nd') &&
-                    c.cycleType !== 'renewal'
-                  );
+                  const sortedCycles = sortCyclesNewestFirst(cycles);
+                  const lastCycle = sortedCycles[0];
+                  if (!lastCycle) return null;
 
-                  const sem1Cycle = latestSem1CycleIndex !== -1 ? cycles[latestSem1CycleIndex] : null;
-
-                  // Find 2nd semester renewal cycle created specifically AFTER the latest 1st semester cycle
-                  const sem2CycleForCurrentAY = latestSem1CycleIndex !== -1
-                    ? cycles.slice(latestSem1CycleIndex + 1).find((c: any) =>
-                        (c.name || '').toLowerCase().includes('2nd') ||
-                        (c.semester || '').toLowerCase().includes('2nd') ||
-                        c.cycleType === 'renewal'
-                      )
-                    : cycles.find((c: any) =>
-                        ((c.name || '').toLowerCase().includes('2nd') ||
-                        (c.semester || '').toLowerCase().includes('2nd')) &&
-                        c.cycleType !== 'new_applicant'
-                      );
-
-                  const latestCycle = cycles[cycles.length - 1];
-
-                  if (!isPerSemester && latestCycle && (latestCycle.status === 'Closed' || latestCycle.status === 'closed')) {
+                  // If funding is Annual / One-Time Grant / Monthly (not Per Semester)
+                  if (!isPerSemester) {
                     return (
                       <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 my-2 space-y-2">
                         <div className="flex items-center gap-2">
                           <span className="text-base">🎉</span>
                           <div>
                             <h4 className="text-xs font-bold text-[#1A3C2E]">Program Cycle Completed</h4>
-                            <p className="text-[11px] text-[#2D5941]">All scholars for {latestCycle.name} have completed disbursements.</p>
+                            <p className="text-[11px] text-[#2D5941]">All scholars for {lastCycle.name || 'this cycle'} have completed disbursements.</p>
                           </div>
                         </div>
                         <button
@@ -323,56 +304,55 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                     );
                   }
 
-                  if (isPerSemester) {
-                    const isSem1Closed = sem1Cycle && (sem1Cycle.status === 'Closed' || sem1Cycle.status === 'closed');
-                    const isSem2Closed = sem2CycleForCurrentAY && (sem2CycleForCurrentAY.status === 'Closed' || sem2CycleForCurrentAY.status === 'closed');
+                  // If Per Semester funding, check whether the last closed cycle was 2nd semester or 1st semester
+                  const isLastCycle2ndSem = (
+                    (lastCycle.name || '').toLowerCase().includes('2nd') ||
+                    (lastCycle.semester || '').toLowerCase().includes('2nd') ||
+                    lastCycle.cycleType === 'renewal' ||
+                    lastCycle.cycle_type === 'renewal'
+                  );
 
-                    // If 1st semester cycle is closed and 2nd semester cycle has not been created for this current AY batch yet
-                    if (isSem1Closed && !sem2CycleForCurrentAY) {
-                      return (
-                        <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 rounded-2xl p-3.5 my-2 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">🎓</span>
-                            <div>
-                              <h4 className="text-xs font-bold text-[#8C5216]">1st Semester Cycle Completed</h4>
-                              <p className="text-[11px] text-[#C97B2E]">Ready to accept 2nd semester renewal requirements from scholars.</p>
-                            </div>
+                  if (isLastCycle2ndSem) {
+                    // 2nd semester cycle was the last closed cycle -> prompt to open for next Academic Year batch
+                    return (
+                      <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 my-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🏆</span>
+                          <div>
+                            <h4 className="text-xs font-bold text-[#1A3C2E]">Academic Year Fully Completed</h4>
+                            <p className="text-[11px] text-[#2D5941]">Both 1st & 2nd semester cycles are completed for this program.</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenRenewModal(prog, 'renewal_2nd_sem')}
-                            className="w-full py-2 px-3 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
-                          >
-                            <span>🔄</span> Open 2nd Semester Renewal Cycle
-                          </button>
                         </div>
-                      );
-                    }
-
-                    // If 2nd semester cycle for the current AY has been created and is closed
-                    if (isSem2Closed) {
-                      return (
-                        <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 my-2 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">🏆</span>
-                            <div>
-                              <h4 className="text-xs font-bold text-[#1A3C2E]">Academic Year Fully Completed</h4>
-                              <p className="text-[11px] text-[#2D5941]">Both 1st & 2nd semester cycles are completed for this program.</p>
-                            </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRenewModal(prog, 'next_academic_year')}
+                          className="w-full py-2 px-3 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <span>🚀</span> Re-Open Program for Next Academic Year
+                        </button>
+                      </div>
+                    );
+                  } else {
+                    // 1st semester cycle was the last closed cycle -> prompt to open 2nd Semester Renewal Cycle
+                    return (
+                      <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 rounded-2xl p-3.5 my-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🎓</span>
+                          <div>
+                            <h4 className="text-xs font-bold text-[#8C5216]">1st Semester Cycle Completed</h4>
+                            <p className="text-[11px] text-[#C97B2E]">Ready to accept 2nd semester renewal requirements from scholars.</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenRenewModal(prog, 'next_academic_year')}
-                            className="w-full py-2 px-3 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
-                          >
-                            <span>🚀</span> Re-Open Program for Next Academic Year
-                          </button>
                         </div>
-                      );
-                    }
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRenewModal(prog, 'renewal_2nd_sem')}
+                          className="w-full py-2 px-3 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <span>🔄</span> Open 2nd Semester Renewal Cycle
+                        </button>
+                      </div>
+                    );
                   }
-
-                  return null;
                 })()}
 
                 {/* Footer Meta & Structured Action Button Grid */}

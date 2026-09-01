@@ -1035,6 +1035,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                           child: Row(
                                             children: [
                                               Expanded(
+                                                flex: 3,
                                                 child: GestureDetector(
                                                   onTap: () => setState(() => group.selectedCardSectionTab = 0),
                                                   child: Container(
@@ -1060,10 +1061,11 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                                 ),
                                               ),
                                               Expanded(
+                                                flex: 4,
                                                 child: GestureDetector(
                                                   onTap: () => setState(() => group.selectedCardSectionTab = 1),
                                                   child: Container(
-                                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                                                     decoration: BoxDecoration(
                                                       color: group.selectedCardSectionTab == 1 ? Colors.white : Colors.transparent,
                                                       borderRadius: BorderRadius.circular(9),
@@ -1072,12 +1074,16 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                                           : [],
                                                     ),
                                                     child: Center(
-                                                      child: Text(
-                                                        'Requirements (${scholarship.submittedDocuments.length})',
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: 11.5,
-                                                          fontWeight: group.selectedCardSectionTab == 1 ? FontWeight.w700 : FontWeight.w500,
-                                                          color: group.selectedCardSectionTab == 1 ? const Color(0xFF1E3D2F) : const Color(0xFF6B7280),
+                                                      child: FittedBox(
+                                                        fit: BoxFit.scaleDown,
+                                                        child: Text(
+                                                          'Requirements (${scholarship.submittedDocuments.length})',
+                                                          maxLines: 1,
+                                                          style: GoogleFonts.inter(
+                                                            fontSize: 11.5,
+                                                            fontWeight: group.selectedCardSectionTab == 1 ? FontWeight.w700 : FontWeight.w500,
+                                                            color: group.selectedCardSectionTab == 1 ? const Color(0xFF1E3D2F) : const Color(0xFF6B7280),
+                                                          ),
                                                         ),
                                                       ),
                                                     ),
@@ -1085,6 +1091,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                                                 ),
                                               ),
                                               Expanded(
+                                                flex: 3,
                                                 child: GestureDetector(
                                                   onTap: () => setState(() => group.selectedCardSectionTab = 2),
                                                   child: Container(
@@ -1897,6 +1904,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     final docs = scholarship.submittedDocuments;
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -2000,6 +2008,8 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                           const SizedBox(height: 2),
                           Text(
                             '$filename · $filesize',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.dmMono(
                               fontSize: 10,
                               color: const Color(0xFF6B7280),

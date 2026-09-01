@@ -3097,24 +3097,39 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
 
 
   Widget _buildInfoRow(String label, String val, {bool? isVerified}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF6B7280))),
-        Flexible(
-          child: Text(
-            val,
-            style: GoogleFonts.inter(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: isVerified != null
-                  ? (isVerified ? const Color(0xFF15803D) : const Color(0xFFDC2626))
-                  : const Color(0xFF111827),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 135,
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 11.5,
+                color: const Color(0xFF6B7280),
+                height: 1.35,
+              ),
             ),
-            textAlign: TextAlign.end,
           ),
-        ),
-      ],
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              val,
+              style: GoogleFonts.inter(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: isVerified != null
+                    ? (isVerified ? const Color(0xFF15803D) : const Color(0xFFDC2626))
+                    : const Color(0xFF111827),
+                height: 1.35,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
