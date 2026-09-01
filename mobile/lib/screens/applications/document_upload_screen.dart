@@ -2507,8 +2507,10 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   },
                   icon: const Icon(LucideIcons.arrowRight, size: 16),
                   label: Text(
-                    'Next: Upload Requirements →',
+                    'Next: Upload Requirements',
                     style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1E3D2F),
@@ -2521,30 +2523,28 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             else if (_currentStep == 2)
               Row(
                 children: [
-                  Expanded(
-                    flex: 1,
-                    child: SizedBox(
-                      height: 52,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() => _currentStep = 1);
-                        },
-                        icon: const Icon(LucideIcons.arrowLeft, size: 15),
-                        label: Text(
-                          'Back',
-                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF1E3D2F),
-                          side: const BorderSide(color: Color(0xFFD1D5DB)),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
+                  SizedBox(
+                    width: 95,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() => _currentStep = 1);
+                      },
+                      icon: const Icon(LucideIcons.arrowLeft, size: 15),
+                      label: Text(
+                        'Back',
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1E3D2F),
+                        side: const BorderSide(color: Color(0xFFD1D5DB)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
-                    flex: 2,
                     child: SizedBox(
                       height: 52,
                       child: ElevatedButton.icon(
@@ -2558,13 +2558,16 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                           size: 16,
                         ),
                         label: Text(
-                          _canProceedToStep3 ? 'Next: Review Application →' : 'Fix Documents to Proceed',
+                          _canProceedToStep3 ? 'Next: Review Application' : 'Fix Documents to Proceed',
                           style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _canProceedToStep3 ? const Color(0xFF1E3D2F) : const Color(0xFF9CA3AF),
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           elevation: 0,
                         ),
                       ),
@@ -2575,30 +2578,28 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             else
               Row(
                 children: [
-                  Expanded(
-                    flex: 1,
-                    child: SizedBox(
-                      height: 52,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() => _currentStep = 2);
-                        },
-                        icon: const Icon(LucideIcons.arrowLeft, size: 15),
-                        label: Text(
-                          'Back',
-                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF1E3D2F),
-                          side: const BorderSide(color: Color(0xFFD1D5DB)),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
+                  SizedBox(
+                    width: 95,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() => _currentStep = 2);
+                      },
+                      icon: const Icon(LucideIcons.arrowLeft, size: 15),
+                      label: Text(
+                        'Back',
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1E3D2F),
+                        side: const BorderSide(color: Color(0xFFD1D5DB)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
-                    flex: 2,
                     child: SizedBox(
                       height: 52,
                       child: ElevatedButton.icon(
@@ -2618,11 +2619,14 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                               ? (_isForAppeal ? 'Submitting Appeal...' : 'Submitting Application...')
                               : (_isForAppeal ? 'Submit Appeal' : 'Submit Application'),
                           style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _isForAppeal ? const Color(0xFF7C3AED) : const Color(0xFF1E3D2F),
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           elevation: 0,
                         ),
                       ),
