@@ -1368,14 +1368,18 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: GoogleFonts.inter(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF111827),
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111827),
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: onToggleEdit,
             child: Container(
@@ -2319,12 +2323,15 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: const Icon(LucideIcons.user, color: Color(0xFF16A34A), size: 15),
               ),
               const SizedBox(width: 8),
-              Text(
-                'Father Information',
-                style: GoogleFonts.inter(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827),
+              Expanded(
+                child: Text(
+                  'Father Information',
+                  style: GoogleFonts.inter(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -2379,12 +2386,15 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: const Icon(LucideIcons.heart, color: Color(0xFFDB2777), size: 15),
               ),
               const SizedBox(width: 8),
-              Text(
-                'Mother Information (Maiden Name)',
-                style: GoogleFonts.inter(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827),
+              Expanded(
+                child: Text(
+                  'Mother Information (Maiden Name)',
+                  style: GoogleFonts.inter(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -2403,7 +2413,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               Expanded(
                 child: _buildTextField(
                   controller: _motherMiddleNameController,
-                  label: 'Maiden Middle Name (Optional)',
+                  label: 'Maiden Middle Name',
                   hint: 'e.g. Gomez',
                 ),
               ),
@@ -2439,12 +2449,15 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: const Icon(LucideIcons.shieldCheck, color: Color(0xFF2563EB), size: 15),
               ),
               const SizedBox(width: 8),
-              Text(
-                'Guardian Information',
-                style: GoogleFonts.inter(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827),
+              Expanded(
+                child: Text(
+                  'Guardian Information',
+                  style: GoogleFonts.inter(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -2584,7 +2597,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               Expanded(
                 child: _buildTextField(
                   controller: _guardianRelationshipController,
-                  label: 'Relationship to Scholar *',
+                  label: 'Relationship *',
                   hint: 'e.g. Mother / Father / Aunt',
                 ),
               ),
@@ -2616,12 +2629,15 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: const Icon(LucideIcons.users, color: Color(0xFFD97706), size: 15),
               ),
               const SizedBox(width: 8),
-              Text(
-                'Siblings Information',
-                style: GoogleFonts.inter(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827),
+              Expanded(
+                child: Text(
+                  'Siblings Information',
+                  style: GoogleFonts.inter(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -3023,8 +3039,20 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: enabled ? const Color(0xFF111827) : const Color(0xFF6B7280))),
-            if (!enabled)
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: enabled ? const Color(0xFF111827) : const Color(0xFF6B7280),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (!enabled) ...[
+              const SizedBox(width: 4),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -3033,6 +3061,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   Text('Locked', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFFD97706))),
                 ],
               ),
+            ],
           ],
         ),
         const SizedBox(height: 6),
