@@ -644,15 +644,18 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         }
 
         // 3. Update scholar row in database
-        final verifiedIdFirstName = _idExtractResult?.extractedFirstName.isNotEmpty == true
-            ? _idExtractResult!.extractedFirstName
-            : _regFirstName;
-        final verifiedIdMiddleName = _idExtractResult?.extractedMiddleName.isNotEmpty == true
-            ? _idExtractResult!.extractedMiddleName
-            : '';
-        final verifiedIdLastName = _idExtractResult?.extractedLastName.isNotEmpty == true
-            ? _idExtractResult!.extractedLastName
-            : _regLastName;
+        final verifiedIdFirstName = FaceVerificationService.cleanExtractedName(
+            _idExtractResult?.extractedFirstName.isNotEmpty == true
+                ? _idExtractResult!.extractedFirstName
+                : _regFirstName);
+        final verifiedIdMiddleName = FaceVerificationService.cleanExtractedName(
+            _idExtractResult?.extractedMiddleName.isNotEmpty == true
+                ? _idExtractResult!.extractedMiddleName
+                : '');
+        final verifiedIdLastName = FaceVerificationService.cleanExtractedName(
+            _idExtractResult?.extractedLastName.isNotEmpty == true
+                ? _idExtractResult!.extractedLastName
+                : _regLastName);
         final verifiedIdFullName = [verifiedIdFirstName, verifiedIdMiddleName, verifiedIdLastName].where((s) => s.isNotEmpty).join(' ');
         final verifiedIdBirthDate = _idExtractResult?.extractedBirthDate.isNotEmpty == true
             ? _idExtractResult!.extractedBirthDate

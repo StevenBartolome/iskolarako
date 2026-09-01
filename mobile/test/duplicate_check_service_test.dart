@@ -334,6 +334,45 @@ void main() {
         expect(integrity.isTampered, isFalse);
       });
 
+      test("Philippine ID Template Label Scenario: Verified ID 'LANIE MAE GITNANG APELYIDO DELA CRUZ' vs Profile 'lanie mae dela cruz' MUST BE ALLOWED", () {
+        final scholar = {
+          'face_verification_status': 'verified',
+          'verified_id_name': 'LANIE MAE GITNANG APELYIDO DELA CRUZ',
+          'first_name': 'lanie mae',
+          'middle_name': '',
+          'last_name': 'dela cruz',
+        };
+
+        final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+        expect(integrity.isTampered, isFalse);
+      });
+
+      test("Philippine ID Combined Label Scenario: Verified ID 'LANIE MAE GITNANG APELYIDO / MIDDLE NAME DELA CRUZ' vs Profile 'lanie mae dela cruz' MUST BE ALLOWED", () {
+        final scholar = {
+          'face_verification_status': 'verified',
+          'verified_id_name': 'LANIE MAE GITNANG APELYIDO / MIDDLE NAME DELA CRUZ',
+          'first_name': 'lanie mae',
+          'middle_name': '',
+          'last_name': 'dela cruz',
+        };
+
+        final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+        expect(integrity.isTampered, isFalse);
+      });
+
+      test("Blank Middle Name Placeholder Scenario: Verified ID 'LANIE MAE DELA CRUZ (N/A)' vs Profile 'lanie mae dela cruz' MUST BE ALLOWED", () {
+        final scholar = {
+          'face_verification_status': 'verified',
+          'verified_id_name': 'LANIE MAE DELA CRUZ (N/A)',
+          'first_name': 'lanie mae',
+          'middle_name': '',
+          'last_name': 'dela cruz',
+        };
+
+        final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+        expect(integrity.isTampered, isFalse);
+      });
+
       test("Multi-word Surname Scenario: Verified ID 'MARK PULONG BARIT' vs Profile 'Mark' / 'Pulong Barit' MUST BE ALLOWED", () {
         final scholar = {
           'face_verification_status': 'verified',

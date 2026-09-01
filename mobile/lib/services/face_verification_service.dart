@@ -1103,8 +1103,9 @@ IMPORTANT: The front and back sides have already been confirmed valid during the
 
 Your tasks are:
 1. Extract the owner's details from the FRONT of the ID (Image 1):
-   - First Name
-   - Last Name
+   - First Name (Given Names / Mga Pangalan)
+   - Middle Name (Gitnang Apelyido) - CRITICAL: If the person has NO middle name, or if the field under 'Gitnang Apelyido' is blank/empty/dash on the ID card, return an empty string "" for extracted_middle_name. DO NOT return the header or field label itself (e.g., do NOT return "Gitnang Apelyido", "Middle Name", "Apelyido", "None", "N/A").
+   - Last Name (Surname / Apelyido)
    - ID Number / Document Number / Student Number
 2. Compare the extracted details against the applicant's registered details in our system:
    - Registered First Name: "$regFirstName"
@@ -1833,6 +1834,77 @@ Return ONLY raw JSON (no markdown, no backticks):
     return null;
   }
 
+  /// Cleans and sanitizes names extracted from IDs by removing printed field labels,
+  /// headers, or placeholder values (e.g. "Gitnang Apelyido", "Middle Name", "N/A").
+  static String cleanExtractedName(String? raw) {
+    if (raw == null) return '';
+    String clean = raw.trim();
+    if (clean.isEmpty) return '';
+
+    final lower = clean.toLowerCase();
+
+    const placeholderPhrases = [
+      'gitnang apelyido',
+      'middle name',
+      'apelyido',
+      'mga pangalan',
+      'pangalan',
+      'first name',
+      'given name',
+      'given names',
+      'last name',
+      'surname',
+      'kasarian',
+      'sex',
+      'petsa ng kapanganakan',
+      'date of birth',
+      'birth date',
+      'tirahan',
+      'address',
+      'walang gitnang apelyido',
+      'no middle name',
+      'not applicable',
+      'none',
+      'n/a',
+      'na',
+      'null',
+      'wala',
+      '-',
+      '--',
+      '---',
+      '.',
+    ];
+
+    for (final phrase in placeholderPhrases) {
+      if (lower == phrase || lower == '($phrase)' || lower == '[$phrase]') {
+        return '';
+      }
+    }
+
+    clean = clean
+        .replaceAll(RegExp(r'\bgitnang\s+apelyido\s*(?:/\s*middle\s+name)?\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bmga\s+pangalan\s*(?:/\s*given\s+names?)?\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bapelyido\s*(?:/\s*last\s+name)?\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bgitnang\s+apelyido\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bmiddle\s+name\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bmga\s+pangalan\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bgiven\s+names?\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bfirst\s+name\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\blast\s+name\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bwalang\s+gitnang\s+apelyido\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bno\s+middle\s+name\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bnot\s+applicable\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bn\s*/\s*a\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bnone\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bnull\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bwala\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'[/\\()\[\]\-_]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    return clean;
+  }
+
   static IdExtractResult? _parseIdVerifyResultFromText(String text, String model) {
     try {
       String cleanText = text.trim();
@@ -1846,9 +1918,9 @@ Return ONLY raw JSON (no markdown, no backticks):
       final parsed = jsonDecode(cleanText);
       final isMatch = parsed['is_match'] == true;
       final confidence = double.tryParse(parsed['confidence']?.toString() ?? '0') ?? 0.0;
-      final extFirst = parsed['extracted_first_name']?.toString() ?? '';
-      final extMiddle = parsed['extracted_middle_name']?.toString() ?? '';
-      final extLast = parsed['extracted_last_name']?.toString() ?? '';
+      final extFirst = cleanExtractedName(parsed['extracted_first_name']?.toString());
+      final extMiddle = cleanExtractedName(parsed['extracted_middle_name']?.toString());
+      final extLast = cleanExtractedName(parsed['extracted_last_name']?.toString());
       final extBirth = parsed['extracted_birth_date']?.toString() ?? '';
       final extIdNo = parsed['extracted_id_number']?.toString() ?? '';
       final List<String> mismatched = (parsed['mismatched_fields'] as List?)
@@ -1885,8 +1957,9 @@ Return ONLY raw JSON (no markdown, no backticks):
     final List<String> matchReasons = [];
     final List<String> mismatchReasons = [];
 
-    final String extFirst = rawResult.extractedFirstName.trim();
-    final String extLast = rawResult.extractedLastName.trim();
+    final String extFirst = cleanExtractedName(rawResult.extractedFirstName);
+    final String extMiddle = cleanExtractedName(rawResult.extractedMiddleName);
+    final String extLast = cleanExtractedName(rawResult.extractedLastName);
     final String extBirth = rawResult.extractedBirthDate.trim();
 
     // 1. Validate First Name
@@ -1907,8 +1980,6 @@ Return ONLY raw JSON (no markdown, no backticks):
       matchReasons.add('Last Name matched.');
     }
 
-
-
     final bool isFinalMatch = mismatches.isEmpty && rawResult.isMatch;
 
     final String combinedReason = mismatches.isNotEmpty
@@ -1919,7 +1990,7 @@ Return ONLY raw JSON (no markdown, no backticks):
       isMatch: isFinalMatch,
       confidence: mismatches.isEmpty ? rawResult.confidence : 0.0,
       extractedFirstName: extFirst,
-      extractedMiddleName: rawResult.extractedMiddleName,
+      extractedMiddleName: extMiddle,
       extractedLastName: extLast,
       extractedBirthDate: extBirth,
       extractedIdNumber: rawResult.extractedIdNumber,

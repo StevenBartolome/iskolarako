@@ -71,6 +71,38 @@ class DuplicateCheckService {
     }
   }
 
+  /// Cleans and removes ID form headers, field labels, and placeholder artifacts
+  /// (e.g. "Gitnang Apelyido", "Middle Name", "Mga Pangalan", "N/A") that OCR/AI models
+  /// may extract when an ID field is blank or contains printed template text.
+  static String cleanVerifiedIdName(String? raw) {
+    if (raw == null) return '';
+    String clean = raw.trim();
+    if (clean.isEmpty) return '';
+
+    clean = clean
+        .replaceAll(RegExp(r'\bgitnang\s+apelyido\s*(?:/\s*middle\s+name)?\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bmga\s+pangalan\s*(?:/\s*given\s+names?)?\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bapelyido\s*(?:/\s*last\s+name)?\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bgitnang\s+apelyido\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bmiddle\s+name\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bmga\s+pangalan\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bgiven\s+names?\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bfirst\s+name\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\blast\s+name\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bwalang\s+gitnang\s+apelyido\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bno\s+middle\s+name\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bnot\s+applicable\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bn\s*/\s*a\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bnone\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bnull\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bwala\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'[/\\()\[\]\-_]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    return clean;
+  }
+
   /// Normalize text: lowercase, trimmed, collapsed whitespace
   static String _normalize(String? s) {
     if (s == null) return '';
@@ -315,7 +347,11 @@ class DuplicateCheckService {
       return ProfileIntegrityResult.valid;
     }
 
-    final idNorm = _normalize(verifiedIdName);
+    final rawVerifiedName = verifiedIdName;
+    final cleanedVerifiedName = cleanVerifiedIdName(rawVerifiedName);
+    final effectiveVerifiedName = cleanedVerifiedName.isNotEmpty ? cleanedVerifiedName : rawVerifiedName;
+
+    final idNorm = _normalize(effectiveVerifiedName);
     if (idNorm.isEmpty) return ProfileIntegrityResult.valid;
 
     final currNormFull = _normalize(currentFullName);
@@ -421,22 +457,22 @@ class DuplicateCheckService {
 
     // If surname does not match and is not a legitimate married woman transition:
     if (!surnameMatches && !marriedMaidenMatches) {
-      final reason = 'Profile changing detected: Declared surname ($currLast) differs from verified ID ($verifiedIdName).';
+      final reason = 'Profile changing detected: Declared surname ($currLast) differs from verified ID ($effectiveVerifiedName).';
       return ProfileIntegrityResult(
         isTampered: true,
         reason: reason,
-        verifiedIdName: verifiedIdName,
+        verifiedIdName: effectiveVerifiedName,
         currentProfileName: currentFullName,
       );
     }
 
     // If first name does not match at all:
     if (!firstMatches) {
-      final reason = 'Profile changing detected: Declared first name ($currFirst) differs from verified ID ($verifiedIdName).';
+      final reason = 'Profile changing detected: Declared first name ($currFirst) differs from verified ID ($effectiveVerifiedName).';
       return ProfileIntegrityResult(
         isTampered: true,
         reason: reason,
-        verifiedIdName: verifiedIdName,
+        verifiedIdName: effectiveVerifiedName,
         currentProfileName: currentFullName,
       );
     }
