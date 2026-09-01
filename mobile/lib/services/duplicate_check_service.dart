@@ -290,6 +290,18 @@ class DuplicateCheckService {
     final idNorm = _normalize(verifiedIdName);
     if (idNorm.isEmpty) return ProfileIntegrityResult.valid;
 
+    final currNormFull = _normalize(currentFullName);
+    if (currNormFull == idNorm) {
+      return ProfileIntegrityResult.valid;
+    }
+
+    // Compare set of tokens regardless of field splitting (e.g. compound surname or middle name in last_name)
+    final currTokens = currNormFull.replaceAll(RegExp(r'[^a-z\s]'), ' ').split(RegExp(r'\s+')).where((t) => t.length > 1).toSet();
+    final idNormTokens = idNorm.replaceAll(RegExp(r'[^a-z\s]'), ' ').split(RegExp(r'\s+')).where((t) => t.length > 1).toSet();
+    if (currTokens.length == idNormTokens.length && currTokens.containsAll(idNormTokens)) {
+      return ProfileIntegrityResult.valid;
+    }
+
     final idTokens = idNorm.replaceAll(RegExp(r'[^a-z\s]'), ' ').split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
     if (idTokens.isEmpty) return ProfileIntegrityResult.valid;
 
@@ -357,6 +369,14 @@ class DuplicateCheckService {
               final midTokens = currMiddle.split(RegExp(r'\s+')).where((t) => t.length > 1);
               for (final m in midTokens) {
                 if (m == idT || idT.contains(m) || m.contains(idT) || _nameSimilarity(m, idT) >= 0.80) {
+                  idTokenMatched = true;
+                  break;
+                }
+              }
+            }
+            if (!idTokenMatched) {
+              for (final l in lastTokens) {
+                if (l == idT || idT.contains(l) || l.contains(idT) || _nameSimilarity(l, idT) >= 0.80) {
                   idTokenMatched = true;
                   break;
                 }

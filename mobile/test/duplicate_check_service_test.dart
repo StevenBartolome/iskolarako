@@ -320,6 +320,45 @@ void main() {
         final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
         expect(integrity.isTampered, isFalse);
       });
+
+      test("Identical Name Scenario: Verified ID 'LANIE MAE DELA CRUZ' vs Profile 'lanie mae dela cruz' MUST BE ALLOWED", () {
+        final scholar = {
+          'face_verification_status': 'verified',
+          'verified_id_name': 'LANIE MAE DELA CRUZ',
+          'first_name': 'lanie mae',
+          'middle_name': '',
+          'last_name': 'dela cruz',
+        };
+
+        final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+        expect(integrity.isTampered, isFalse);
+      });
+
+      test("Multi-word Surname Scenario: Verified ID 'MARK PULONG BARIT' vs Profile 'Mark' / 'Pulong Barit' MUST BE ALLOWED", () {
+        final scholar = {
+          'face_verification_status': 'verified',
+          'verified_id_name': 'MARK PULONG BARIT',
+          'first_name': 'Mark',
+          'middle_name': '',
+          'last_name': 'Pulong Barit',
+        };
+
+        final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+        expect(integrity.isTampered, isFalse);
+      });
+
+      test("Standard 3-Field Name Scenario: Verified ID 'MARK REYES CRUZ' vs Profile First 'Mark', Middle 'Reyes', Last 'Cruz' MUST BE ALLOWED", () {
+        final scholar = {
+          'face_verification_status': 'verified',
+          'verified_id_name': 'MARK REYES CRUZ',
+          'first_name': 'Mark',
+          'middle_name': 'Reyes',
+          'last_name': 'Cruz',
+        };
+
+        final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+        expect(integrity.isTampered, isFalse);
+      });
     });
   });
 }
