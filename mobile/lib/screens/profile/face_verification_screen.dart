@@ -524,10 +524,13 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         final verifiedIdFirstName = _idExtractResult?.extractedFirstName.isNotEmpty == true
             ? _idExtractResult!.extractedFirstName
             : _regFirstName;
+        final verifiedIdMiddleName = _idExtractResult?.extractedMiddleName.isNotEmpty == true
+            ? _idExtractResult!.extractedMiddleName
+            : '';
         final verifiedIdLastName = _idExtractResult?.extractedLastName.isNotEmpty == true
             ? _idExtractResult!.extractedLastName
             : _regLastName;
-        final verifiedIdFullName = '$verifiedIdFirstName $verifiedIdLastName'.trim();
+        final verifiedIdFullName = [verifiedIdFirstName, verifiedIdMiddleName, verifiedIdLastName].where((s) => s.isNotEmpty).join(' ');
         final verifiedIdBirthDate = _idExtractResult?.extractedBirthDate.isNotEmpty == true
             ? _idExtractResult!.extractedBirthDate
             : _regBirthDate;
@@ -539,6 +542,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         final verifiedIdData = {
           'id_full_name': verifiedIdFullName,
           'id_first_name': verifiedIdFirstName,
+          'id_middle_name': verifiedIdMiddleName,
           'id_last_name': verifiedIdLastName,
           'id_birth_date': verifiedIdBirthDate,
           'id_type': resolvedIdType,

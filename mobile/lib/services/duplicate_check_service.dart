@@ -179,16 +179,30 @@ class DuplicateCheckService {
         (candFirst.isNotEmpty && normFirst.isNotEmpty && (candFirst.contains(normFirst) || normFirst.contains(candFirst))) ||
         _nameSimilarity(candFirst, normFirst) >= 0.75;
 
-    // Check Last / Middle Name links
+    // Check Last / Middle Name links (including Middle Initial matching e.g. "M." / "M" vs "Mendoza")
+    final cleanCandMiddle = candMiddle.replaceAll('.', '').trim();
+    final cleanNormMiddle = normMiddle.replaceAll('.', '').trim();
+    final bool hasMiddleInitialMatch = (cleanCandMiddle.length == 1 && cleanNormMiddle.startsWith(cleanCandMiddle)) ||
+        (cleanNormMiddle.length == 1 && cleanCandMiddle.startsWith(cleanNormMiddle));
+
     final hasLastMatch = candLast.isNotEmpty && normLast.isNotEmpty &&
         (candLast == normLast || _nameSimilarity(candLast, normLast) >= 0.75);
     final hasMiddleMatch = candMiddle.isNotEmpty && normMiddle.isNotEmpty &&
-        (candMiddle == normMiddle || _nameSimilarity(candMiddle, normMiddle) >= 0.75);
+        (candMiddle == normMiddle || hasMiddleInitialMatch || _nameSimilarity(candMiddle, normMiddle) >= 0.75);
 
     // Maiden Surname -> Married Middle Name / Surname link
     final hasMaidenOrMiddleLink = (candLast.isNotEmpty && (candLast == normMiddle || candMiddle == normLast)) ||
         (normLast.isNotEmpty && (normLast == candMiddle || normMiddle == candLast)) ||
         (candMiddle.isNotEmpty && candMiddle == normMiddle);
+
+    // Check if middle names are explicitly DIFFERENT (e.g. Mendoza vs Martez) and not a married maiden surname transition
+    final hasExplicitDifferentMiddle = candMiddle.isNotEmpty && normMiddle.isNotEmpty && !hasMiddleMatch && !hasMaidenOrMiddleLink;
+
+    // If middle names are explicitly different (2 distinct Mother's Maiden Surnames),
+    // they represent 2 different legal individuals (e.g. Juan Mendoza Dela Cruz vs Juan Martez Dela Cruz)
+    if (hasExplicitDifferentMiddle) {
+      return false;
+    }
 
     // ─── RULE 1: SAME BIRTH DATE + SHARED FIRST NAME ───
     if (hasBirthMatch && hasSharedFirst) {
@@ -212,9 +226,12 @@ class DuplicateCheckService {
       return true;
     }
 
-    // ─── RULE 4: EXACT FULL NAME MATCH (First + Last) + (Same Birth OR Same Phone OR Same Middle OR Null Date) ───
-    if (hasLastMatch && (candFirst == normFirst || _nameSimilarity(candFirst, normFirst) >= 0.85)) {
-      if (hasBirthMatch || hasPhoneMatch || hasMiddleMatch || normBirthDate == null || candBirth == null) {
+    // ─── RULE 4: EXACT FULL NAME MATCH (First + Last Name) ───
+    // Prevent birthday alteration evasion when legal First + Last name matches and middle names don't conflict
+    final bool hasExactFirstAndLast = hasLastMatch && (candFirst == normFirst || _nameSimilarity(candFirst, normFirst) >= 0.85);
+    if (hasExactFirstAndLast) {
+      // If middle names match or one/both omitted, exact full name match is blocked as duplicate
+      if (hasMiddleMatch || candMiddle.isEmpty || normMiddle.isEmpty || hasBirthMatch || hasPhoneMatch) {
         return true;
       }
     }
@@ -303,15 +320,53 @@ class DuplicateCheckService {
       }
     }
 
-    // 3. Check First Name Match:
-    bool firstMatches = false;
-    if (idGiven.isEmpty) {
-      firstMatches = true;
-    } else {
-      for (final f in firstTokens) {
-        if (idGivenTokens.contains(f) || idGiven.contains(f) || _nameSimilarity(currFirst, idGiven) >= 0.80) {
-          firstMatches = true;
-          break;
+    // 3. Check First Name Match (Bi-directional given name completeness):
+    bool firstMatches = true;
+    if (idGiven.isNotEmpty) {
+      if (currFirst == idGiven || _nameSimilarity(currFirst, idGiven) >= 0.90) {
+        firstMatches = true;
+      } else if (firstTokens.isEmpty) {
+        firstMatches = false;
+      } else {
+        // 3A. Check for foreign declared tokens (e.g. "joseph" when ID is "mark steven")
+        for (final f in firstTokens) {
+          bool tokenMatched = false;
+          for (final idT in idGivenTokens) {
+            if (f == idT || idT.contains(f) || f.contains(idT) || _nameSimilarity(f, idT) >= 0.80) {
+              tokenMatched = true;
+              break;
+            }
+          }
+          if (!tokenMatched) {
+            firstMatches = false;
+            break;
+          }
+        }
+
+        // 3B. Check for omitted ID given tokens (e.g. "mark" when ID is "mark steven")
+        if (firstMatches && !marriedMaidenMatches) {
+          for (final idT in idGivenTokens) {
+            bool idTokenMatched = false;
+            for (final f in firstTokens) {
+              if (f == idT || idT.contains(f) || f.contains(idT) || _nameSimilarity(f, idT) >= 0.80) {
+                idTokenMatched = true;
+                break;
+              }
+            }
+            if (!idTokenMatched && currMiddle.isNotEmpty) {
+              final midTokens = currMiddle.split(RegExp(r'\s+')).where((t) => t.length > 1);
+              for (final m in midTokens) {
+                if (m == idT || idT.contains(m) || m.contains(idT) || _nameSimilarity(m, idT) >= 0.80) {
+                  idTokenMatched = true;
+                  break;
+                }
+              }
+            }
+            if (!idTokenMatched) {
+              firstMatches = false;
+              break;
+            }
+          }
         }
       }
     }

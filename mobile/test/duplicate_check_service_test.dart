@@ -111,6 +111,91 @@ void main() {
         expect(isDup, isFalse);
       });
 
+      test("Evasion Attempt Scenario: Exact same full name ('Juan Mendoza Dela Cruz') with altered birth date MUST BE BLOCKED as duplicate", () {
+        final isDup = DuplicateCheckService.isIdentityDuplicateForTesting(
+          candFirst: 'Juan',
+          candMiddle: 'Mendoza',
+          candLast: 'Dela Cruz',
+          candBirth: '2005-10-10',
+          candPhone: '09170001122',
+          normFirst: 'Juan',
+          normMiddle: 'Mendoza',
+          normLast: 'Dela Cruz',
+          normBirthDate: '2002-05-15',
+          normPhone: '09171234567',
+        );
+
+        expect(isDup, isTrue);
+      });
+
+      test("Evasion Attempt Scenario: Omitted middle name ('Juan Dela Cruz') with altered birth date MUST BE BLOCKED as duplicate", () {
+        final isDup = DuplicateCheckService.isIdentityDuplicateForTesting(
+          candFirst: 'Juan',
+          candMiddle: '',
+          candLast: 'Dela Cruz',
+          candBirth: '2005-10-10',
+          candPhone: '09170001122',
+          normFirst: 'Juan',
+          normMiddle: 'Mendoza',
+          normLast: 'Dela Cruz',
+          normBirthDate: '2002-05-15',
+          normPhone: '09171234567',
+        );
+
+        expect(isDup, isTrue);
+      });
+
+      test("Middle Initial Matching: Declared 'Juan Mendoza Dela Cruz' vs ID 'Juan M. Dela Cruz' with same birth date MUST BE MATCHED as duplicate", () {
+        final isDup = DuplicateCheckService.isIdentityDuplicateForTesting(
+          candFirst: 'Juan',
+          candMiddle: 'M.',
+          candLast: 'Dela Cruz',
+          candBirth: '2002-05-15',
+          candPhone: '09171234567',
+          normFirst: 'Juan',
+          normMiddle: 'Mendoza',
+          normLast: 'Dela Cruz',
+          normBirthDate: '2002-05-15',
+          normPhone: '09171234567',
+        );
+
+        expect(isDup, isTrue);
+      });
+
+      test("Middle Initial Conflict: Declared 'Juan M. Dela Cruz' vs 'Juan S. Dela Cruz' with altered birth date MUST BE ALLOWED as distinct individuals", () {
+        final isDup = DuplicateCheckService.isIdentityDuplicateForTesting(
+          candFirst: 'Juan',
+          candMiddle: 'M.',
+          candLast: 'Dela Cruz',
+          candBirth: '2003-04-12',
+          candPhone: '09170001122',
+          normFirst: 'Juan',
+          normMiddle: 'S.',
+          normLast: 'Dela Cruz',
+          normBirthDate: '2002-05-15',
+          normPhone: '09171234567',
+        );
+
+        expect(isDup, isFalse);
+      });
+
+      test("Two People Same Name Scenario: Same First & Last Name but DIFFERENT Middle Name ('Juan Mendoza Dela Cruz' vs 'Juan Martez Dela Cruz') MUST BE ALLOWED", () {
+        final isDup = DuplicateCheckService.isIdentityDuplicateForTesting(
+          candFirst: 'Juan',
+          candMiddle: 'Martez',
+          candLast: 'Dela Cruz',
+          candBirth: '2003-04-12',
+          candPhone: '09170001122',
+          normFirst: 'Juan',
+          normMiddle: 'Mendoza',
+          normLast: 'Dela Cruz',
+          normBirthDate: '2002-05-15',
+          normPhone: '09171234567',
+        );
+
+        expect(isDup, isFalse);
+      });
+
       test('Different Person Scenario: Completely different names and birth dates is NOT duplicate', () {
         final isDup = DuplicateCheckService.isIdentityDuplicateForTesting(
           candFirst: 'Juan',
@@ -175,6 +260,34 @@ void main() {
           'first_name': 'Steven',
           'middle_name': 'Bartolome',
           'last_name': 'Mendoza',
+        };
+
+        final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+        expect(integrity.isTampered, isTrue);
+        expect(integrity.verifiedIdName, 'Mark Steven Bartolome');
+      });
+
+      test("User Discrepancy Scenario: Verified ID 'Mark Steven Bartolome' vs Profile 'Mark Joseph Bartolome' MUST BE BLOCKED (First name tampered)", () {
+        final scholar = {
+          'face_verification_status': 'verified',
+          'verified_id_name': 'Mark Steven Bartolome',
+          'first_name': 'Mark Joseph',
+          'middle_name': '',
+          'last_name': 'Bartolome',
+        };
+
+        final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
+        expect(integrity.isTampered, isTrue);
+        expect(integrity.verifiedIdName, 'Mark Steven Bartolome');
+      });
+
+      test("User Discrepancy Scenario: Verified ID 'Mark Steven Bartolome' vs Profile 'Mark Bartolome' MUST BE BLOCKED (Omitted second given name)", () {
+        final scholar = {
+          'face_verification_status': 'verified',
+          'verified_id_name': 'Mark Steven Bartolome',
+          'first_name': 'Mark',
+          'middle_name': '',
+          'last_name': 'Bartolome',
         };
 
         final integrity = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);

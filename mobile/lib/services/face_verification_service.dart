@@ -1022,6 +1022,7 @@ Return ONLY raw JSON (no markdown, no backticks):
   "is_match": true or false,
   "confidence": 0.0 to 1.0,
   "extracted_first_name": "...",
+  "extracted_middle_name": "...",
   "extracted_last_name": "...",
   "extracted_birth_date": "N/A",
   "extracted_id_number": "...",
@@ -1746,6 +1747,7 @@ Return ONLY raw JSON (no markdown, no backticks):
       final isMatch = parsed['is_match'] == true;
       final confidence = double.tryParse(parsed['confidence']?.toString() ?? '0') ?? 0.0;
       final extFirst = parsed['extracted_first_name']?.toString() ?? '';
+      final extMiddle = parsed['extracted_middle_name']?.toString() ?? '';
       final extLast = parsed['extracted_last_name']?.toString() ?? '';
       final extBirth = parsed['extracted_birth_date']?.toString() ?? '';
       final extIdNo = parsed['extracted_id_number']?.toString() ?? '';
@@ -1758,6 +1760,7 @@ Return ONLY raw JSON (no markdown, no backticks):
         isMatch: isMatch,
         confidence: confidence,
         extractedFirstName: extFirst,
+        extractedMiddleName: extMiddle,
         extractedLastName: extLast,
         extractedBirthDate: extBirth,
         extractedIdNumber: extIdNo,
@@ -1816,6 +1819,7 @@ Return ONLY raw JSON (no markdown, no backticks):
       isMatch: isFinalMatch,
       confidence: mismatches.isEmpty ? rawResult.confidence : 0.0,
       extractedFirstName: extFirst,
+      extractedMiddleName: rawResult.extractedMiddleName,
       extractedLastName: extLast,
       extractedBirthDate: extBirth,
       extractedIdNumber: rawResult.extractedIdNumber,
@@ -1869,6 +1873,7 @@ class IdExtractResult {
   final bool isMatch;
   final double confidence;
   final String extractedFirstName;
+  final String extractedMiddleName;
   final String extractedLastName;
   final String extractedBirthDate;
   final String extractedIdNumber;
@@ -1880,6 +1885,7 @@ class IdExtractResult {
     required this.isMatch,
     required this.confidence,
     required this.extractedFirstName,
+    this.extractedMiddleName = '',
     required this.extractedLastName,
     required this.extractedBirthDate,
     required this.extractedIdNumber,
