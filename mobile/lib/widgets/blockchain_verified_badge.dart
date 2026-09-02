@@ -101,23 +101,54 @@ class _BlockchainVerifiedBadgeState extends State<BlockchainVerifiedBadge> {
     }
   }
 
+  String _formatCurrency(double amount) {
+    final parts = amount.toStringAsFixed(2).split('.');
+    final intPart = parts[0].replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '₱$intPart.${parts[1]}';
+  }
+
   void _showTamperDialog() {
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 16, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
           title: Row(
             children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
-              const SizedBox(width: 8),
-              Text(
-                'Audit Discrepancy',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red.shade900,
-                  fontSize: 18,
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Color(0xFFDC2626),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Audit Discrepancy',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF991B1B),
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 20, color: Color(0xFF9CA3AF)),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => Navigator.pop(dialogContext),
               ),
             ],
           ),
@@ -129,37 +160,43 @@ class _BlockchainVerifiedBadgeState extends State<BlockchainVerifiedBadge> {
                 'A verification discrepancy has been detected for this transaction. The app database values do not align with the cryptographically sealed Polygon blockchain receipt.',
                 style: GoogleFonts.inter(
                   fontSize: 13,
-                  height: 1.4,
-                  color: Colors.grey.shade800,
+                  height: 1.45,
+                  color: const Color(0xFF4B5563),
                 ),
               ),
               const SizedBox(height: 16),
               Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade50.withAlpha(150),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.red.shade100),
+                  color: const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFECACA)),
                 ),
                 child: Table(
                   columnWidths: const {
-                    0: FlexColumnWidth(1.2),
-                    1: FlexColumnWidth(1.4),
-                    2: FlexColumnWidth(1.4),
+                    0: FlexColumnWidth(0.9),
+                    1: FlexColumnWidth(1.55),
+                    2: FlexColumnWidth(1.55),
                   },
+                  border: const TableBorder(
+                    horizontalInside: BorderSide(
+                      color: Color(0xFFFEE2E2),
+                      width: 1,
+                    ),
+                  ),
                   children: [
                     TableRow(
                       children: [
                         _buildCell('Field', isHeader: true),
-                        _buildCell('Database', isHeader: true),
-                        _buildCell('Blockchain', isHeader: true),
+                        _buildCell('Database', isHeader: true, isDestructive: true),
+                        _buildCell('Blockchain', isHeader: true, isGreen: true),
                       ],
                     ),
                     TableRow(
                       children: [
                         _buildCell('Amount'),
-                        _buildCell('₱${widget.dbAmount.toStringAsFixed(2)}', isDestructive: true),
-                        _buildCell('₱${(_onChainAmount ?? widget.dbAmount).toStringAsFixed(2)}', isGreen: true),
+                        _buildCell(_formatCurrency(widget.dbAmount), isDestructive: true),
+                        _buildCell(_formatCurrency(_onChainAmount ?? widget.dbAmount), isGreen: true),
                       ],
                     ),
                     TableRow(
@@ -172,63 +209,103 @@ class _BlockchainVerifiedBadgeState extends State<BlockchainVerifiedBadge> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                '*This transaction is under audit review. Please contact IskoAko support immediately.',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.red.shade800,
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 1),
+                    child: Icon(Icons.info_outline, size: 14, color: Color(0xFFDC2626)),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'This transaction is under audit review. Please contact IskoAko support immediately.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        fontStyle: FontStyle.italic,
+                        color: const Color(0xFFB91C1C),
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _openExplorer();
+                  },
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: Text(
+                    'View Polygon Receipt',
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 38,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF6B7280),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Close',
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Close',
-                style: GoogleFonts.inter(color: Colors.grey.shade700, fontWeight: FontWeight.bold),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade800,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              ),
-              onPressed: () {
-                Navigator.pop(context);
-                _openExplorer();
-              },
-              child: Text(
-                'View Polygon Receipt',
-                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
         );
       },
     );
   }
 
-  Widget _buildCell(String text, {bool isHeader = false, bool isDestructive = false, bool isGreen = false}) {
+  Widget _buildCell(
+    String text, {
+    bool isHeader = false,
+    bool isDestructive = false,
+    bool isGreen = false,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
       child: Text(
         text,
-        overflow: TextOverflow.ellipsis,
+        softWrap: true,
         style: GoogleFonts.inter(
-          fontSize: 11,
-          fontWeight: isHeader ? FontWeight.bold : FontWeight.normal,
+          fontSize: isHeader ? 11.5 : 11,
+          fontWeight: isHeader ? FontWeight.bold : (isDestructive || isGreen ? FontWeight.w600 : FontWeight.w500),
+          height: 1.35,
           color: isHeader
-              ? Colors.grey.shade800
-              : isDestructive
-                  ? Colors.red.shade800
+              ? (isDestructive
+                  ? const Color(0xFFDC2626)
                   : isGreen
-                      ? Colors.green.shade800
-                      : Colors.black87,
+                      ? const Color(0xFF16A34A)
+                      : const Color(0xFF6B7280))
+              : isDestructive
+                  ? const Color(0xFFDC2626)
+                  : isGreen
+                      ? const Color(0xFF16A34A)
+                      : const Color(0xFF1F2937),
         ),
       ),
     );
