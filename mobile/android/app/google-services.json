@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "48553073934",
+    "project_id": "iskolarako-2343f",
+    "storage_bucket": "iskolarako-2343f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:48553073934:android:f17a10775660e948d18b5f",
+        "android_client_info": {
+          "package_name": "com.example.iskoako"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDY3j8XXpFULsWIfZgfmyeH_oe8z7msjuc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

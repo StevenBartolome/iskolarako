@@ -1,156 +1,360 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:iskoako/constants/app_colors.dart';
-import 'package:iskoako/widgets/app_components.dart';
-
-class _ProviderDisbursement {
-  final String providerName;
-  final String scholarshipName;
-  final String amount;
-  final String date;
-  final IconData icon;
-  final String txHash;
-  final List<_DisbursementBreakdownItem> breakdown;
-
-  const _ProviderDisbursement({
-    required this.providerName,
-    required this.scholarshipName,
-    required this.amount,
-    required this.date,
-    required this.icon,
-    required this.txHash,
-    required this.breakdown,
-  });
-}
-
-class _DisbursementBreakdownItem {
-  final String label;
-  final String value;
-
-  const _DisbursementBreakdownItem({required this.label, required this.value});
-}
+import 'package:iskoako/widgets/blockchain_verified_badge.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class FundTrackingScreen extends StatefulWidget {
-  const FundTrackingScreen({super.key});
+  final ValueChanged<int>? onSelectTab;
+  const FundTrackingScreen({super.key, this.onSelectTab});
 
   @override
   State<FundTrackingScreen> createState() => _FundTrackingScreenState();
 }
 
 class _FundTrackingScreenState extends State<FundTrackingScreen> {
-  int? _expandedIndex = 0; // First item expanded by default
+  int? _expandedProgramIndex = 0; // First program expanded by default
+  String _selectedProgramFilter = 'All'; // 'All' or specific program title
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _releasesData = [];
+  RealtimeChannel? _realtimeChannel;
 
-  // Aligned Provider Disbursements List
-  final List<_ProviderDisbursement> _providerDisbursements = [
-    _ProviderDisbursement(
-      providerName: 'CHED',
-      scholarshipName: 'Undergraduate Stipend (Q3)',
-      amount: '₱ 40,000.00',
-      date: 'Oct 15, 2026 · 10:22 AM',
-      icon: LucideIcons.graduationCap,
-      txHash: '0x8fB3c19A2d4eF57b9aC0d2e314aa19bC3f7e9a12',
-      breakdown: [
-        _DisbursementBreakdownItem(label: 'Tuition Support', value: '₱ 20,000.00'),
-        _DisbursementBreakdownItem(label: 'Monthly Stipend (x2)', value: '₱ 16,000.00'),
-        _DisbursementBreakdownItem(label: 'Book Allowance', value: '₱ 4,000.00'),
-      ],
-    ),
-    _ProviderDisbursement(
-      providerName: 'SM Foundation',
-      scholarshipName: 'SM Scholarship Allowance',
-      amount: '₱ 15,000.00',
-      date: 'Jul 15, 2026 · 2:30 PM',
-      icon: LucideIcons.landmark,
-      txHash: '0x7aC2c19B1c4eE57a9bA0d1e314bb19aB3f6c8a24',
-      breakdown: [
-        _DisbursementBreakdownItem(label: 'Monthly Living Allowance', value: '₱ 15,000.00'),
-      ],
-    ),
-    _ProviderDisbursement(
-      providerName: 'DOST-SEI',
-      scholarshipName: 'DOST Book Allowance',
-      amount: '₱ 10,000.00',
-      date: 'Jun 01, 2026 · 9:00 AM',
-      icon: LucideIcons.building,
-      txHash: '0x9eD4c19C3d4fF57b9cB0d3e414cc19cC3f8d9a35',
-      breakdown: [
-        _DisbursementBreakdownItem(label: 'Semester Book stipend', value: '₱ 10,000.00'),
-      ],
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchFundReleases();
+    _subscribeRealtime();
+  }
+
+  @override
+  void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
+    super.dispose();
+  }
+
+  void _subscribeRealtime() {
+    _realtimeChannel = Supabase.instance.client
+        .channel('fund-tracking-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'fund_releases',
+          callback: (payload) {
+            if (mounted) _fetchFundReleases(true);
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar_payment_accounts',
+          callback: (payload) {
+            if (mounted) _fetchFundReleases(true);
+          },
+        );
+    _realtimeChannel?.subscribe();
+  }
+
+  Future<void> _fetchFundReleases([bool silent = false]) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    final List<String> targetScholarIds = [user.id];
+    try {
+      final scholarRow = await Supabase.instance.client
+          .from('scholar')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (scholarRow != null && scholarRow['id'] != null) {
+        final sId = scholarRow['id'].toString();
+        if (!targetScholarIds.contains(sId)) {
+          targetScholarIds.add(sId);
+        }
+      }
+    } catch (sErr) {
+      debugPrint('Scholar ID lookup note: $sErr');
+    }
+
+    try {
+      final response = await Supabase.instance.client
+          .from('fund_releases')
+          .select('''
+            *,
+            scholar:scholar_id(first_name, last_name, school),
+            scholarship_programs:program_id(title, provider:provider_id(name))
+          ''')
+          .filter('scholar_id', 'in', targetScholarIds)
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          _releasesData = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Primary query error, attempting simple select: $e');
+      try {
+        final simpleResponse = await Supabase.instance.client
+            .from('fund_releases')
+            .select('*')
+            .filter('scholar_id', 'in', targetScholarIds)
+            .order('created_at', ascending: false);
+
+        if (mounted) {
+          setState(() {
+            _releasesData = List<Map<String, dynamic>>.from(simpleResponse);
+            _isLoading = false;
+          });
+        }
+      } catch (err) {
+        debugPrint('Error fetching fund releases: $err');
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
+
+  double get _totalDisbursedAmount {
+    double total = 0.0;
+    for (final item in _filteredReleases) {
+      final s = (item['status'] ?? '').toString().toLowerCase();
+      final pmStatus = (item['paymongo_status'] ?? '').toString().toLowerCase();
+      final isCompleted = s == 'released' || s == 'completed' || s == 'paid' || pmStatus == 'paid' || item['blockchain_verified'] == true;
+      final isFailedOrReturned = s == 'failed' || s == 'returned' || s == 'refunded' || pmStatus == 'failed' || pmStatus == 'refunded';
+
+      if (isCompleted && !isFailedOrReturned) {
+        final amt = item['amount'];
+        if (amt != null) {
+          total += (amt is num) ? amt.toDouble() : (double.tryParse(amt.toString()) ?? 0.0);
+        }
+      }
+    }
+    return total;
+  }
+
+
+  List<Map<String, dynamic>> get _filteredReleases {
+    if (_selectedProgramFilter == 'All') {
+      return _releasesData;
+    }
+    return _releasesData.where((r) => _getScholarshipTitle(r) == _selectedProgramFilter).toList();
+  }
+
+  Map<String, List<Map<String, dynamic>>> get _groupedByProgram {
+    final Map<String, List<Map<String, dynamic>>> groups = {};
+    for (final rel in _filteredReleases) {
+      final progTitle = _getScholarshipTitle(rel);
+      if (!groups.containsKey(progTitle)) {
+        groups[progTitle] = [];
+      }
+      groups[progTitle]!.add(rel);
+    }
+    return groups;
+  }
+
+  List<String> get _allProgramTitles {
+    final Set<String> titles = {};
+    for (final r in _releasesData) {
+      titles.add(_getScholarshipTitle(r));
+    }
+    return titles.toList();
+  }
+
+  String _formatAmount(dynamic amount) {
+    if (amount == null) return '₱ 0.00';
+    final double val = (amount is num) ? amount.toDouble() : (double.tryParse(amount.toString()) ?? 0.0);
+    final String formatted = val.toStringAsFixed(2).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+    return '₱ $formatted';
+  }
+
+  String _formatDate(dynamic dateStr) {
+    if (dateStr == null) return 'N/A';
+    try {
+      final dt = DateTime.parse(dateStr.toString()).toLocal();
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} · $hour:$minute $ampm';
+    } catch (_) {
+      return dateStr.toString();
+    }
+  }
+
+  String _getProviderName(Map<String, dynamic> item) {
+    final providerName = item['scholarship_programs']?['provider']?['name'] ??
+        item['program']?['provider']?['name'];
+    if (providerName != null && providerName.toString().isNotEmpty) {
+      return providerName.toString();
+    }
+    return 'Scholarship Provider';
+  }
+
+  String _getScholarshipTitle(Map<String, dynamic> item) {
+    final title = item['scholarship_programs']?['title'] ?? item['program']?['title'];
+    if (title != null && title.toString().isNotEmpty) {
+      return title.toString();
+    }
+    return 'Scholarship Grant';
+  }
+
+  String _getScholarName(Map<String, dynamic> item) {
+    if (item['scholar'] != null && item['scholar'] is Map) {
+      final first = item['scholar']['first_name'] ?? '';
+      final last = item['scholar']['last_name'] ?? '';
+      final fullName = '$first $last'.trim();
+      if (fullName.isNotEmpty) return fullName;
+    }
+    return 'Scholar Recipient';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final programGroups = _groupedByProgram;
+    final programNames = programGroups.keys.toList();
+
     return Scaffold(
+      backgroundColor: const Color(0xFFFAFCFA),
       body: Column(
         children: [
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          _buildHeader(context),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF1E3D2F)),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _fetchFundReleases,
+                    color: const Color(0xFF1E3D2F),
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 8),
+                          _buildHeroAmountCard(),
+                          const SizedBox(height: 16),
+
+                          if (_allProgramTitles.length > 1) ...[
+                            _buildProgramFilterChips(),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (_releasesData.isNotEmpty) ...[
+                            // Header Title for Program Cards
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'PROGRAM DISBURSEMENTS',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF1E3D2F),
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDCFCE7),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${programNames.length} Program${programNames.length > 1 ? 's' : ''}',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF15803D),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Per-Program Cards
+                            ...List.generate(programNames.length, (progIdx) {
+                              final programTitle = programNames[progIdx];
+                              final releasesList = programGroups[programTitle] ?? [];
+                              final isExpanded = _expandedProgramIndex == progIdx;
+
+                              return _buildProgramReleaseCard(
+                                programIndex: progIdx,
+                                programTitle: programTitle,
+                                releases: releasesList,
+                                isExpanded: isExpanded,
+                              );
+                            }),
+
+                            const SizedBox(height: 16),
+                            _buildBlockchainVerificationSection(),
+                          ] else
+                            _buildEmptyState(),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── 1. Header ──────────────────────────────────────────────────────────────
+  Widget _buildHeader(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.diamond_rounded,
-                            size: 14,
-                            color: AppColors.amber,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'DISBURSED FUNDS',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.amberDeep,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ],
+                      const Icon(
+                        LucideIcons.shieldCheck,
+                        size: 14,
+                        color: Color(0xFFD97706),
                       ),
-                      if (Navigator.canPop(context))
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: AppColors.rule, width: 0.8),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primaryDark.withAlpha(10),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                LucideIcons.chevronLeft,
-                                color: AppColors.primary,
-                                size: 20,
-                              ),
-                            ),
-                          ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'DISBURSED FUNDS',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFD97706),
+                          letterSpacing: 1.0,
                         ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
                   Text(
                     'Disbursed\nfunds.',
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.primaryDark,
+                    style: GoogleFonts.inter(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111827),
                       height: 1.15,
                     ),
                   ),
@@ -158,319 +362,480 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
                   Text(
                     'Blockchain-logged transfers & PayMongo receipts',
                     style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
+                      fontSize: 12.5,
+                      color: const Color(0xFF6B7280),
+                      height: 1.35,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-              child: Column(
-                children: [
-                  const SizedBox(height: 8),
-                  _buildHeroAmountCard(),
-                  const SizedBox(height: 16),
-                  _buildTransactionDetails(),
-                  const SizedBox(height: 16),
-                  _buildBlockchainRecord(context),
-                  const SizedBox(height: 20),
-                  _buildLedger(),
-                  _buildScholarsDisbursements(),
-                ],
-              ),
+            Image.asset(
+              'assets/books-hats-icon.png',
+              width: 85,
+              height: 75,
+              fit: BoxFit.contain,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  // ─── 2. Hero Card ──────────────────────────────────────────────────────────
   Widget _buildHeroAmountCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(28),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.primaryDark, AppColors.primaryLight],
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E3D2F), Color(0xFF162E23)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withAlpha(60),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: const Color(0xFF1E3D2F).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
         children: [
-          // Stamp ring
           Container(
-            width: 72,
-            height: 72,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                  color: Colors.white.withAlpha(50), width: 2.5),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 2),
             ),
             child: Center(
               child: Container(
-                width: 52,
-                height: 52,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(18),
+                  color: Colors.white.withValues(alpha: 0.15),
                 ),
-                child: const Icon(LucideIcons.wallet,
-                    color: Colors.white, size: 26),
+                child: const Icon(LucideIcons.wallet, color: Colors.white, size: 22),
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Text(
-            'Total Amount Disbursed',
+            'TOTAL AMOUNT DISBURSED',
             style: GoogleFonts.inter(
-              color: Colors.white.withAlpha(160),
-              fontSize: 11,
-              letterSpacing: 1.5,
-              fontWeight: FontWeight.w500,
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 10.5,
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            '₱ 65,000.00',
-            style: GoogleFonts.dmMono(
-              color: Colors.white,
-              fontSize: 36,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -1,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              _formatAmount(_totalDisbursedAmount),
+              style: GoogleFonts.dmMono(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             'Total Stipends & Grants Released',
             style: GoogleFonts.inter(
-              color: Colors.white.withAlpha(130),
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _HeroBadge(
-                icon: LucideIcons.checkCircle2,
-                label: 'PayMongo Transfer',
-              ),
-              const SizedBox(width: 8),
-              _HeroBadge(
-                icon: LucideIcons.shieldCheck,
-                label: 'Blockchain Logged',
-                isGold: true,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTransactionDetails() {
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Latest Transfer Details',
-            style: GoogleFonts.playfairDisplay(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primaryDark,
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 11.5,
             ),
           ),
           const SizedBox(height: 14),
-          _TxRow(label: 'From', value: 'CHED — Scholarship Fund'),
-          _TxRow(
-              label: 'To', value: 'Juan dela Cruz · BPI ×4821'),
-          _TxRow(
-              label: 'Amount',
-              value: '₱ 40,000.00',
-              valueColor: AppColors.primary,
-              isMono: true),
-          _TxRow(label: 'Date & Time', value: 'Oct 15, 2026 · 10:22 AM'),
-          _TxRow(
-              label: 'Payment via', value: 'PayMongo · Instant Transfer'),
-          _TxRow(
-              label: 'Reference No.',
-              value: 'PM-20261015-84729',
-              isMono: true),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, size: 13, color: Color(0xFF4ADE80)),
+                      const SizedBox(width: 5),
+                      Text(
+                        'PayMongo Direct Route',
+                        style: GoogleFonts.inter(fontSize: 10.5, color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.shieldCheck, size: 13, color: Color(0xFFF59E0B)),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Blockchain Immutable',
+                        style: GoogleFonts.inter(fontSize: 10.5, color: const Color(0xFFF59E0B), fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBlockchainRecord(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
+  // ─── 3. Filter Chips ────────────────────────────────────────────────────────
+  Widget _buildProgramFilterChips() {
+    final filters = ['All', ..._allProgramTitles];
+
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: filters.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final active = _selectedProgramFilter == filters[i];
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedProgramFilter = filters[i];
+                _expandedProgramIndex = 0;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: active ? const Color(0xFF1E3D2F) : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: active ? const Color(0xFF1E3D2F) : const Color(0xFFE5E7EB),
+                  width: 1,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  filters[i],
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    color: active ? Colors.white : const Color(0xFF374151),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ─── 4. Per-Program Release Card ───────────────────────────────────────────
+  Widget _buildProgramReleaseCard({
+    required int programIndex,
+    required String programTitle,
+    required List<Map<String, dynamic>> releases,
+    required bool isExpanded,
+  }) {
+    double programTotal = 0.0;
+    for (final r in releases) {
+      final amt = r['amount'];
+      if (amt != null) {
+        programTotal += (amt is num) ? amt.toDouble() : (double.tryParse(amt.toString()) ?? 0.0);
+      }
+    }
+
+    final firstRelease = releases.first;
+    final providerName = _getProviderName(firstRelease);
+    String providerShort = providerName.split(' ').first;
+    if (providerShort.length > 10) providerShort = providerShort.substring(0, 10);
+    if (providerShort.isEmpty) providerShort = 'DOST';
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color: AppColors.primaryDark,
-        borderRadius: BorderRadius.circular(18),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isExpanded ? const Color(0xFF1E3D2F) : const Color(0xFFE5E7EB),
+          width: isExpanded ? 1.2 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isExpanded
+                ? const Color(0xFF1E3D2F).withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.03),
+            blurRadius: isExpanded ? 12 : 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
+          // Program Header Tap Target
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _expandedProgramIndex = isExpanded ? null : programIndex;
+              });
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(LucideIcons.shieldCheck,
-                      size: 18, color: AppColors.gold),
-                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          providerShort.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF374151),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _formatAmount(programTotal),
+                              style: GoogleFonts.dmMono(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF15803D),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                            size: 18,
+                            color: const Color(0xFF9CA3AF),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   Text(
-                    'LATEST BLOCKCHAIN RECORD',
+                    programTitle,
                     style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.gold,
-                      letterSpacing: 1.2,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$providerName · ${releases.length} Disbursement Release${releases.length > 1 ? 's' : ''}',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      color: const Color(0xFF6B7280),
                     ),
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withAlpha(30),
-                  borderRadius: BorderRadius.circular(8),
-                  border:
-                      Border.all(color: AppColors.gold.withAlpha(80)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                          shape: BoxShape.circle, color: AppColors.gold),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'VERIFIED',
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.gold,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'TRANSACTION HASH',
-            style: GoogleFonts.inter(
-              color: Colors.white.withAlpha(90),
-              fontSize: 9,
-              letterSpacing: 1,
-              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
-          GestureDetector(
-            onLongPress: () {
-              Clipboard.setData(const ClipboardData(
-                  text: '0x8fB3c19A2d4eF57b9aC0d2e314aa19bC3f7e9a12'));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Transaction hash copied to clipboard'),
-                    behavior: SnackBarBehavior.floating),
-              );
-            },
-            child: Text(
-              '0x8fB3c19A2d4eF57b9aC0d2e314aa19bC3f7e9a12',
-              style: GoogleFonts.dmMono(
-                color: Colors.white.withAlpha(170),
-                fontSize: 11,
-                letterSpacing: 0.5,
-                height: 1.4,
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'BLOCK NO.',
-                      style: GoogleFonts.inter(
-                        color: Colors.white.withAlpha(90),
-                        fontSize: 9,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '#18,472,931',
-                      style: GoogleFonts.dmMono(
-                          color: Colors.white.withAlpha(200), fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'NETWORK',
-                      style: GoogleFonts.inter(
-                        color: Colors.white.withAlpha(90),
-                        fontSize: 9,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'IskolarChain PH',
-                      style: GoogleFonts.dmMono(
-                          color: Colors.white.withAlpha(200), fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            height: 1,
-            color: Colors.white.withAlpha(20),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'This record is permanently logged on-chain and cannot be altered. '
-            'Long-press the hash to copy. This serves as your tamper-proof receipt.',
-            style: GoogleFonts.inter(
-              color: Colors.white.withAlpha(80),
-              fontSize: 11,
-              height: 1.5,
+
+          // Smooth Collapsible Content (Prevents character text squeezing)
+          ClipRect(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: isExpanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'TRANSACTION HISTORY (${releases.length})',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF1E3D2F),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: releases.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                                itemBuilder: (ctx, rIdx) {
+                                  final rel = releases[rIdx];
+                                  final amountStr = _formatAmount(rel['amount']);
+                                  final dateStr = _formatDate(rel['created_at']);
+                                  final fundType = (rel['fund_type'] ?? 'STIPEND').toString().toUpperCase();
+                                  final status = (rel['status'] ?? 'released').toString().toLowerCase();
+                                  final paymongoId = rel['paymongo_payment_id']?.toString() ?? 'PayMongo Verified';
+                                  final txHash = rel['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
+
+                                  final isFailed = status == 'failed';
+                                  final isRefunded = status == 'refunded' || status == 'returned';
+
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: isFailed ? const Color(0xFFFDF2F2) : const Color(0xFFFAFCFA),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: isFailed ? const Color(0xFFFEE2E2) : const Color(0xFFE5E7EB),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              width: 34,
+                                              height: 34,
+                                              decoration: BoxDecoration(
+                                                color: isFailed
+                                                    ? const Color(0xFFFEE2E2)
+                                                    : const Color(0xFFDCFCE7),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Center(
+                                                child: Icon(
+                                                  isFailed ? LucideIcons.alertTriangle : LucideIcons.wallet,
+                                                  size: 16,
+                                                  color: isFailed ? const Color(0xFFB91C1C) : const Color(0xFF16A34A),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '$fundType Release',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: const Color(0xFF111827),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    dateStr,
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 10.5,
+                                                      color: const Color(0xFF6B7280),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  amountStr,
+                                                  style: GoogleFonts.dmMono(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: isFailed ? const Color(0xFFB91C1C) : const Color(0xFF1E3D2F),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: isFailed
+                                                        ? const Color(0xFFFEE2E2)
+                                                        : (isRefunded ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7)),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Text(
+                                                    isFailed ? 'Failed' : (isRefunded ? 'Refunded' : 'Released'),
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 9.5,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: isFailed
+                                                          ? const Color(0xFFB91C1C)
+                                                          : (isRefunded ? const Color(0xFFB45309) : const Color(0xFF15803D)),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          'Ref: $paymongoId',
+                                          style: GoogleFonts.dmMono(
+                                            fontSize: 9.5,
+                                            color: const Color(0xFF9CA3AF),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        BlockchainVerifiedBadge(
+                                          txHash: txHash,
+                                          compact: true,
+                                          dbAmount: double.tryParse(rel['amount']?.toString() ?? '0') ?? 0.0,
+                                          dbScholarId: rel['scholar_id']?.toString() ?? '',
+                                          dbScholarName: _getScholarName(rel),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox(width: double.infinity, height: 0),
             ),
           ),
         ],
@@ -478,439 +843,118 @@ class _FundTrackingScreenState extends State<FundTrackingScreen> {
     );
   }
 
-  Widget _buildLedger() {
+  // ─── 5. Blockchain Verification Footer ─────────────────────────────────────
+  Widget _buildBlockchainVerificationSection() {
+    final latest = _releasesData.firstWhere(
+      (r) => r['blockchain_tx_hash'] != null && r['blockchain_tx_hash'].toString().isNotEmpty,
+      orElse: () => _releasesData.first,
+    );
+    final txHash = latest['blockchain_tx_hash']?.toString() ?? 'Pending Hash';
+    final double dbAmount = double.tryParse(latest['amount']?.toString() ?? '0') ?? 0.0;
+    final String dbScholarId = latest['scholar_id']?.toString() ?? '';
+    final String dbScholarName = _getScholarName(latest);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeading(title: 'Transaction Ledger'),
-        const SizedBox(height: 12),
-        AppCard(
-          padding: EdgeInsets.zero,
-          child: ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: 3,
-            separatorBuilder: (_, __) =>
-                Divider(height: 1, color: AppColors.rule),
-            itemBuilder: (_, i) {
-              final isRecent = i == 0;
-              return _LedgerTile(
-                title: _ledgerTitles[i],
-                date: _ledgerDates[i],
-                amount: _ledgerAmounts[i],
-                isRecent: isRecent,
-              );
-            },
+        Text(
+          'LATEST BLOCKCHAIN VERIFICATION',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF1E3D2F),
+            letterSpacing: 0.5,
           ),
+        ),
+        const SizedBox(height: 10),
+        BlockchainVerifiedBadge(
+          txHash: txHash,
+          compact: false,
+          dbAmount: dbAmount,
+          dbScholarId: dbScholarId,
+          dbScholarName: dbScholarName,
         ),
       ],
     );
   }
 
-  Widget _buildScholarsDisbursements() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 24),
-        const SectionHeading(title: 'Disbursements by Provider'),
-        const SizedBox(height: 12),
-        ...List.generate(_providerDisbursements.length, (index) {
-          final item = _providerDisbursements[index];
-          final isExpanded = _expandedIndex == index;
-
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isExpanded ? AppColors.primary : AppColors.rule,
-                width: isExpanded ? 1.2 : 0.8,
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 130,
+              height: 130,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF4F7EB),
+                shape: BoxShape.circle,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: isExpanded
-                      ? AppColors.primary.withAlpha(12)
-                      : Colors.black.withAlpha(5),
-                  blurRadius: isExpanded ? 12 : 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _expandedIndex = isExpanded ? null : index;
-                    });
-                  },
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: isExpanded
-                                ? AppColors.primary.withAlpha(20)
-                                : AppColors.primary.withAlpha(15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              item.icon,
-                              color: AppColors.primary,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.providerName,
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primaryDark,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                item.scholarshipName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                item.date,
-                                style: GoogleFonts.inter(
-                                  fontSize: 9,
-                                  color: AppColors.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  item.amount,
-                                  style: GoogleFonts.dmMono(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Icon(
-                                  isExpanded
-                                      ? LucideIcons.chevronUp
-                                      : LucideIcons.chevronDown,
-                                  size: 18,
-                                  color: AppColors.textMuted,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            StatusChip(
-                              label: 'Released',
-                              type: StatusType.released,
-                            ),
-                          ],
-                        ),
-                      ],
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    LucideIcons.wallet,
+                    size: 56,
+                    color: Color(0xFF1E3D2F),
+                  ),
+                  Positioned(
+                    right: 22,
+                    bottom: 22,
+                    child: Transform.rotate(
+                      angle: 0.4,
+                      child: const Icon(
+                        LucideIcons.leaf,
+                        color: Color(0xFF5BA778),
+                        size: 26,
+                      ),
                     ),
                   ),
-                ),
-                AnimatedCrossFade(
-                  firstChild: const SizedBox.shrink(),
-                  secondChild: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Divider(height: 16, thickness: 0.8),
-                        const SizedBox(height: 8),
-                        Text(
-                          'FUNDS BREAKDOWN',
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        ...item.breakdown.map((b) => Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    b.label,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  Text(
-                                    b.value,
-                                    style: GoogleFonts.dmMono(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )),
-                        const SizedBox(height: 12),
-                        Divider(height: 1, color: AppColors.rule),
-                        const SizedBox(height: 10),
-                        Text(
-                          'TAMPER-PROOF TRANSACTION HASH',
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        GestureDetector(
-                          onLongPress: () {
-                            Clipboard.setData(ClipboardData(text: item.txHash));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Transaction hash copied to clipboard'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceAlt,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppColors.rule),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(LucideIcons.shieldCheck,
-                                    size: 14, color: AppColors.primary),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    item.txHash,
-                                    style: GoogleFonts.dmMono(
-                                      fontSize: 10,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                                const Icon(LucideIcons.copy,
-                                    size: 12, color: AppColors.textMuted),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                  const Positioned(
+                    top: 24,
+                    right: 24,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 16,
                     ),
                   ),
-                  crossFadeState: isExpanded
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  duration: const Duration(milliseconds: 300),
-                ),
-              ],
-            ),
-          );
-        }),
-      ],
-    );
-  }
-}
-
-// ─── Support widgets ─────────────────────────────────────────────────────────
-
-class _HeroBadge extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isGold;
-
-  const _HeroBadge({
-    required this.icon,
-    required this.label,
-    this.isGold = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(18),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withAlpha(35)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon,
-              size: 13,
-              color: isGold ? AppColors.gold : Colors.white.withAlpha(200)),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              color:
-                  isGold ? AppColors.gold : Colors.white.withAlpha(200),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TxRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? valueColor;
-  final bool isMono;
-
-  const _TxRow({
-    required this.label,
-    required this.value,
-    this.valueColor,
-    this.isMono = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.inter(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500),
-          ),
-          Text(
-            value,
-            style: isMono
-                ? GoogleFonts.dmMono(
-                    fontSize: 12,
-                    color: valueColor ?? AppColors.textPrimary,
-                    fontWeight: FontWeight.w500,
-                  )
-                : GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: valueColor ?? AppColors.textPrimary,
+                  const Positioned(
+                    bottom: 30,
+                    left: 20,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 12,
+                    ),
                   ),
-          ),
-        ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No Fund Disbursements Yet',
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111827),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'When providers release scholarship funds, the transaction details and immutable blockchain records will appear here per program.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: const Color(0xFF6B7280),
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
-
-class _LedgerTile extends StatelessWidget {
-  final String title;
-  final String date;
-  final String amount;
-  final bool isRecent;
-
-  const _LedgerTile({
-    required this.title,
-    required this.date,
-    required this.amount,
-    required this.isRecent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: isRecent
-                  ? AppColors.successBg
-                  : AppColors.releasedBg,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              LucideIcons.wallet,
-              size: 20,
-              color:
-                  isRecent ? AppColors.primary : AppColors.released,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 2),
-                Text(date,
-                    style: GoogleFonts.inter(
-                        fontSize: 10, color: AppColors.textSecondary)),
-                const SizedBox(height: 4),
-                const VerifiedBadge(),
-              ],
-            ),
-          ),
-          Text(
-            amount,
-            style: GoogleFonts.dmMono(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppColors.primary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-const _ledgerTitles = [
-  'CHED Merit Stipend',
-  'SM Foundation Stipend',
-  'DOST Book Allowance',
-];
-const _ledgerDates = ['Oct 15, 2026', 'Jul 15, 2026', 'Jun 01, 2026'];
-const _ledgerAmounts = ['+₱40,000', '+₱15,000', '+₱10,000'];

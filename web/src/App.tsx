@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { HomePage } from '@/pages/home/HomePage';
@@ -10,7 +11,8 @@ import { ImpactPage } from '@/pages/impact/ImpactPage';
 import { supabase } from '@/services/supabaseClient';
 
 function App() {
-  const [view, setView] = useState<'home' | 'auth' | 'provider' | 'admin' | 'about' | 'impact'>('home');
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
 
@@ -27,9 +29,13 @@ function App() {
             .single();
 
           if (userData?.role === 'admin') {
-            setView('admin');
+            if (!location.pathname.startsWith('/admin')) {
+              navigate('/admin/dashboard', { replace: true });
+            }
           } else if (userData?.role === 'provider' || userData?.role === 'provider-member') {
-            setView('provider');
+            if (!location.pathname.startsWith('/provider')) {
+              navigate('/provider/dashboard', { replace: true });
+            }
           }
         }
       } catch (err) {
@@ -47,7 +53,7 @@ function App() {
     if (window.location.hash) {
       history.replaceState(null, '', window.location.pathname + window.location.search);
     }
-  }, [view]);
+  }, [location.pathname]);
 
   // Show a spinner while checking session to avoid flash of home page
   if (isCheckingSession) {
@@ -62,7 +68,7 @@ function App() {
   }
 
   const handleScholarshipsClick = () => {
-    setView('home');
+    navigate('/');
     setTimeout(() => {
       const el = document.getElementById('scholarships');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -76,53 +82,77 @@ function App() {
       console.error('Error signing out:', err);
     }
     setShowWelcome(false);
-    setView('home');
+    navigate('/', { replace: true });
   };
 
-  if (view === 'admin') {
-    return <SystemAdminPortal onLogout={handleLogout} showWelcome={showWelcome} />;
-  }
-
-  if (view === 'provider') {
-    return <ProviderPortal onLogout={handleLogout} showWelcome={showWelcome} />;
-  }
-
-  if (view === 'auth') {
-    return (
-      <LoginRegister
-        onLogin={(role) => {
-          setShowWelcome(true);
-          setView(role);
-        }}
-        onBackToHome={() => setView('home')}
-        onNavigate={(targetView) => {
-          if (targetView === 'scholarships') {
-            handleScholarshipsClick();
-          } else {
-            setView(targetView);
-          }
-        }}
-      />
-    );
-  }
-
   return (
-    <div className="min-h-screen flex flex-col bg-[#F9F5EF] text-[#1C1C1E]">
-      <Header
-        onSignInClick={() => setView('auth')}
-        onHomeClick={() => setView('home')}
-        onAboutClick={() => setView('about')}
-        onImpactClick={() => setView('impact')}
-        onScholarshipsClick={handleScholarshipsClick}
+    <Routes>
+      {/* Admin Portal */}
+      <Route
+        path="/admin/*"
+        element={<SystemAdminPortal onLogout={handleLogout} showWelcome={showWelcome} />}
       />
-      <main className="flex-1">
-        {view === 'home' && <HomePage />}
-        {view === 'about' && <AboutPage />}
-        {view === 'impact' && <ImpactPage />}
-      </main>
-      <Footer />
-    </div>
+
+      {/* Provider Portal */}
+      <Route
+        path="/provider/*"
+        element={<ProviderPortal onLogout={handleLogout} showWelcome={showWelcome} />}
+      />
+
+      {/* Auth */}
+      <Route
+        path="/auth"
+        element={
+          <LoginRegister
+            onLogin={(role) => {
+              setShowWelcome(true);
+              if (role === 'admin') {
+                navigate('/admin/dashboard');
+              } else {
+                navigate('/provider/dashboard');
+              }
+            }}
+            onBackToHome={() => navigate('/')}
+            onNavigate={(targetView) => {
+              if (targetView === 'scholarships') {
+                handleScholarshipsClick();
+              } else if (targetView === 'home') {
+                navigate('/');
+              } else {
+                navigate(`/${targetView}`);
+              }
+            }}
+          />
+        }
+      />
+
+      {/* Public Pages with Layout */}
+      <Route
+        path="/*"
+        element={
+          <div className="min-h-screen flex flex-col bg-[#F9F5EF] text-[#1C1C1E]">
+            <Header
+              onSignInClick={() => navigate('/auth')}
+              onHomeClick={() => navigate('/')}
+              onAboutClick={() => navigate('/about')}
+              onImpactClick={() => navigate('/impact')}
+              onScholarshipsClick={handleScholarshipsClick}
+            />
+            <main className="flex-1">
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/impact" element={<ImpactPage />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </main>
+            <Footer />
+          </div>
+        }
+      />
+    </Routes>
   );
 }
 
 export default App;
+

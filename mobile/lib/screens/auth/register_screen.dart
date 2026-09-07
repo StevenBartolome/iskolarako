@@ -3,11 +3,17 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:iskoako/constants/app_colors.dart';
+import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/custom_button.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+import 'package:iskoako/services/audit_log_service.dart';
+import 'package:iskoako/utils/school_catalog.dart';
+import 'package:iskoako/utils/academic_catalog.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -37,7 +43,17 @@ class _RegisterScreenState extends State<RegisterScreen>
   final TextEditingController _schoolController = TextEditingController();
   final TextEditingController _courseController = TextEditingController();
   int? _selectedYearLevel;
-  final TextEditingController _gpaController = TextEditingController();
+  String? _selectedEduLevel = 'college';
+  String _selectedGpaScale = 'scale_5';
+  List<String> _schoolOptions = [];
+  bool _isScaleLocked = false;
+  // For incoming_college students
+  final TextEditingController _plannedUniversityController = TextEditingController();
+  final List<TextEditingController> _plannedCoursesControllers = [
+    TextEditingController(),
+    TextEditingController(),
+    TextEditingController(),
+  ];
 
   bool _isLoading = false;
   bool _isPasswordVisible = false;
@@ -77,12 +93,46 @@ class _RegisterScreenState extends State<RegisterScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic));
 
+    _schoolOptions = philippineSchools.map((s) => s.name).toList();
+    _schoolOptions.sort((a, b) => a.compareTo(b));
+    _fetchSchoolsFromApi();
+
     Future.delayed(const Duration(milliseconds: 100), () {
       _heroController.forward();
     });
     Future.delayed(const Duration(milliseconds: 320), () {
       _formController.forward();
     });
+  }
+
+  Future<void> _fetchSchoolsFromApi() async {
+    try {
+      final response = await http
+          .get(Uri.parse('http://universities.hipolabs.com/search?country=philippines'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final List<String> remoteSchools = data
+            .map((item) => item['name'].toString().trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+
+        if (mounted) {
+          setState(() {
+            final Set<String> allSchoolsSet = {};
+            for (final localSchool in philippineSchools) {
+              allSchoolsSet.add(localSchool.name);
+            }
+            allSchoolsSet.addAll(remoteSchools);
+
+            _schoolOptions = allSchoolsSet.toList();
+            _schoolOptions.sort((a, b) => a.compareTo(b));
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading remote schools from HipoLabs: $e');
+    }
   }
 
   @override
@@ -97,7 +147,8 @@ class _RegisterScreenState extends State<RegisterScreen>
     _phoneController.dispose();
     _schoolController.dispose();
     _courseController.dispose();
-    _gpaController.dispose();
+    _plannedUniversityController.dispose();
+    for (final c in _plannedCoursesControllers) { c.dispose(); }
     _heroController.dispose();
     _formController.dispose();
     super.dispose();
@@ -197,11 +248,14 @@ class _RegisterScreenState extends State<RegisterScreen>
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'origin': 'http://localhost',
+        },
         body: jsonEncode({
-          'service_id': 'service_tgyk2rm',
-          'template_id': 'template_wml3hht',
-          'user_id': '7PBB4DOM3kQ5k7sjM',
+          'service_id': dotenv.env['EMAILJS_SERVICE_ID'] ?? '',
+          'template_id': dotenv.env['EMAILJS_TEMPLATE_ID'] ?? '',
+          'user_id': dotenv.env['EMAILJS_PUBLIC_KEY'] ?? '',
           'template_params': {
             'to_name': toName,
             'to_email': toEmail,
@@ -209,6 +263,9 @@ class _RegisterScreenState extends State<RegisterScreen>
           }
         }),
       );
+      if (response.statusCode != 200) {
+        debugPrint('EmailJS error status ${response.statusCode}: ${response.body}');
+      }
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('EmailJS error: $e');
@@ -226,16 +283,27 @@ class _RegisterScreenState extends State<RegisterScreen>
     final phone = _phoneController.text.trim();
     final school = _schoolController.text.trim();
     final course = _courseController.text.trim();
-    final gpaText = _gpaController.text.trim();
 
-    if (school.isEmpty || course.isEmpty || gpaText.isEmpty || _selectedYearLevel == null) {
-      _showSnackBar('Please fill in all academic profile fields.', isError: true);
+    final bool isIncoming = _selectedEduLevel == 'incoming_college';
+    final bool needsSchoolCourse = !isIncoming;
+
+    if (_selectedEduLevel == null) {
+      _showSnackBar('Please select your education level.', isError: true);
       return;
     }
 
-    final double? gpa = double.tryParse(gpaText);
-    if (gpa == null) {
-      _showSnackBar('Please enter a valid GPA number.', isError: true);
+    if (needsSchoolCourse && (school.isEmpty || course.isEmpty)) {
+      _showSnackBar('Please fill in school and course/strand fields.', isError: true);
+      return;
+    }
+
+    if (isIncoming && _plannedUniversityController.text.trim().isEmpty) {
+      _showSnackBar('Please enter your planned university/college.', isError: true);
+      return;
+    }
+
+    if (!isIncoming && _selectedYearLevel == null) {
+      _showSnackBar('Please select your year/grade level.', isError: true);
       return;
     }
 
@@ -283,10 +351,16 @@ class _RegisterScreenState extends State<RegisterScreen>
             email: email,
             password: password,
             phone: phone,
+            // For incoming_college: school = SHS school, course = SHS strand
+            // planned_university and planned_courses are saved separately
             school: school,
             course: course,
-            yearLevel: _selectedYearLevel!,
-            gpa: gpa,
+            yearLevel: isIncoming ? null : _selectedYearLevel,
+            eduLevel: _selectedEduLevel ?? 'college',
+            plannedUniversity: isIncoming ? _plannedUniversityController.text.trim() : null,
+            plannedCourses: isIncoming
+                ? _plannedCoursesControllers.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList()
+                : null,
           ),
           onResendRequested: () async {
             // Regenerate and resend
@@ -313,8 +387,10 @@ class _RegisterScreenState extends State<RegisterScreen>
     required String phone,
     required String school,
     required String course,
-    required int yearLevel,
-    required double gpa,
+    int? yearLevel,
+    required String eduLevel,
+    String? plannedUniversity,
+    List<String>? plannedCourses,
   }) async {
     setState(() => _isLoading = true);
     try {
@@ -334,6 +410,14 @@ class _RegisterScreenState extends State<RegisterScreen>
         throw const AuthException('Registration authentication failed.');
       }
 
+      // Auto sign-in fallback if signUp does not establish active session automatically
+      if (authResponse.session == null) {
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+      }
+
       // 2. Explicitly insert scholar details into public.scholar table
       await Supabase.instance.client.from('scholar').insert({
         'user_id': userId,
@@ -346,13 +430,17 @@ class _RegisterScreenState extends State<RegisterScreen>
         'phone': phone,
         'school': school,
         'course': course,
-        'year_level': yearLevel,
-        'gpa': gpa,
+        if (yearLevel != null) 'year_level': yearLevel,
+        'education_level': eduLevel,
+        'gpa_scale': _selectedGpaScale,
+        if (plannedUniversity != null) 'planned_university': plannedUniversity,
+        if (plannedCourses != null && plannedCourses.isNotEmpty) 'planned_courses': plannedCourses,
       });
 
       if (!mounted) return;
-      _showSnackBar('Registration successful! Welcome to IskolarAko.', isError: false);
-      Navigator.pop(context);
+      _showSnackBar('Registration successful! Welcome to IskolarAko, $first.', isError: false);
+      AuditLogService.createAuditLog(action: 'REGISTER / SIGNUP', target: 'Scholar: $first $last');
+      Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false);
     } on AuthException catch (e) {
       _showSnackBar(e.message, isError: true);
     } catch (_) {
@@ -378,13 +466,19 @@ class _RegisterScreenState extends State<RegisterScreen>
                   position: _logoSlide,
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(28, 28, 28, 22),
+                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
                     decoration: const BoxDecoration(
-                      color: AppColors.primaryDark,
-                      borderRadius: BorderRadius.only(
-                        bottomLeft: Radius.circular(32),
-                        bottomRight: Radius.circular(32),
+                      color: Color(0xFF1E3D2F),
+                      borderRadius: BorderRadius.vertical(
+                        bottom: Radius.circular(36),
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 14,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: Column(
                       children: [
@@ -399,53 +493,74 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 }
                               },
                               child: Container(
-                                width: 38,
-                                height: 38,
+                                width: 40,
+                                height: 40,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(20),
-                                  borderRadius: BorderRadius.circular(10),
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
                                 ),
-                                child: const Icon(
-                                  LucideIcons.arrowLeft,
-                                  color: Colors.white,
-                                  size: 18,
+                                child: const Center(
+                                  child: Icon(
+                                    LucideIcons.chevronLeft,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 14),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Register Scholar',
-                                  style: GoogleFonts.playfairDisplay(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(LucideIcons.userPlus, color: Color(0xFFF59E0B), size: 12),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'SCHOLAR ENROLLMENT',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: const Color(0xFFF59E0B),
+                                          letterSpacing: 1.0,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                Text(
-                                  'Complete your application profile',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    color: Colors.white.withAlpha(155),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Create Account',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                            const Spacer(),
-                            SvgPicture.asset(
-                              'assets/logo/iskolarakologo-notext.svg',
-                              height: 40,
-                              colorFilter: ColorFilter.mode(
-                                Colors.white.withAlpha(60),
-                                BlendMode.srcIn,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3), width: 1),
+                              ),
+                              child: SvgPicture.asset(
+                                'assets/logo/iskolarakologo-notext.svg',
+                                height: 28,
+                                colorFilter: const ColorFilter.mode(
+                                  Color(0xFFF59E0B),
+                                  BlendMode.srcIn,
+                                ),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 20),
-                        // Beautiful step status indicator
+                        // Step status indicator
                         _buildStepIndicator(),
                       ],
                     ),
@@ -577,7 +692,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       children: [
         Text(
           'Step 1: Account Credentials',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
@@ -684,7 +799,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       children: [
         Text(
           'Step 2: Personal Profile Info',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
@@ -784,56 +899,370 @@ class _RegisterScreenState extends State<RegisterScreen>
     );
   }
 
-  // ── Step 3: Academic details ────────────────────────────────
+  // ── Step 3: Academic details ────────────────────────────────────
+
   Widget _buildStep3() {
+    final isIncoming = _selectedEduLevel == 'incoming_college';
+
+    // Year level options per education level
+    final Map<String, List<Map<String, dynamic>>> yearOptions = {
+      'college':    [1,2,3,4,5].map((y) => {'val': y, 'label': 'Year $y'}).toList(),
+      'graduate':   [1,2,3,4].map((y) => {'val': y, 'label': 'Year $y'}).toList(),
+      'senior_high':[{'val': 11, 'label': 'Grade 11'}, {'val': 12, 'label': 'Grade 12'}],
+      'high_school':[7,8,9,10].map((y) => {'val': y, 'label': 'Grade $y'}).toList(),
+      'elementary': [1,2,3,4,5,6].map((y) => {'val': y, 'label': 'Grade $y'}).toList(),
+      'vocational': [{'val': 1, 'label': 'Semester 1'}, {'val': 2, 'label': 'Semester 2'}, {'val': 3, 'label': 'Semester 3'}],
+      'incoming_college': [],
+    };
+    final currentYearOptions = yearOptions[_selectedEduLevel ?? 'college'] ?? yearOptions['college']!;
+
+    final Map<String, String> schoolLabel = {
+      'college': 'University / College Name *',
+      'graduate': 'University / Graduate School Name *',
+      'senior_high': 'Senior High School Name *',
+      'high_school': 'Junior High School Name *',
+      'elementary': 'Elementary School Name *',
+      'vocational': 'TVET / Vocational School Name *',
+      'incoming_college': 'Current SHS School Name *',
+    };
+    final Map<String, String> courseLabel = {
+      'college': 'Course / Major *',
+      'graduate': 'Degree Program *',
+      'senior_high': 'Track & Strand * (e.g. STEM, ABM)',
+      'high_school': 'Section / Track (optional)',
+      'elementary': 'Grade Section (optional)',
+      'vocational': 'TVET Program / NC Level *',
+      'incoming_college': 'SHS Strand * (e.g. STEM, ABM, HUMSS)',
+    };
+
     return Column(
       key: const ValueKey(3),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Step 3: Academic Details & GPA',
-          style: GoogleFonts.playfairDisplay(
+          'Step 3: Academic Details',
+          style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,
           ),
         ),
         const SizedBox(height: 18),
-        _buildField(
-          label: 'School / University Name *',
-          controller: _schoolController,
-          icon: LucideIcons.graduationCap,
-          hint: 'State University',
-        ),
-        const SizedBox(height: 16),
-        _buildField(
-          label: 'Course / Major *',
-          controller: _courseController,
-          icon: LucideIcons.bookOpen,
-          hint: 'B.S. Information Technology',
-        ),
-        const SizedBox(height: 16),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+
+        // ── Education Level ──
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              flex: 3,
-              child: _buildYearLevelDropdown(),
+            Text(
+              'Education Level *',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.5,
+              ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: _buildField(
-                label: 'GPA / GWA *',
-                controller: _gpaController,
-                icon: LucideIcons.percent,
-                hint: 'e.g. 1.25',
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.rule, width: 1),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedEduLevel,
+                  isExpanded: true,
+                  icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
+                  items: const [
+                    DropdownMenuItem(value: 'college',          child: Text('🎓 College / Undergraduate')),
+                    DropdownMenuItem(value: 'graduate',         child: Text('🏛️ Graduate Studies (MA/PhD)')),
+                    DropdownMenuItem(value: 'senior_high',      child: Text('📚 Senior High School (SHS)')),
+                    DropdownMenuItem(value: 'high_school',      child: Text('🏫 High School (JHS)')),
+                    DropdownMenuItem(value: 'elementary',       child: Text('🔖 Elementary')),
+                    DropdownMenuItem(value: 'vocational',       child: Text('🔧 Vocational / TVET')),
+                    DropdownMenuItem(value: 'incoming_college', child: Text('🌟 Incoming College (Graduating SHS)')),
+                  ],
+                  onChanged: (val) => setState(() {
+                    _selectedEduLevel = val;
+                    _selectedYearLevel = null;
+                  }),
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
+
+        Autocomplete<String>(
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            if (textEditingValue.text.isEmpty) {
+              return const Iterable<String>.empty();
+            }
+            return _schoolOptions
+                .where((school) => school.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+          },
+          onSelected: (String selection) {
+            _schoolController.text = selection;
+            final matchedIndex = philippineSchools.indexWhere(
+              (s) => s.name.toLowerCase() == selection.toLowerCase(),
+            );
+            setState(() {
+              if (matchedIndex != -1) {
+                final matched = philippineSchools[matchedIndex];
+                _selectedGpaScale = matched.defaultScale;
+                _isScaleLocked = matched.isAccurate;
+              } else {
+                _isScaleLocked = false;
+              }
+            });
+          },
+          fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+            if (textController.text != _schoolController.text) {
+              textController.text = _schoolController.text;
+            }
+            textController.addListener(() {
+              _schoolController.text = textController.text;
+              
+              final typed = textController.text.trim();
+              final matchedIndex = philippineSchools.indexWhere(
+                (s) => s.name.toLowerCase().trim() == typed.toLowerCase().trim(),
+              );
+              
+              setState(() {
+                if (matchedIndex != -1) {
+                  final matched = philippineSchools[matchedIndex];
+                  _selectedGpaScale = matched.defaultScale;
+                  _isScaleLocked = matched.isAccurate;
+                } else {
+                  _isScaleLocked = false;
+                }
+              });
+            });
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  schoolLabel[_selectedEduLevel] ?? 'School Name *',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: textController,
+                  focusNode: focusNode,
+                  onSubmitted: (val) => onFieldSubmitted(),
+                  style: GoogleFonts.inter(
+                    fontSize: 13.5,
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: isIncoming ? 'e.g. Pasig City Science High School' : 'School / University name',
+                    hintStyle: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13),
+                    prefixIcon: const Icon(LucideIcons.graduationCap, size: 16, color: AppColors.textSecondary),
+                    filled: true,
+                    fillColor: AppColors.surfaceAlt,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.rule, width: 1),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.rule, width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 1.8),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+
+        // ── Grading System dropdown ──
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Grading System *',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.rule, width: 1),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedGpaScale,
+                  isExpanded: true,
+                  icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
+                  items: const [
+                    DropdownMenuItem(value: 'scale_5', child: Text('1.00 - 5.00 Scale (PH State Univ / UP / PUP / UST)')),
+                    DropdownMenuItem(value: 'scale_4', child: Text('4.00 - 1.00 Scale (ADMU / DLSU / FEU / NU)')),
+                    DropdownMenuItem(value: 'percentage', child: Text('Percentage Scale (DepEd K-12 / 65 - 100%)')),
+                  ],
+                  onChanged: _isScaleLocked
+                      ? null
+                      : (val) => setState(() {
+                            if (val != null) _selectedGpaScale = val;
+                          }),
+                ),
+              ),
+            ),
+            if (_isScaleLocked)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 2),
+                child: Text(
+                  '🔒 Grading system verified for this school and locked.',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // ── Course / Strand / Program (label changes per level) ──
+        Autocomplete<String>(
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            final options = getCoursesByEducationLevel(_selectedEduLevel);
+            if (textEditingValue.text.isEmpty) {
+              return options;
+            }
+            return options.where(
+              (c) => c.toLowerCase().contains(textEditingValue.text.toLowerCase()),
+            );
+          },
+          onSelected: (String selection) {
+            _courseController.text = selection;
+          },
+          fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+            if (textController.text != _courseController.text) {
+              textController.text = _courseController.text;
+            }
+            textController.addListener(() {
+              _courseController.text = textController.text;
+            });
+            return _buildField(
+              label: courseLabel[_selectedEduLevel] ?? 'Course / Strand *',
+              controller: textController,
+              icon: LucideIcons.bookOpen,
+              hint: isIncoming ? 'e.g. STEM' : 'e.g. BS Computer Science',
+              focusNode: focusNode,
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+
+        // ── Incoming College: Planned University + Course Choices ──
+        if (isIncoming) ...[
+          _buildField(
+            label: 'Planned University / College *',
+            controller: _plannedUniversityController,
+            icon: LucideIcons.mapPin,
+            hint: 'e.g. University of the Philippines Diliman',
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'PREFERRED COURSES (up to 3)',
+            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.5),
+          ),
+          const SizedBox(height: 6),
+          ...List.generate(3, (i) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Autocomplete<String>(
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                final options = getCoursesByEducationLevel('college');
+                if (textEditingValue.text.isEmpty) {
+                  return options;
+                }
+                return options.where(
+                  (c) => c.toLowerCase().contains(textEditingValue.text.toLowerCase()),
+                );
+              },
+              onSelected: (String selection) {
+                _plannedCoursesControllers[i].text = selection;
+              },
+              fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                if (textController.text != _plannedCoursesControllers[i].text) {
+                  textController.text = _plannedCoursesControllers[i].text;
+                }
+                textController.addListener(() {
+                  _plannedCoursesControllers[i].text = textController.text;
+                });
+                return _buildField(
+                  label: 'Choice ${i + 1}${i == 0 ? ' *' : ''}',
+                  controller: textController,
+                  icon: LucideIcons.star,
+                  hint: 'e.g. BS Computer Science',
+                  focusNode: focusNode,
+                );
+              },
+            ),
+          )),
+          const SizedBox(height: 4),
+        ],
+
+        // ── Year / Grade Level ──
+        if (!isIncoming) ...[
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                currentYearOptions.isEmpty ? 'Year / Grade Level' : 'Year / Grade Level *',
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.rule, width: 1),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _selectedYearLevel,
+                    hint: Text('Select', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted)),
+                    isExpanded: true,
+                    icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
+                    items: currentYearOptions.map((opt) {
+                      return DropdownMenuItem<int>(
+                        value: opt['val'] as int,
+                        child: Text(opt['label'] as String, style: GoogleFonts.inter(fontSize: 13)),
+                      );
+                    }).toList(),
+                    onChanged: (val) => setState(() => _selectedYearLevel = val),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+        ],
+
         // Terms checkbox
         GestureDetector(
           onTap: () => setState(() => _agreedToTerms = !_agreedToTerms),
@@ -916,6 +1345,7 @@ class _RegisterScreenState extends State<RegisterScreen>
     required IconData icon,
     required String hint,
     TextInputType keyboardType = TextInputType.text,
+    FocusNode? focusNode,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -932,6 +1362,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         const SizedBox(height: 6),
         TextField(
           controller: controller,
+          focusNode: focusNode,
           keyboardType: keyboardType,
           style: GoogleFonts.inter(
             fontSize: 13.5,
@@ -1144,53 +1575,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     );
   }
 
-  Widget _buildYearLevelDropdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Year Level *',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceAlt,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.rule, width: 1),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<int>(
-              value: _selectedYearLevel,
-              hint: Text('Select Year', style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13)),
-              icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.textSecondary),
-              isExpanded: true,
-              style: GoogleFonts.inter(fontSize: 13.5, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
-              dropdownColor: AppColors.surface,
-              onChanged: (int? val) {
-                setState(() {
-                  _selectedYearLevel = val;
-                });
-              },
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('1st Year')),
-                DropdownMenuItem(value: 2, child: Text('2nd Year')),
-                DropdownMenuItem(value: 3, child: Text('3rd Year')),
-                DropdownMenuItem(value: 4, child: Text('4th Year')),
-                DropdownMenuItem(value: 5, child: Text('5th Year')),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildPasswordFeedbackPanel() {
     final password = _passwordController.text;
@@ -1334,8 +1718,8 @@ class _OtpVerificationSheet extends StatefulWidget {
 }
 
 class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
-  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final TextEditingController _otpController = TextEditingController();
+  final FocusNode _otpFocusNode = FocusNode();
   String? _errorMessage;
   int _timerSeconds = 30;
   bool _canResend = false;
@@ -1344,6 +1728,9 @@ class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
   void initState() {
     super.initState();
     _startTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _otpFocusNode.requestFocus();
+    });
   }
 
   void _startTimer() {
@@ -1367,17 +1754,13 @@ class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
 
   @override
   void dispose() {
-    for (var c in _controllers) {
-      c.dispose();
-    }
-    for (var f in _focusNodes) {
-      f.dispose();
-    }
+    _otpController.dispose();
+    _otpFocusNode.dispose();
     super.dispose();
   }
 
   void _onVerify() {
-    final code = _controllers.map((c) => c.text).join();
+    final code = _otpController.text.trim();
     if (code.length < 6) {
       setState(() {
         _errorMessage = 'Please enter all 6 digits.';
@@ -1428,7 +1811,7 @@ class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
           const SizedBox(height: 20),
           Text(
             'Verify Email',
-            style: GoogleFonts.playfairDisplay(
+            style: GoogleFonts.inter(
               fontSize: 22,
               fontWeight: FontWeight.w700,
               color: AppColors.primaryDark,
@@ -1446,57 +1829,100 @@ class _OtpVerificationSheetState extends State<_OtpVerificationSheet> {
           ),
           const SizedBox(height: 24),
           
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(6, (index) {
-              return SizedBox(
-                width: 42,
-                height: 48,
-                child: TextField(
-                  controller: _controllers[index],
-                  focusNode: _focusNodes[index],
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  maxLength: 1,
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    counterText: '',
-                    contentPadding: EdgeInsets.zero,
-                    filled: true,
-                    fillColor: AppColors.surfaceAlt,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.rule),
+          GestureDetector(
+            onTap: () => _otpFocusNode.requestFocus(),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Hidden single TextField capturing keystrokes and paste
+                Opacity(
+                  opacity: 0.0,
+                  child: TextField(
+                    controller: _otpController,
+                    focusNode: _otpFocusNode,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    autofillHints: const [AutofillHints.oneTimeCode],
+                    decoration: const InputDecoration(
+                      counterText: '',
+                      border: InputBorder.none,
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.rule),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-                    ),
-                  ),
-                  onChanged: (value) {
-                    if (value.isNotEmpty) {
-                      if (index < 5) {
-                        _focusNodes[index + 1].requestFocus();
-                      } else {
-                        _focusNodes[index].unfocus();
+                    onChanged: (value) {
+                      setState(() {
+                        if (_errorMessage != null) _errorMessage = null;
+                      });
+                      if (value.length == 6) {
+                        _onVerify();
                       }
-                    } else {
-                      if (index > 0) {
-                        _focusNodes[index - 1].requestFocus();
-                      }
-                    }
-                  },
+                    },
+                  ),
                 ),
-              );
-            }),
+                // 6 Separated Visual Number Boxes
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(6, (index) {
+                    final text = _otpController.text;
+                    final isFilled = index < text.length;
+                    final char = isFilled ? text[index] : '';
+                    final isFocused = _otpFocusNode.hasFocus &&
+                        (index == text.length || (index == 5 && text.length == 6));
+
+                    return Container(
+                      width: 44,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: isFilled || isFocused ? Colors.white : AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isFocused
+                              ? AppColors.primary
+                              : isFilled
+                                  ? AppColors.primaryDark.withValues(alpha: 0.6)
+                                  : AppColors.rule,
+                          width: isFocused ? 2.0 : 1.2,
+                        ),
+                        boxShadow: isFocused
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.12),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                )
+                              ]
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: isFilled
+                          ? Text(
+                              char,
+                              style: GoogleFonts.inter(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
+                            )
+                          : isFocused
+                              ? Container(
+                                  width: 2,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    borderRadius: BorderRadius.circular(1),
+                                  ),
+                                )
+                              : Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.rule,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                    );
+                  }),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           

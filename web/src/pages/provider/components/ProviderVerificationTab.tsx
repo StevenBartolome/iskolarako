@@ -1,0 +1,476 @@
+import React, { useState } from 'react';
+import type { ProviderDetails, ProviderProfile } from '../types';
+import { supabase } from '@/services/supabaseClient';
+import { getScoreAssessment } from '@/services/aiExtractionService';
+import { sanitizeRequirementsSubmitted } from '../utils/sanitizeUtils';
+
+interface ProviderVerificationTabProps {
+  providerDetails: ProviderDetails | null;
+  profile: ProviderProfile | null;
+  handleUnsubmitVerification: () => void;
+  submittingVerification: boolean;
+  requiredDocs: { name: string; description: string; required: boolean }[];
+  setProviderDetails: React.Dispatch<React.SetStateAction<any>>;
+  showToast: (msg: string) => void;
+  uploadingDoc: string | null;
+  handleUploadDocument: (docName: string, file: File) => void;
+  handleSubmitVerification: () => void;
+  hasModifiedDocs: boolean;
+  onDocsModified: () => void;
+}
+
+export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = ({
+  providerDetails,
+  profile,
+  handleUnsubmitVerification,
+  submittingVerification,
+  requiredDocs,
+  setProviderDetails,
+  showToast,
+  uploadingDoc,
+  handleUploadDocument,
+  handleSubmitVerification,
+  hasModifiedDocs,
+  onDocsModified,
+}) => {
+  const [expandedDocIndices, setExpandedDocIndices] = useState<Record<string, boolean>>({});
+
+  const toggleExpandDoc = (name: string) => {
+    setExpandedDocIndices(prev => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
+  };
+
+  const getFlagString = (flag: any): string => {
+    if (!flag) return '';
+    if (typeof flag === 'string') return flag.trim();
+    if (typeof flag === 'object') {
+      return flag.description || flag.flag || flag.reason || flag.message || flag.issue || JSON.stringify(flag);
+    }
+    return String(flag);
+  };
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+      <div>
+        <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Organization Verification</h2>
+        <p className="text-sm text-[#6C6C70] mt-1 font-medium">Manage and submit organizational documentation required to post scholarship programs.</p>
+      </div>
+
+      {/* Status Banner */}
+      {providerDetails && (
+        <div className={`p-6 rounded-3xl border shadow-sm flex items-start gap-4 ${
+          providerDetails.verificationStatus === 'verified'
+            ? 'bg-[#EBF5EE] border-[#2D5941]/30 text-[#1A3C2E]'
+            : providerDetails.verificationStatus === 'under_review'
+              ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#1A3C2E]'
+              : providerDetails.verificationStatus === 'rejected'
+                ? 'bg-red-50 border-red-200 text-red-900'
+                : 'bg-white border-[#D9D2C5]/60 text-[#1C1C1E]'
+        }`}>
+          <div className={`p-3 rounded-2xl shrink-0 ${
+            providerDetails.verificationStatus === 'verified'
+              ? 'bg-[#2D5941]/10 text-[#2D5941]'
+              : providerDetails.verificationStatus === 'under_review'
+                ? 'bg-[#C97B2E]/10 text-[#C97B2E]'
+                : providerDetails.verificationStatus === 'rejected'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-[#EDE8DE] text-[#6C6C70]'
+          }`}>
+            {providerDetails.verificationStatus === 'verified' ? (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            ) : providerDetails.verificationStatus === 'under_review' ? (
+              <svg className="w-6 h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : providerDetails.verificationStatus === 'rejected' ? (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M9 16h6m2 4H7a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v12a2 2 0 01-2 2z" />
+              </svg>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <h3 className="text-base font-bold">
+              {providerDetails.verificationStatus === 'verified' && 'Verified Provider Partner'}
+              {providerDetails.verificationStatus === 'under_review' && 'Documents Under Review'}
+              {providerDetails.verificationStatus === 'rejected' && 'Verification Rejected'}
+              {providerDetails.verificationStatus === 'pending' && 'Verification Incomplete'}
+            </h3>
+            <p className="text-xs opacity-90 leading-relaxed max-w-2xl font-sans">
+              {providerDetails.verificationStatus === 'verified' && 'Your credentials have been successfully reviewed and verified by system administrators. You are cleared to publish new scholarship programs and manage applications.'}
+              {providerDetails.verificationStatus === 'under_review' && 'Your documents have been AI pre-scanned and are being evaluated by system administration. You will be notified once reviewed.'}
+              {providerDetails.verificationStatus === 'rejected' && 'Your submitted documents did not meet verification guidelines. Please review remarks below, re-upload valid files, and submit a new request.'}
+              {providerDetails.verificationStatus === 'pending' && 'Upload requirements below. Files undergo instant AI pre-scanning to ensure authenticity prior to administrative submission.'}
+            </p>
+
+            {providerDetails.verificationStatus === 'rejected' && providerDetails.requirementsSubmitted['_remarks'] && (
+              <div className="mt-3 p-3 bg-red-100/50 border border-red-200/50 rounded-xl text-red-900 text-xs">
+                <strong>Remarks: </strong> {providerDetails.requirementsSubmitted['_remarks']}
+              </div>
+            )}
+
+            {(providerDetails.verificationStatus === 'under_review' || providerDetails.verificationStatus === 'rejected') && profile?.role === 'provider' && (
+              <button
+                type="button"
+                onClick={handleUnsubmitVerification}
+                disabled={submittingVerification}
+                className="mt-3 bg-white/20 hover:bg-white/30 text-current border border-solid border-current px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer font-sans"
+              >
+                {submittingVerification ? 'Processing...' : 'Unsubmit & Edit Documents'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Checklist & Form */}
+      <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-8 shadow-sm space-y-6">
+        <div className="border-b border-[#D9D2C5]/40 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Required Documents Checklist</h3>
+            <p className="text-xs text-[#6C6C70] mt-0.5 font-sans">Requirements for <span className="uppercase font-bold text-[#2D5941]">{providerDetails?.providerType || 'public'}</span> providers:</p>
+          </div>
+          {profile?.role === 'provider-member' && (
+            <span className="px-3.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold font-sans flex items-center gap-1.5 shrink-0">
+              🔒 Read-only (Member View)
+            </span>
+          )}
+        </div>
+
+        {profile?.role === 'provider-member' && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-slate-600 text-xs font-sans">
+            You are viewing this panel as a <strong>Provider Member</strong>. Only the primary <strong>Provider Admin</strong> role is authorized to upload, update, or submit organizational verification requirements.
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {requiredDocs.map((doc, idx) => {
+            const isUploaded = !!providerDetails?.requirementsSubmitted[doc.name];
+            const docUrl = providerDetails?.requirementsSubmitted[doc.name];
+            const aiRes = isUploaded ? providerDetails?.requirementsSubmitted?._aiVerification?.[doc.name] : null;
+            const adminDocStatus = providerDetails?.requirementsSubmitted?._docStatus?.[doc.name]?.status;
+            
+            const isDocVerifiedByAdmin = adminDocStatus === 'Verified' || providerDetails?.verificationStatus === 'verified';
+            const isDocFlaggedByAdmin = adminDocStatus === 'Flagged';
+
+            const assessment = aiRes ? getScoreAssessment(aiRes.confidenceScore) : null;
+            const isAiRejected = aiRes ? (aiRes.verificationStatus === 'rejected' || aiRes.tamperingDetected || assessment?.quality === 'BAD') : false;
+            const isDocRejected = !isDocVerifiedByAdmin && (isDocFlaggedByAdmin || isAiRejected);
+
+            const isUnderReviewOrVerified = providerDetails?.verificationStatus === 'under_review' || providerDetails?.verificationStatus === 'verified';
+            const isReadOnly = isUnderReviewOrVerified || profile?.role === 'provider-member';
+            const isExpanded = !!expandedDocIndices[doc.name];
+
+            return (
+              <div 
+                key={idx}
+                className={`p-5 rounded-2xl border transition-all flex flex-col gap-3 shadow-sm ${
+                  isDocVerifiedByAdmin
+                    ? 'border-[#2D5941]/30 bg-[#EBF5EE]/20'
+                    : isDocRejected
+                    ? 'border-red-300 bg-red-50/30'
+                    : 'border-[#D9D2C5]/50 bg-white hover:bg-slate-50/50'
+                }`}
+              >
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-bold text-sm text-[#1C1C1E]">{doc.name}</h4>
+                      {doc.required ? (
+                        <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQUIRED</span>
+                      ) : (
+                        <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">OPTIONAL</span>
+                      )}
+
+                      {/* Document Status Badge */}
+                      {isUploaded ? (
+                        isDocVerifiedByAdmin ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[9.5px] font-bold flex items-center gap-1 border bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30">
+                            <span>🟢 ✓ Verified by Administrator</span>
+                          </span>
+                        ) : isDocFlaggedByAdmin ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[9.5px] font-bold flex items-center gap-1 border bg-amber-100 text-amber-900 border-amber-300">
+                            <span>🟡 ⚠️ Admin Flagged</span>
+                          </span>
+                        ) : aiRes ? (
+                          <span className={`px-2.5 py-0.5 rounded-full text-[9.5px] font-bold flex items-center gap-1 border ${
+                            aiRes.verificationStatus === 'verified' && assessment?.quality === 'GOOD'
+                              ? 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30'
+                              : isAiRejected
+                              ? 'bg-red-100 text-red-800 border-red-300'
+                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                          }`}>
+                            <span>
+                              {aiRes.verificationStatus === 'verified' && assessment?.quality === 'GOOD'
+                                ? '🟢 ✓ AI Pre-Scan Verified'
+                                : isAiRejected
+                                ? '🔴 ⚠️ AI Pre-Scan Rejected'
+                                : '🟡 ⚠️ Needs Manual Admin Review'}
+                            </span>
+                            {assessment && (
+                              <span className="font-semibold">
+                                ({assessment.quality === 'GOOD' ? 'Good' : isAiRejected ? 'Rejected' : 'Needs Review'})
+                              </span>
+                            )}
+                          </span>
+                        ) : null
+                      ) : uploadingDoc === doc.name ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[9.5px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
+                          ⏳ AI Pre-Scanning File...
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-[#6C6C70] font-sans">{doc.description}</p>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0 flex-wrap">
+                    {isUploaded ? (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="flex items-center gap-1 text-xs text-[#2D5941] font-bold font-sans">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Uploaded
+                        </span>
+                        <a 
+                          href={docUrl} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-xs font-bold text-[#C97B2E] hover:underline"
+                        >
+                          View File ↗
+                        </a>
+
+                        {aiRes && (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandDoc(doc.name)}
+                            className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border ${
+                              isExpanded
+                                ? 'bg-[#1A3C2E] text-white border-[#1A3C2E]'
+                                : 'bg-white text-[#1A3C2E] border-[#D9D2C5] hover:bg-[#F9F5EF]'
+                            }`}
+                          >
+                            {isExpanded ? '▲ Hide AI Report' : '▼ AI Forensic Report'}
+                          </button>
+                        )}
+
+                        {!isReadOnly && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!providerDetails) return;
+                              const rawReqs = { ...providerDetails.requirementsSubmitted };
+                              delete rawReqs[doc.name];
+                              rawReqs._isSubmitted = false;
+                              const updatedReqs = sanitizeRequirementsSubmitted(rawReqs);
+                              
+                              onDocsModified();
+
+                              setProviderDetails({
+                                ...providerDetails,
+                                requirementsSubmitted: updatedReqs
+                              });
+
+                              try {
+                                const { error } = await supabase
+                                  .from('provider')
+                                  .update({
+                                    requirements_submitted: updatedReqs,
+                                    updated_at: new Date().toISOString()
+                                  })
+                                  .eq('id', providerDetails.id);
+                                if (error) throw error;
+                                showToast(`Unsubmitted document: ${doc.name}`);
+                              } catch (err: any) {
+                                console.error('Error unsubmitting document:', err);
+                                showToast(`Failed to update database: ${err.message}`);
+                              }
+                            }}
+                            className="text-xs text-red-500 hover:text-red-700 cursor-pointer bg-transparent border-0 font-sans"
+                          >
+                            Unsubmit File
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        {isReadOnly ? (
+                          <span className="text-xs text-[#8E8E93] italic font-sans">Not Provided</span>
+                        ) : (
+                          <div>
+                            <label className="relative flex items-center justify-center bg-[#EBF5EE] hover:bg-[#d5ebd9] text-[#2D5941] px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer border border-[#2D5941]/10">
+                              {uploadingDoc === doc.name ? (
+                                <span className="flex items-center gap-1">
+                                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                  </svg>
+                                  Uploading & AI Scanning...
+                                </span>
+                              ) : (
+                                <span>Choose & Upload File</span>
+                              )}
+                              <input
+                                type="file"
+                                disabled={uploadingDoc !== null}
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleUploadDocument(doc.name, file);
+                                }}
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expandable Forensic Breakdown Report */}
+                {isExpanded && aiRes && assessment && (
+                  <div className="mt-2 p-4 bg-white rounded-2xl border border-[#D9D2C5] space-y-3 text-xs animate-fade-in">
+                    <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2 flex-wrap gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
+                          🔬 AI Pre-Submission Forensic Analysis
+                        </span>
+                        <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
+                          Engine: <strong>{aiRes.aiModelUsed || 'Multi-AI Vision'}</strong>
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${assessment.badgeStyle}`}>
+                        {assessment.label}
+                      </span>
+                    </div>
+
+                    <div className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                      isAiRejected
+                        ? 'bg-red-50 border-red-200 text-red-900'
+                        : assessment.quality === 'GOOD'
+                        ? 'bg-[#EBF5EE]/70 border-[#2D5941]/30 text-[#1A3C2E]'
+                        : 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#8C4A00]'
+                    }`}>
+                      <span className="text-base shrink-0">{isAiRejected ? '🔴' : assessment.quality === 'GOOD' ? '🟢' : '🟡'}</span>
+                      <div className="space-y-0.5">
+                        <span className="font-bold block text-xs">
+                          {isAiRejected ? 'Document Rejected by AI Pre-Scan' : assessment.textRemark}
+                        </span>
+                        <p className="text-[11px] leading-relaxed opacity-90 font-normal">
+                          {aiRes.summary}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Security Check Chips */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                      <div className="flex items-center gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span>{aiRes.hasOfficialSealOrSignature ? '🟢' : '🟡'}</span>
+                        <span className="text-[#1C1C1E]">
+                          {aiRes.hasOfficialSealOrSignature ? 'Official Stamp / Dry Seal Detected' : 'Seal Unclear / Missing'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span>{aiRes.tamperingDetected ? '🔴' : '🟢'}</span>
+                        <span className="text-[#1C1C1E]">
+                          {aiRes.tamperingDetected ? 'Visual Alteration Detected' : 'Zero Digital Tampering'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span>🔒</span>
+                        <span className="text-[#6C6C70] truncate font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
+                          SHA-256: {aiRes.sha256Hash?.slice(0, 10)}...
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Flags / Anomalies */}
+                    {aiRes.flags && aiRes.flags.length > 0 && (
+                      <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
+                        <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider block">
+                          ⚠️ AI Anomalies & Compliance Flags:
+                        </span>
+                        <ul className="list-disc list-inside text-xs text-[#B34040] space-y-0.5 font-medium">
+                          {aiRes.flags.map((flag: any, fIdx: number) => (
+                            <li key={fIdx}>{getFlagString(flag)}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Submit Action */}
+        {providerDetails && providerDetails.verificationStatus !== 'verified' && providerDetails.verificationStatus !== 'under_review' && profile?.role === 'provider' && (() => {
+          const aiVerifs = providerDetails.requirementsSubmitted?._aiVerification || {};
+          const docStatuses = providerDetails.requirementsSubmitted?._docStatus || {};
+          const hasRejectedDoc = Object.entries(aiVerifs).some(([fieldName, res]: [string, any]) => {
+            const isUploaded = !!providerDetails.requirementsSubmitted[fieldName];
+            const adminStatus = docStatuses[fieldName]?.status;
+            const isVerifiedByAdmin = adminStatus === 'Verified' || providerDetails.verificationStatus === 'verified';
+            if (isVerifiedByAdmin) return false;
+            return isUploaded && (res.verificationStatus === 'rejected' || res.tamperingDetected);
+          });
+
+          const allRequiredUploaded = requiredDocs.filter(d => d.required).every(d => !!providerDetails.requirementsSubmitted[d.name]);
+          const hasAnyUploaded = Object.keys(providerDetails.requirementsSubmitted).filter(k => !k.startsWith('_')).length > 0;
+          const canSubmit = (hasModifiedDocs || allRequiredUploaded) && hasAnyUploaded && !hasRejectedDoc;
+
+          return (
+            <div className="border-t border-[#D9D2C5]/40 pt-6 flex flex-col items-end gap-3">
+              {hasRejectedDoc && (
+                <div className="w-full bg-red-50 border border-red-300 text-red-900 p-4 rounded-2xl text-xs space-y-1 text-left">
+                  <strong className="font-bold block flex items-center gap-1.5 text-sm">
+                    <span>⛔</span> Verification Submission Blocked by AI Pre-Scan
+                  </strong>
+                  <p className="leading-relaxed opacity-90 font-sans">
+                    One or more uploaded documents were rejected by AI Pre-Scan due to visual alteration, unverified credentials, or data mismatch. Please click <strong>"Unsubmit File"</strong> on the rejected item(s) and re-upload valid legal documents before submitting to system administration.
+                  </p>
+                </div>
+              )}
+
+              {!canSubmit && !hasRejectedDoc && (
+                <p className="text-xs font-sans bg-[#FFF8EE] border border-[#C97B2E]/20 text-[#C97B2E] px-4 py-2.5 rounded-xl">
+                  Upload all required documents above to enable submission to admin verification review.
+                </p>
+              )}
+
+              {canSubmit && (
+                <p className="text-xs text-[#2D5941] font-sans bg-[#EBF5EE] border border-[#2D5941]/20 px-4 py-2.5 rounded-xl">
+                  Ready! All documents passed AI pre-scan. Click below to send your credentials to system administrators for compliance review.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSubmitVerification}
+                disabled={submittingVerification || uploadingDoc !== null || !canSubmit}
+                className={`px-8 py-3.5 rounded-xl font-bold text-sm shadow-md transition-all border border-[#1A3C2E]/10 cursor-pointer ${
+                  submittingVerification || uploadingDoc !== null || !canSubmit
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400'
+                    : 'bg-[#2D5941] hover:bg-[#1A3C2E] text-white'
+                }`}
+              >
+                {submittingVerification ? 'Submitting Request...' : 'Submit Verification Request'}
+              </button>
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+};
+

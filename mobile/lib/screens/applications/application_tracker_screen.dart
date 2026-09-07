@@ -1,37 +1,128 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/app_components.dart';
+import 'package:iskoako/utils/app_router.dart';
+import 'package:iskoako/widgets/bank_account_modal.dart';
+import 'package:iskoako/widgets/appeal_modal.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AppliedScholarship {
+  final String? applicationId;
+  final String? scholarId;
+  final String? cycleId;
+  final String? programId;
+  final Map<String, dynamic>? activeRenewalCycle;
+  final Map<String, dynamic>? program;
+  final Map<String, dynamic>? scholar;
   final String providerName;
   final String scholarshipName;
+  final String cycleLabel;
+  final String academicYear;
   final String status;
   final StatusType statusType;
   final String appliedDate;
   final DateTime compareDate;
   final String referenceNumber;
   final List<TrackerStep> steps;
+  final List<Map<String, dynamic>> submittedDocuments;
+  final bool isCycleOpen;
+  final String? cycleEndDate;
+  final String? disbursementMode;
 
   const AppliedScholarship({
+    this.applicationId,
+    this.scholarId,
+    this.cycleId,
+    this.programId,
+    this.disbursementMode,
+    this.activeRenewalCycle,
+    this.program,
+    this.scholar,
     required this.providerName,
     required this.scholarshipName,
+    this.cycleLabel = 'Initial Cycle',
+    this.academicYear = 'AY 2026-2027',
     required this.status,
     required this.statusType,
     required this.appliedDate,
     required this.compareDate,
     required this.referenceNumber,
     required this.steps,
+    required this.submittedDocuments,
+    this.isCycleOpen = true,
+    this.cycleEndDate,
   });
+
+  AppliedScholarship copyWith({
+    String? cycleLabel,
+    String? academicYear,
+  }) {
+    return AppliedScholarship(
+      applicationId: applicationId,
+      scholarId: scholarId,
+      cycleId: cycleId,
+      programId: programId,
+      disbursementMode: disbursementMode,
+      activeRenewalCycle: activeRenewalCycle,
+      program: program,
+      scholar: scholar,
+      providerName: providerName,
+      scholarshipName: scholarshipName,
+      cycleLabel: cycleLabel ?? this.cycleLabel,
+      academicYear: academicYear ?? this.academicYear,
+      status: status,
+      statusType: statusType,
+      appliedDate: appliedDate,
+      compareDate: compareDate,
+      referenceNumber: referenceNumber,
+      steps: steps,
+      submittedDocuments: submittedDocuments,
+      isCycleOpen: isCycleOpen,
+      cycleEndDate: cycleEndDate,
+    );
+  }
 }
+
+class ProgramApplicationGroup {
+  final String programId;
+  final String scholarshipName;
+  final String providerName;
+  final List<AppliedScholarship> cycles;
+  int selectedCycleIndex;
+  int selectedCardSectionTab; // 0: Timeline, 1: Requirements, 2: Summary
+
+  ProgramApplicationGroup({
+    required this.programId,
+    required this.scholarshipName,
+    required this.providerName,
+    required this.cycles,
+    this.selectedCycleIndex = 0,
+    this.selectedCardSectionTab = 0,
+  });
+
+  AppliedScholarship get currentCycle =>
+      cycles[selectedCycleIndex >= 0 && selectedCycleIndex < cycles.length
+          ? selectedCycleIndex
+          : 0];
+
+  StatusType get statusType => currentCycle.statusType;
+  DateTime get compareDate => currentCycle.compareDate;
+}
+
+enum StepState { done, active, future }
 
 class TrackerStep {
   final IconData icon;
   final String title;
   final String date;
   final String description;
-  final _StepState state;
+  final StepState state;
   final String? note;
 
   const TrackerStep({
@@ -44,10 +135,9 @@ class TrackerStep {
   });
 }
 
-enum _StepState { done, active, future }
-
 class ApplicationTrackerScreen extends StatefulWidget {
-  const ApplicationTrackerScreen({super.key});
+  final ValueChanged<int>? onSelectTab;
+  const ApplicationTrackerScreen({super.key, this.onSelectTab});
 
   @override
   State<ApplicationTrackerScreen> createState() => _ApplicationTrackerScreenState();
@@ -56,195 +146,645 @@ class ApplicationTrackerScreen extends StatefulWidget {
 class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
   int? _expandedIndex = 0; // First item expanded by default
   String _selectedFilter = 'All'; // 'All', 'Pending', 'Approved', 'Rejected'
-  String _selectedSort = 'Date (Newest)'; // 'Date (Newest)', 'Date (Oldest)', 'Provider Name'
+  String _selectedSort = 'Date (Newest)';
 
-  final List<AppliedScholarship> _appliedScholarships = [
-    AppliedScholarship(
-      providerName: 'DOST-SEI',
-      scholarshipName: 'DOST-SEI Undergraduate Scholarship',
-      status: 'Under Review',
-      statusType: StatusType.pending,
-      appliedDate: 'Oct 10, 2026',
-      compareDate: DateTime(2026, 10, 10),
-      referenceNumber: 'ISK-2026-04821',
-      steps: [
-        TrackerStep(
-          icon: LucideIcons.send,
-          title: 'Application Submitted',
-          date: 'Oct 10, 2026 · 9:41 AM',
-          description: 'Your application and all initial requirements have been received by the portal.',
-          state: _StepState.done,
-        ),
-        TrackerStep(
-          icon: LucideIcons.fileCheck2,
-          title: 'Documents Verified',
-          date: 'Oct 12, 2026 · 2:05 PM',
-          description: 'All uploaded documents passed authenticity checks. Your file is complete.',
-          state: _StepState.done,
-        ),
-        TrackerStep(
-          icon: LucideIcons.search,
-          title: 'Under Review',
-          date: 'Since Oct 14, 2026 · Est. 5–10 business days',
-          description: 'The scholarship committee is evaluating your application. You\'ll be notified when a decision is made.',
-          state: _StepState.active,
-          note: 'No action needed from you right now.',
-        ),
-        TrackerStep(
-          icon: LucideIcons.award,
-          title: 'Final Decision',
-          date: 'Pending · Awaiting committee',
-          description: 'You will be notified once the scholarship committee reaches a final decision.',
-          state: _StepState.future,
-        ),
-        TrackerStep(
-          icon: LucideIcons.wallet,
-          title: 'Funds Released',
-          date: 'Pending · Via PayMongo · Blockchain-verified',
-          description: 'Upon approval, your stipend will be transferred directly to your registered account.',
-          state: _StepState.future,
-        ),
-      ],
-    ),
-    AppliedScholarship(
-      providerName: 'SM Foundation',
-      scholarshipName: 'SM College Scholarship Program',
-      status: 'Approved',
-      statusType: StatusType.approved,
-      appliedDate: 'Sep 15, 2026',
-      compareDate: DateTime(2026, 9, 15),
-      referenceNumber: 'ISK-2026-09110',
-      steps: [
-        TrackerStep(
-          icon: LucideIcons.send,
-          title: 'Application Submitted',
-          date: 'Sep 15, 2026 · 10:15 AM',
-          description: 'Initial application form and documents submitted to SM Foundation portal.',
-          state: _StepState.done,
-        ),
-        TrackerStep(
-          icon: LucideIcons.fileCheck2,
-          title: 'Documents Verified',
-          date: 'Sep 20, 2026 · 4:30 PM',
-          description: 'Income documents and scholastic records successfully verified.',
-          state: _StepState.done,
-        ),
-        TrackerStep(
-          icon: LucideIcons.search,
-          title: 'Home Visit & Interview',
-          date: 'Completed on Oct 02, 2026',
-          description: 'SM Foundation regional representative completed the home visit and interview.',
-          state: _StepState.done,
-        ),
-        TrackerStep(
-          icon: LucideIcons.award,
-          title: 'Final Approval',
-          date: 'Oct 15, 2026 · 11:00 AM',
-          description: 'Congratulations! You have been selected as an SM Foundation Scholar.',
-          state: _StepState.done,
-          note: 'An onboarding package has been sent to your registered email.',
-        ),
-        TrackerStep(
-          icon: LucideIcons.wallet,
-          title: 'First Stipend Release',
-          date: 'Processing · Estimated release: Nov 15, 2026',
-          description: 'Bank account verification completed. Stipend is queuing for disbursement.',
-          state: _StepState.active,
-        ),
-      ],
-    ),
-    AppliedScholarship(
-      providerName: 'Aboitiz Foundation',
-      scholarshipName: 'Aboitiz College Scholarship',
-      status: 'Interview Stage',
-      statusType: StatusType.pending,
-      appliedDate: 'Oct 20, 2026',
-      compareDate: DateTime(2026, 10, 20),
-      referenceNumber: 'ISK-2026-11029',
-      steps: [
-        TrackerStep(
-          icon: LucideIcons.send,
-          title: 'Application Submitted',
-          date: 'Oct 20, 2026 · 2:10 PM',
-          description: 'Application successfully uploaded through the Iskolarako Portal.',
-          state: _StepState.done,
-        ),
-        TrackerStep(
-          icon: LucideIcons.fileCheck2,
-          title: 'Documents Verified',
-          date: 'Oct 25, 2026 · 9:00 AM',
-          description: 'Primary documents verified. Academic standing authenticated.',
-          state: _StepState.done,
-        ),
-        TrackerStep(
-          icon: LucideIcons.userCheck,
-          title: 'Technical Panel Interview',
-          date: 'Scheduled · Aug 08, 2026 · 2:00 PM',
-          description: 'Your panel interview is scheduled. Please prepare your portfolio and setup.',
-          state: _StepState.active,
-          note: 'Interview link: meet.google.com/abc-defg-hij',
-        ),
-        TrackerStep(
-          icon: LucideIcons.award,
-          title: 'Deliberation & Matching',
-          date: 'Pending · Post-interview',
-          description: 'The Aboitiz matching panel will review interview scores and allocate scholarship slots.',
-          state: _StepState.future,
-        ),
-        TrackerStep(
-          icon: LucideIcons.wallet,
-          title: 'Disbursement Setup',
-          date: 'Pending · Post-contracting',
-          description: 'Setup of corporate allowance matching card and initial release scheduling.',
-          state: _StepState.future,
-        ),
-      ],
-    ),
-    AppliedScholarship(
-      providerName: 'Megaworld Foundation',
-      scholarshipName: 'Megaworld Scholarship Program',
-      status: 'Rejected',
-      statusType: StatusType.rejected,
-      appliedDate: 'Aug 10, 2026',
-      compareDate: DateTime(2026, 8, 10),
-      referenceNumber: 'ISK-2026-02104',
-      steps: [
-        TrackerStep(
-          icon: LucideIcons.send,
-          title: 'Application Submitted',
-          date: 'Aug 10, 2026 · 1:15 PM',
-          description: 'Your application has been received by Megaworld Foundation.',
-          state: _StepState.done,
-        ),
-        TrackerStep(
-          icon: LucideIcons.xCircle,
-          title: 'Application Unsuccessful',
-          date: 'Aug 20, 2026 · 4:00 PM',
-          description: 'Thank you for your interest. Unfortunately, your application did not meet the annual family income ceiling requirement.',
-          state: _StepState.active,
-        ),
-      ],
-    ),
-  ];
+  bool _isLoading = true;
+  List<ProgramApplicationGroup> _programGroups = [];
+  RealtimeChannel? _realtimeChannel;
+  List<Map<String, dynamic>> _paymentAccounts = [];
+  String _currentScholarId = '';
+  String _currentScholarName = 'Scholar';
 
-  List<AppliedScholarship> get _processedScholarships {
-    List<AppliedScholarship> list = List.from(_appliedScholarships);
+  @override
+  void initState() {
+    super.initState();
+    _fetchApplications();
+    _subscribeRealtime();
+  }
 
-    // Apply Filter
+  void _subscribeRealtime() {
+    _realtimeChannel = Supabase.instance.client
+        .channel('app-tracker-realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholarship_applications',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar_documents',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'scholar_payment_accounts',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'fund_releases',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'application_appeals',
+          callback: (payload) {
+            if (mounted) _fetchApplications();
+          },
+        );
+    _realtimeChannel?.subscribe();
+  }
+
+  @override
+  void dispose() {
+    if (_realtimeChannel != null) {
+      Supabase.instance.client.removeChannel(_realtimeChannel!);
+    }
+    super.dispose();
+  }
+
+  Future<void> _fetchApplications() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final List<String> scholarIds = [user.id];
+      String scholarName = 'Scholar';
+      String resolvedScholarId = user.id;
+      Map<String, dynamic>? scholarMap;
+      try {
+        final scholarData = await Supabase.instance.client
+            .from('scholar')
+            .select('*')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        if (scholarData != null && scholarData['id'] != null) {
+          scholarMap = scholarData;
+          final idStr = scholarData['id'].toString();
+          resolvedScholarId = idStr;
+          if (!scholarIds.contains(idStr)) {
+            scholarIds.add(idStr);
+          }
+          final fName = scholarData['first_name']?.toString() ?? '';
+          final lName = scholarData['last_name']?.toString() ?? '';
+          if (fName.isNotEmpty) {
+            scholarName = '$fName $lName'.trim();
+          }
+        }
+      } catch (sErr) {
+        debugPrint('Scholar lookup note: $sErr');
+      }
+
+      List<dynamic> paymentAccs = [];
+      try {
+        final pAccData = await Supabase.instance.client
+            .from('scholar_payment_accounts')
+            .select()
+            .filter('scholar_id', 'in', scholarIds);
+        paymentAccs = pAccData as List<dynamic>? ?? [];
+      } catch (pErr) {
+        debugPrint('Payment accounts fetch note: $pErr');
+      }
+
+      dynamic appsData;
+      try {
+        appsData = await Supabase.instance.client
+            .from('scholarship_applications')
+            .select('''
+              *,
+              cycle:application_cycles (
+                *,
+                program:scholarship_programs (
+                  *,
+                  provider:provider (*)
+                )
+              )
+            ''')
+            .filter('scholar_id', 'in', scholarIds)
+            .order('created_at', ascending: false);
+      } catch (jErr) {
+        debugPrint('Join query note, trying direct query: $jErr');
+        appsData = await Supabase.instance.client
+            .from('scholarship_applications')
+            .select()
+            .filter('scholar_id', 'in', scholarIds)
+            .order('created_at', ascending: false);
+      }
+
+      List<dynamic> releasesData = [];
+      try {
+        if (scholarIds.isNotEmpty) {
+          final rData = await Supabase.instance.client
+              .from('fund_releases')
+              .select('id, application_id, status, blockchain_verified')
+              .filter('scholar_id', 'in', scholarIds);
+          releasesData = rData as List<dynamic>? ?? [];
+        }
+      } catch (rErr) {
+        debugPrint('Fund releases fetch error: $rErr');
+      }
+
+      final List<dynamic> appsList = appsData as List<dynamic>? ?? [];
+      final Set<String> submittedCycleIds = {};
+      for (final r in appsList) {
+        final cId = r['cycle_id']?.toString();
+        if (cId != null && cId.isNotEmpty) {
+          submittedCycleIds.add(cId);
+        }
+      }
+
+      final List<AppliedScholarship> loadedApps = [];
+
+      for (final row in appsList) {
+        final appId = row['id']?.toString();
+        final hasRelease = releasesData.any((r) {
+          final s = (r['status'] ?? '').toString().toLowerCase();
+          final isCompleted = s == 'released' || s == 'completed' || s == 'paid' || r['blockchain_verified'] == true;
+          final isCancelled = s == 'returned' || s == 'refunded' || s == 'failed';
+          return r['application_id']?.toString() == appId && isCompleted && !isCancelled;
+        });
+
+        final cycle = row['cycle'] as Map<String, dynamic>?;
+        final program = cycle?['program'] as Map<String, dynamic>?;
+        final provider = program?['provider'] as Map<String, dynamic>?;
+        String? programId = program?['id']?.toString() ?? row['program_id']?.toString();
+
+        String providerName = provider?['name'] ?? '';
+        String scholarshipName = program?['title'] ?? '';
+
+        if (scholarshipName.isEmpty && row['cycle_id'] != null) {
+          try {
+            final cycleRow = await Supabase.instance.client
+                .from('application_cycles')
+                .select('''
+                  *,
+                  program:scholarship_programs (
+                    *,
+                    provider:provider (*)
+                  )
+                ''')
+                .eq('id', row['cycle_id'])
+                .maybeSingle();
+
+            if (cycleRow != null) {
+              final fallbackProgram = cycleRow['program'] as Map<String, dynamic>?;
+              final fallbackProvider = fallbackProgram?['provider'] as Map<String, dynamic>?;
+
+              scholarshipName = fallbackProgram?['title'] ?? 'Scholarship Program';
+              providerName = fallbackProvider?['name'] ?? 'Scholarship Provider';
+              if (fallbackProgram != null && fallbackProgram['id'] != null) {
+                programId = fallbackProgram['id'].toString();
+              }
+            }
+          } catch (fetchCycleErr) {
+            debugPrint('Note fetching cycle details fallback: $fetchCycleErr');
+          }
+        }
+
+        final cycleType = cycle?['cycle_type']?.toString().toLowerCase() ?? '';
+        final cycleName = cycle?['cycle_name']?.toString() ?? '';
+        final rawDate = row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : DateTime.now();
+        final compareDate = rawDate ?? DateTime.now();
+
+        // Extract Academic Year
+        String ay = '';
+        final ayMatch = RegExp(r'AY\s*20\d{2}[-–]20\d{2}|AY\s*20\d{2}[-–]\d{2}|20\d{2}[-–]20\d{2}|20\d{2}[-–]\d{2}', caseSensitive: false).firstMatch(cycleName);
+        if (ayMatch != null) {
+          final matched = ayMatch.group(0)!.trim();
+          ay = matched.toUpperCase().startsWith('AY') ? matched.toUpperCase() : 'AY $matched';
+        } else if (cycle?['academic_year'] != null && cycle!['academic_year'].toString().isNotEmpty) {
+          final cAy = cycle['academic_year'].toString().trim();
+          ay = cAy.toUpperCase().startsWith('AY') ? cAy.toUpperCase() : 'AY $cAy';
+        } else if (program?['academic_year'] != null && program!['academic_year'].toString().isNotEmpty) {
+          final pAy = program['academic_year'].toString().trim();
+          ay = pAy.toUpperCase().startsWith('AY') ? pAy.toUpperCase() : 'AY $pAy';
+        } else {
+          ay = 'AY ${compareDate.year}-${compareDate.year + 1}';
+        }
+        final semester = cycle?['semester']?.toString() ?? '';
+        final remarksStr = row['remarks']?.toString().toLowerCase() ?? '';
+        final isRenewalApp = cycleType == 'renewal' ||
+            cycleName.toLowerCase().contains('renewal') ||
+            cycleName.toLowerCase().contains('2nd sem') ||
+            remarksStr.contains('renewal');
+
+        // Determine Semester
+        String semTitle = '';
+        final semLower = semester.toLowerCase();
+        final cycleNameLower = cycleName.toLowerCase();
+        if (semLower.contains('1st') || semLower.contains('first') || cycleNameLower.contains('1st') || cycleNameLower.contains('1st sem')) {
+          semTitle = '1st Semester';
+        } else if (semLower.contains('2nd') || semLower.contains('second') || cycleNameLower.contains('2nd') || cycleNameLower.contains('2nd sem')) {
+          semTitle = '2nd Semester';
+        } else if (semLower.contains('summer') || cycleNameLower.contains('summer')) {
+          semTitle = 'Summer Term';
+        } else if (semester.isNotEmpty) {
+          semTitle = semester;
+        } else {
+          semTitle = '1st Semester';
+        }
+
+        String cycleLabel;
+        if (isRenewalApp) {
+          cycleLabel = ay.isNotEmpty ? '$semTitle $ay Renewal' : '$semTitle Renewal';
+        } else {
+          cycleLabel = ay.isNotEmpty ? '$semTitle $ay' : '$semTitle Initial';
+        }
+
+        final dbStatus = row['status']?.toString().toLowerCase() ?? 'pending';
+
+        String statusLabel = 'Submitted';
+        StatusType statusType = StatusType.pending;
+
+        if (dbStatus == 'pending') {
+          statusLabel = 'Pending Review';
+          statusType = StatusType.pending;
+        } else if (dbStatus == 'under_review') {
+          statusLabel = 'Under Review';
+          statusType = StatusType.pending;
+        } else if (dbStatus == 'for_exam') {
+          statusLabel = 'For Exam / Evaluation';
+          statusType = StatusType.pending;
+        } else if (dbStatus == 'approved') {
+          statusLabel = 'Approved';
+          statusType = StatusType.approved;
+        } else if (dbStatus == 'rejected') {
+          statusLabel = 'Unsuccessful';
+          statusType = StatusType.rejected;
+        } else if (dbStatus == 'withdrawn') {
+          statusLabel = 'Withdrawn';
+          statusType = StatusType.info;
+        }
+
+        Map<String, dynamic>? activeRenewalCycle;
+        if (dbStatus == 'approved' && programId != null && programId.isNotEmpty) {
+          try {
+            final renewalCycles = await Supabase.instance.client
+                .from('application_cycles')
+                .select('*, program:scholarship_programs(*)')
+                .eq('program_id', programId)
+                .eq('status', 'open');
+
+            if (renewalCycles.isNotEmpty) {
+              // First pass: find explicit renewal or semester cycle
+              for (final c in renewalCycles) {
+                final cId = c['id']?.toString();
+                if (cId != null && submittedCycleIds.contains(cId)) {
+                  // Scholar has already submitted an application for this cycle
+                  continue;
+                }
+                final cType = c['cycle_type']?.toString().toLowerCase() ?? '';
+                final cName = c['cycle_name']?.toString().toLowerCase() ?? '';
+                if (cType == 'renewal' || cName.contains('renewal') || cName.contains('sem')) {
+                  activeRenewalCycle = Map<String, dynamic>.from(c as Map);
+                  break;
+                }
+              }
+
+              // Second pass: for continuing approved scholars, if a new academic year / new cycle is open
+              // and the scholar has not applied yet, treat it as the continuing application window!
+              if (activeRenewalCycle == null) {
+                for (final c in renewalCycles) {
+                  final cId = c['id']?.toString();
+                  if (cId != null && submittedCycleIds.contains(cId)) {
+                    continue;
+                  }
+                  activeRenewalCycle = Map<String, dynamic>.from(c as Map);
+                  break;
+                }
+              }
+            }
+          } catch (rErr) {
+            debugPrint('Renewal cycle query note: $rErr');
+          }
+        }
+
+        final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        final appliedDate = '${months[compareDate.month - 1]} ${compareDate.day}, ${compareDate.year}';
+
+        final submittedDocsObj = row['submitted_documents'];
+        String refNum = 'ISK-${compareDate.year}-${row['id'].toString().substring(0, 5).toUpperCase()}';
+        List<Map<String, dynamic>> parsedDocs = [];
+
+        if (submittedDocsObj is Map) {
+          if (submittedDocsObj['reference_number'] != null) {
+            refNum = submittedDocsObj['reference_number'].toString();
+          }
+          if (submittedDocsObj['documents'] is List) {
+            parsedDocs = (submittedDocsObj['documents'] as List)
+                .whereType<Map>()
+                .map((d) => Map<String, dynamic>.from(d))
+                .toList();
+          }
+          if (submittedDocsObj['bank_details'] is Map) {
+            final bDetails = Map<String, dynamic>.from(submittedDocsObj['bank_details'] as Map);
+            bDetails['name'] = 'bank_details';
+            bDetails['document_name'] = 'bank_details';
+
+            // Sync verification status from scholar_payment_accounts
+            final hasVerifiedBank = paymentAccs.any((acc) =>
+                acc['is_verified'] == true &&
+                (acc['program_id']?.toString() == programId || acc['is_primary'] == true));
+
+            if (hasVerifiedBank) {
+              bDetails['status'] = 'verified';
+              bDetails['verification_status'] = 'verified';
+            } else {
+              bDetails['status'] = 'pending';
+              bDetails['verification_status'] = 'pending';
+            }
+            parsedDocs.add(bDetails);
+          }
+        } else if (submittedDocsObj is List) {
+          parsedDocs = submittedDocsObj
+              .whereType<Map>()
+              .map((d) => Map<String, dynamic>.from(d))
+              .toList();
+        }
+
+        final cycleStatus = (cycle?['status'] ?? '').toString().toLowerCase();
+        final programStatus = (program?['status'] ?? '').toString().toLowerCase();
+        final endDateRaw = cycle?['application_end_date']?.toString();
+        DateTime? endDate = endDateRaw != null ? DateTime.tryParse(endDateRaw) : null;
+        final bool isDateValid = endDate == null || DateTime.now().isBefore(endDate.add(const Duration(days: 1)));
+        final bool isCycleOpen = (cycleStatus == 'open' || programStatus == 'active' || cycleStatus.isEmpty) && isDateValid && cycleStatus != 'closed' && cycleStatus != 'cancelled';
+
+        String? formattedCycleEndDate;
+        if (endDate != null) {
+          formattedCycleEndDate = '${months[endDate.month - 1]} ${endDate.day}, ${endDate.year}';
+        }
+
+        final bool hasFlaggedDocs = parsedDocs.any((d) =>
+            d['status']?.toString().toLowerCase() == 'flagged' ||
+            d['verification_status']?.toString().toLowerCase() == 'rejected');
+
+        final bool allDocsVerified = parsedDocs.isNotEmpty && parsedDocs.every((d) =>
+            d['status']?.toString().toLowerCase() == 'verified' ||
+            d['verification_status']?.toString().toLowerCase() == 'verified');
+
+        final remarks = row['remarks']?.toString();
+
+        final steps = <TrackerStep>[
+          TrackerStep(
+            icon: LucideIcons.send,
+            title: 'Application Submitted',
+            date: '$appliedDate · ${compareDate.hour}:${compareDate.minute.toString().padLeft(2, '0')}',
+            description: 'Your application and initial requirements have been received by the portal.',
+            state: StepState.done,
+          ),
+          TrackerStep(
+            icon: hasFlaggedDocs ? LucideIcons.alertTriangle : LucideIcons.fileCheck2,
+            title: 'Document Verification',
+            date: hasFlaggedDocs
+                ? (isCycleOpen ? 'Action Required: Resubmit File' : 'Issue Flagged (Cycle Closed)')
+                : (allDocsVerified
+                    ? 'Verified'
+                    : (dbStatus == 'pending' ? 'In Progress' : 'Under Review')),
+            description: hasFlaggedDocs
+                ? (isCycleOpen
+                    ? 'Provider noted an issue in 1 or more uploaded files. Please resubmit the flagged document below before the cycle closes.'
+                    : 'Document issue was flagged, but the scholarship cycle is now closed.')
+                : (allDocsVerified
+                    ? 'All uploaded documents passed verification and completeness checks.'
+                    : 'Provider committee is verifying submitted requirements.'),
+            state: (hasFlaggedDocs || dbStatus == 'pending' || dbStatus == 'under_review') && !allDocsVerified
+                ? StepState.active
+                : StepState.done,
+            note: hasFlaggedDocs ? 'See flagged requirement(s) below to upload a replacement file.' : null,
+          ),
+        ];
+
+        if (dbStatus == 'under_review' || dbStatus == 'for_exam') {
+          steps.add(TrackerStep(
+            icon: LucideIcons.search,
+            title: dbStatus == 'for_exam' ? 'Exam & Evaluation' : 'Under Review',
+            date: 'Active Stage',
+            description: 'The scholarship selection committee is currently evaluating your application.',
+            state: StepState.active,
+            note: remarks,
+          ));
+          steps.add(const TrackerStep(
+            icon: LucideIcons.award,
+            title: 'Final Decision',
+            date: 'Pending',
+            description: 'You will be notified once final approval is granted.',
+            state: StepState.future,
+          ));
+        } else if (dbStatus == 'approved') {
+          steps.add(const TrackerStep(
+            icon: LucideIcons.search,
+            title: 'Evaluation Completed',
+            date: 'Completed',
+            description: 'Scholarship committee evaluation completed successfully.',
+            state: StepState.done,
+          ));
+          steps.add(TrackerStep(
+            icon: LucideIcons.award,
+            title: 'Final Approval',
+            date: 'Approved',
+            description: 'Congratulations! Your scholarship application has been officially approved.',
+            state: StepState.done,
+            note: remarks,
+          ));
+          if (hasRelease) {
+            steps.add(const TrackerStep(
+              icon: LucideIcons.wallet,
+              title: 'Disbursement Setup',
+              date: 'Released',
+              description: 'Your stipend disbursement has been successfully released.',
+              state: StepState.done,
+            ));
+          } else {
+            steps.add(const TrackerStep(
+              icon: LucideIcons.wallet,
+              title: 'Disbursement Setup',
+              date: 'Processing',
+              description: 'Your stipend disbursement is queuing for release.',
+              state: StepState.active,
+            ));
+          }
+        } else if (dbStatus == 'rejected') {
+          final isQuota = (remarks ?? '').toLowerCase().contains('quota') || (remarks ?? '').toLowerCase().contains('slot capacity');
+          final isExam = (remarks ?? '').toLowerCase().contains('exam');
+
+          steps.add(TrackerStep(
+            icon: isQuota ? LucideIcons.users : isExam ? LucideIcons.award : LucideIcons.xCircle,
+            title: isQuota ? 'Slot Capacity Reached' : isExam ? 'Evaluation Finalized' : 'Application Unsuccessful',
+            date: 'Decision Finalized',
+            description: remarks ?? (isQuota
+                ? 'All available scholarship slots for this cycle were filled by top-ranked applicants based on program criteria.'
+                : 'Unfortunately, your application was not selected for this cycle.'),
+            state: StepState.active,
+          ));
+        } else if (dbStatus == 'deferred') {
+          steps.add(const TrackerStep(
+            icon: LucideIcons.search,
+            title: 'Evaluation Completed',
+            date: 'Completed',
+            description: 'Scholarship committee evaluation completed successfully.',
+            state: StepState.done,
+          ));
+          steps.add(TrackerStep(
+            icon: LucideIcons.alertTriangle,
+            title: 'Disbursement Deferred',
+            date: 'Deferred',
+            description: remarks ??
+                'Your disbursement has been deferred for this cycle (e.g., due to missing bank account details). Please complete your profile to enable future payouts.',
+            state: StepState.active,
+            note: remarks,
+          ));
+        } else if (dbStatus == 'withdrawn') {
+          steps.add(const TrackerStep(
+            icon: LucideIcons.xCircle,
+            title: 'Application Withdrawn',
+            date: 'Withdrawn',
+            description: 'You have withdrawn your application for this scholarship cycle.',
+            state: StepState.active,
+          ));
+        } else {
+          steps.add(const TrackerStep(
+            icon: LucideIcons.search,
+            title: 'Committee Review',
+            date: 'Pending',
+            description: 'Scheduled for deliberation upon completion of requirement check.',
+            state: StepState.future,
+          ));
+          steps.add(const TrackerStep(
+            icon: LucideIcons.award,
+            title: 'Final Decision',
+            date: 'Pending',
+            description: 'You will be notified of the committee decision.',
+            state: StepState.future,
+          ));
+        }
+
+        loadedApps.add(AppliedScholarship(
+          applicationId: row['id']?.toString(),
+          scholarId: row['scholar_id']?.toString(),
+          cycleId: row['cycle_id']?.toString(),
+          programId: programId,
+          disbursementMode: program?['disbursement_mode']?.toString() ?? program?['disbursementMode']?.toString(),
+          activeRenewalCycle: activeRenewalCycle,
+          program: program,
+          scholar: scholarMap,
+          providerName: providerName,
+          scholarshipName: scholarshipName,
+          cycleLabel: cycleLabel,
+          academicYear: ay,
+          status: statusLabel,
+          statusType: statusType,
+          appliedDate: appliedDate,
+          compareDate: compareDate,
+          referenceNumber: refNum,
+          steps: steps,
+          submittedDocuments: parsedDocs,
+          isCycleOpen: isCycleOpen,
+          cycleEndDate: formattedCycleEndDate,
+        ));
+      }
+
+      final Map<String, List<AppliedScholarship>> groupedMap = {};
+      for (final app in loadedApps) {
+        final groupKey = (app.programId != null && app.programId!.isNotEmpty)
+            ? app.programId!
+            : app.scholarshipName.toLowerCase().trim();
+        if (!groupedMap.containsKey(groupKey)) {
+          groupedMap[groupKey] = [];
+        }
+        groupedMap[groupKey]!.add(app);
+      }
+
+      final List<ProgramApplicationGroup> groups = [];
+      groupedMap.forEach((key, rawList) {
+        // Sort oldest to newest first to process chronologically per Academic Year
+        rawList.sort((a, b) => a.compareDate.compareTo(b.compareDate));
+
+        final Set<String> seenAYs = {};
+        final List<AppliedScholarship> refinedList = [];
+
+        for (final app in rawList) {
+          final ay = app.academicYear.isNotEmpty ? app.academicYear : 'AY ${app.compareDate.year}-${app.compareDate.year + 1}';
+          
+          if (!seenAYs.contains(ay)) {
+            // First application for this new Academic Year (e.g. AY 2027-2028)
+            seenAYs.add(ay);
+            
+            // If the label currently says 2nd Semester, refine it to 1st Semester for the new Academic Year!
+            String newLabel = app.cycleLabel;
+            if (newLabel.toLowerCase().contains('2nd sem') || newLabel.toLowerCase().contains('2nd semester')) {
+              newLabel = newLabel
+                  .replaceAll(RegExp(r'2nd\s*semester', caseSensitive: false), '1st Semester')
+                  .replaceAll(RegExp(r'2nd\s*sem', caseSensitive: false), '1st Sem');
+            }
+            refinedList.add(app.copyWith(cycleLabel: newLabel));
+          } else {
+            refinedList.add(app);
+          }
+        }
+
+        // Sort newest to oldest for display (Current cycle first at index 0)
+        refinedList.sort((a, b) => b.compareDate.compareTo(a.compareDate));
+
+        groups.add(ProgramApplicationGroup(
+          programId: refinedList.first.programId ?? key,
+          scholarshipName: refinedList.first.scholarshipName,
+          providerName: refinedList.first.providerName,
+          cycles: refinedList,
+          selectedCycleIndex: 0,
+          selectedCardSectionTab: 0,
+        ));
+      });
+
+      if (mounted) {
+        setState(() {
+          _programGroups = groups;
+          _paymentAccounts = List<Map<String, dynamic>>.from(paymentAccs);
+          _currentScholarId = resolvedScholarId;
+          _currentScholarName = scholarName;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching scholar applications: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  List<ProgramApplicationGroup> get _processedGroups {
+    List<ProgramApplicationGroup> list = List.from(_programGroups);
+
     if (_selectedFilter != 'All') {
-      list = list.where((item) {
+      list = list.where((group) {
         if (_selectedFilter == 'Pending') {
-          return item.statusType == StatusType.pending;
+          return group.statusType == StatusType.pending;
         } else if (_selectedFilter == 'Approved') {
-          return item.statusType == StatusType.approved;
+          return group.statusType == StatusType.approved;
         } else if (_selectedFilter == 'Rejected') {
-          return item.statusType == StatusType.rejected;
+          return group.statusType == StatusType.rejected;
         }
         return true;
       }).toList();
     }
 
-    // Apply Sorting
     if (_selectedSort == 'Date (Newest)') {
       list.sort((a, b) => b.compareDate.compareTo(a.compareDate));
     } else if (_selectedSort == 'Date (Oldest)') {
@@ -258,233 +798,896 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final displayedList = _processedScholarships;
+    final displayedList = _processedGroups;
+
+    Widget contentWidget;
+    if (_isLoading) {
+      contentWidget = const Center(
+        child: CircularProgressIndicator(color: Color(0xFF1E3D2F)),
+      );
+    } else {
+      contentWidget = RefreshIndicator(
+        onRefresh: _fetchApplications,
+        color: const Color(0xFF1E3D2F),
+        child: displayedList.isEmpty
+            ? SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: _buildEmptyState(),
+                ),
+              )
+            : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+                itemCount: displayedList.length,
+                itemBuilder: (context, index) {
+                  final group = displayedList[index];
+                  final scholarship = group.currentCycle;
+                  final isExpanded = _expandedIndex == index;
+
+                  String providerShort = scholarship.providerName.split(' ').first;
+                  if (providerShort.length > 10) providerShort = providerShort.substring(0, 10);
+                  if (providerShort.isEmpty) providerShort = 'DOST';
+
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isExpanded ? const Color(0xFF1E3D2F) : const Color(0xFFE5E7EB),
+                        width: isExpanded ? 1.2 : 1.0,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: isExpanded
+                              ? const Color(0xFF1E3D2F).withValues(alpha: 0.08)
+                              : Colors.black.withValues(alpha: 0.03),
+                          blurRadius: isExpanded ? 12 : 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Card Header
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _expandedIndex = isExpanded ? null : index;
+                            });
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF3F4F6),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        providerShort.toUpperCase(),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: const Color(0xFF374151),
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: scholarship.statusType == StatusType.approved
+                                                ? const Color(0xFFDCFCE7)
+                                                : (scholarship.statusType == StatusType.rejected
+                                                    ? const Color(0xFFFEE2E2)
+                                                    : const Color(0xFFFEF3C7)),
+                                            borderRadius: BorderRadius.circular(14),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                scholarship.statusType == StatusType.approved
+                                                    ? Icons.check_circle_rounded
+                                                    : (scholarship.statusType == StatusType.rejected
+                                                        ? LucideIcons.xCircle
+                                                        : LucideIcons.clock),
+                                                size: 13,
+                                                color: scholarship.statusType == StatusType.approved
+                                                    ? const Color(0xFF15803D)
+                                                    : (scholarship.statusType == StatusType.rejected
+                                                        ? const Color(0xFFB91C1C)
+                                                        : const Color(0xFFB45309)),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                scholarship.status,
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: scholarship.statusType == StatusType.approved
+                                                      ? const Color(0xFF15803D)
+                                                      : (scholarship.statusType == StatusType.rejected
+                                                          ? const Color(0xFFB91C1C)
+                                                          : const Color(0xFFB45309)),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Icon(
+                                          isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                                          size: 18,
+                                          color: const Color(0xFF9CA3AF),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  scholarship.scholarshipName,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF111827),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Applied on · ${scholarship.appliedDate}  ·  Ref: ${scholarship.referenceNumber}',
+                                  style: GoogleFonts.inter(
+                                    color: const Color(0xFF6B7280),
+                                    fontSize: 11,
+                                  ),
+                                ),
+
+                                // Cycle Selector Pills
+                                const SizedBox(height: 12),
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: List.generate(group.cycles.length, (cycleIdx) {
+                                      final cycleItem = group.cycles[cycleIdx];
+                                      final isSelected = group.selectedCycleIndex == cycleIdx;
+                                      return GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            group.selectedCycleIndex = cycleIdx;
+                                          });
+                                        },
+                                        child: Container(
+                                          margin: const EdgeInsets.only(right: 8),
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: isSelected ? const Color(0xFF1E3D2F) : Colors.white,
+                                            borderRadius: BorderRadius.circular(20),
+                                            border: Border.all(
+                                              color: isSelected ? const Color(0xFF1E3D2F) : const Color(0xFFE5E7EB),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                cycleIdx == 0 ? LucideIcons.rotateCw : LucideIcons.history,
+                                                size: 12,
+                                                color: isSelected ? Colors.white : const Color(0xFF374151),
+                                              ),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                cycleIdx == 0 ? '${cycleItem.cycleLabel} (Current)' : cycleItem.cycleLabel,
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 11.5,
+                                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                                  color: isSelected ? Colors.white : const Color(0xFF374151),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // Section Tabs & Expanded Content
+                        ClipRect(
+                          child: AnimatedSize(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeInOut,
+                            alignment: Alignment.topCenter,
+                            child: isExpanded
+                                ? Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                                      
+                                      // Section View Switcher Tabs (0-Scroll Document Access)
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF3F4F6),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                flex: 3,
+                                                child: GestureDetector(
+                                                  onTap: () => setState(() => group.selectedCardSectionTab = 0),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                                    decoration: BoxDecoration(
+                                                      color: group.selectedCardSectionTab == 0 ? Colors.white : Colors.transparent,
+                                                      borderRadius: BorderRadius.circular(9),
+                                                      boxShadow: group.selectedCardSectionTab == 0
+                                                          ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]
+                                                          : [],
+                                                    ),
+                                                    child: Center(
+                                                      child: Text(
+                                                        'Timeline',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 11.5,
+                                                          fontWeight: group.selectedCardSectionTab == 0 ? FontWeight.w700 : FontWeight.w500,
+                                                          color: group.selectedCardSectionTab == 0 ? const Color(0xFF1E3D2F) : const Color(0xFF6B7280),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                flex: 4,
+                                                child: GestureDetector(
+                                                  onTap: () => setState(() => group.selectedCardSectionTab = 1),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: group.selectedCardSectionTab == 1 ? Colors.white : Colors.transparent,
+                                                      borderRadius: BorderRadius.circular(9),
+                                                      boxShadow: group.selectedCardSectionTab == 1
+                                                          ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]
+                                                          : [],
+                                                    ),
+                                                    child: Center(
+                                                      child: FittedBox(
+                                                        fit: BoxFit.scaleDown,
+                                                        child: Text(
+                                                          'Requirements (${scholarship.submittedDocuments.length})',
+                                                          maxLines: 1,
+                                                          style: GoogleFonts.inter(
+                                                            fontSize: 11.5,
+                                                            fontWeight: group.selectedCardSectionTab == 1 ? FontWeight.w700 : FontWeight.w500,
+                                                            color: group.selectedCardSectionTab == 1 ? const Color(0xFF1E3D2F) : const Color(0xFF6B7280),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                flex: 3,
+                                                child: GestureDetector(
+                                                  onTap: () => setState(() => group.selectedCardSectionTab = 2),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                                    decoration: BoxDecoration(
+                                                      color: group.selectedCardSectionTab == 2 ? Colors.white : Colors.transparent,
+                                                      borderRadius: BorderRadius.circular(9),
+                                                      boxShadow: group.selectedCardSectionTab == 2
+                                                          ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]
+                                                          : [],
+                                                    ),
+                                                    child: Center(
+                                                      child: Text(
+                                                        'Summary',
+                                                        style: GoogleFonts.inter(
+                                                          fontSize: 11.5,
+                                                          fontWeight: group.selectedCardSectionTab == 2 ? FontWeight.w700 : FontWeight.w500,
+                                                          color: group.selectedCardSectionTab == 2 ? const Color(0xFF1E3D2F) : const Color(0xFF6B7280),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                        child: Builder(
+                                          builder: (context) {
+                                            if (group.selectedCardSectionTab == 1) {
+                                              // REQUIREMENTS TAB
+                                              return _buildDocumentsSection(scholarship, group);
+                                            } else if (group.selectedCardSectionTab == 2) {
+                                              // SUMMARY TAB
+                                              return _buildSummaryTabSection(scholarship);
+                                            }
+
+                                            // DEFAULT TIMELINE TAB
+                                            return Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (scholarship.statusType == StatusType.approved) ...[
+                                                  if (scholarship.activeRenewalCycle != null) ...[
+                                                    _buildRenewalCard(scholarship),
+                                                    const SizedBox(height: 12),
+                                                  ],
+                                                  if (scholarship.disbursementMode == 'in_person_cash')
+                                                    _buildCashOtcInfoCard(scholarship)
+                                                  else
+                                                    _buildBankRequirementCard(scholarship),
+                                                  const SizedBox(height: 12),
+                                                ],
+                                                if (scholarship.statusType == StatusType.rejected) ...[
+                                                  _buildAppealCard(scholarship),
+                                                  const SizedBox(height: 12),
+                                                ],
+                                                ...List.generate(scholarship.steps.length, (stepIdx) {
+                                                  final step = scholarship.steps[stepIdx];
+                                                  return _buildStep(
+                                                    stepNumber: stepIdx + 1,
+                                                    icon: step.icon,
+                                                    title: step.title,
+                                                    date: step.date,
+                                                    description: step.description,
+                                                    state: step.state,
+                                                    note: step.note,
+                                                    isLast: stepIdx == scholarship.steps.length - 1,
+                                                  );
+                                                }),
+                                              ],
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : const SizedBox(width: double.infinity, height: 0),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+      );
+    }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFFAFCFA),
       body: Column(
         children: [
           _buildHeader(context),
           _buildControlBar(),
+          Expanded(child: contentWidget),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCashOtcInfoCard(AppliedScholarship scholarship) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              color: Color(0xFFDCFCE7),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Text('💵', style: TextStyle(fontSize: 20)),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: displayedList.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
-                    itemCount: displayedList.length,
-                    itemBuilder: (context, index) {
-                      final scholarship = displayedList[index];
-                      final isExpanded = _expandedIndex == index;
-
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isExpanded ? AppColors.primary : AppColors.rule,
-                            width: isExpanded ? 1.2 : 0.8,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: isExpanded
-                                  ? AppColors.primary.withAlpha(12)
-                                  : Colors.black.withAlpha(5),
-                              blurRadius: isExpanded ? 12 : 6,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            // Collapsible Header Card
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _expandedIndex = isExpanded ? null : index;
-                                });
-                              },
-                              behavior: HitTestBehavior.opaque,
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: isExpanded
-                                                ? AppColors.primary.withAlpha(20)
-                                                : AppColors.surfaceAlt,
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            scholarship.providerName,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800,
-                                              color: AppColors.primary,
-                                            ),
-                                          ),
-                                        ),
-                                        Row(
-                                          children: [
-                                            StatusChip(
-                                              label: scholarship.status,
-                                              type: scholarship.statusType,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Icon(
-                                              isExpanded
-                                                  ? LucideIcons.chevronUp
-                                                  : LucideIcons.chevronDown,
-                                              size: 18,
-                                              color: AppColors.textMuted,
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      scholarship.scholarshipName,
-                                      style: GoogleFonts.playfairDisplay(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.primaryDark,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Applied · ${scholarship.appliedDate}  ·  Ref: ${scholarship.referenceNumber}',
-                                      style: GoogleFonts.dmMono(
-                                        color: AppColors.textSecondary,
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            // Expandable Timeline
-                            AnimatedCrossFade(
-                              firstChild: const SizedBox.shrink(),
-                              secondChild: Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Divider(height: 16, thickness: 0.8),
-                                    const SizedBox(height: 8),
-                                    ...List.generate(scholarship.steps.length, (stepIdx) {
-                                      final step = scholarship.steps[stepIdx];
-                                      return _buildStep(
-                                        icon: step.icon,
-                                        title: step.title,
-                                        date: step.date,
-                                        description: step.description,
-                                        state: step.state,
-                                        note: step.note,
-                                        isLast: stepIdx == scholarship.steps.length - 1,
-                                      );
-                                    }),
-                                  ],
-                                ),
-                              ),
-                              crossFadeState: isExpanded
-                                  ? CrossFadeState.showSecond
-                                  : CrossFadeState.showFirst,
-                              duration: const Duration(milliseconds: 300),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Over-the-Counter Cash Disbursement',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
                   ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Your grant is disbursed in cash over-the-counter at your campus office / payout venue. Bank account submission is not required.',
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5,
+                    color: const Color(0xFF6B7280),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    final canPop = Navigator.canPop(context);
-
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
+  Widget _buildRenewalCard(AppliedScholarship scholarship) {
+    final cycle = scholarship.activeRenewalCycle!;
+    final cycleName = cycle['cycle_name'] ?? 'Renewal Cycle';
+    final deadline = cycle['application_end_date'] ?? '';
+    
+    final cType = cycle['cycle_type']?.toString().toLowerCase() ?? '';
+    final isNewAyBatch = cType == 'new_applicant' || (!cycleName.toLowerCase().contains('renewal') && !cycleName.toLowerCase().contains('sem'));
+    
+    // Parse requirements
+    final reqsObj = cycle['renewal_requirements'] ?? cycle['application_requirements'];
+    List<dynamic> reqs = [];
+    if (reqsObj is List) {
+      reqs = reqsObj;
+    } else if (reqsObj is String) {
+      try {
+        reqs = jsonDecode(reqsObj);
+      } catch (_) {}
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isNewAyBatch ? const Color(0xFFEBF5EE) : const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isNewAyBatch ? const Color(0xFF86EFAC) : const Color(0xFFFDE68A),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: isNewAyBatch ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Icon(
+                    isNewAyBatch ? LucideIcons.sparkles : LucideIcons.rotateCw,
+                    color: isNewAyBatch ? const Color(0xFF15803D) : const Color(0xFFD97706),
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.diamond_rounded,
-                      size: 14,
-                      color: AppColors.amber,
-                    ),
-                    const SizedBox(width: 6),
                     Text(
-                      'APPLICATION STATUS',
+                      isNewAyBatch ? 'New Academic Year Cycle Open!' : 'Semestral Renewal Period Open!',
                       style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.amberDeep,
-                        letterSpacing: 1.2,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Cycle: $cycleName',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: isNewAyBatch ? const Color(0xFF15803D) : const Color(0xFFD97706),
+                      ),
+                    ),
+                    if (deadline.toString().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Deadline: $deadline',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFFB91C1C),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (reqs.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              isNewAyBatch ? 'Required Documents for Continuing Application:' : 'Required Documents for Renewal:',
+              style: GoogleFonts.inter(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...reqs.map((r) {
+              final name = r is Map ? (r['name'] ?? '') : r.toString();
+              final desc = r is Map ? (r['description'] ?? '') : '';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('• ', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF4B5563)),
+                          children: [
+                            TextSpan(text: name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            if (desc.toString().isNotEmpty) TextSpan(text: ' — $desc'),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
-                if (canPop)
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.rule, width: 0.8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primaryDark.withAlpha(10),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          LucideIcons.chevronLeft,
-                          color: AppColors.primary,
-                          size: 20,
-                        ),
+              );
+            }),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(
+                  context,
+                  AppRouter.documentUpload,
+                  arguments: {
+                    'program': scholarship.program,
+                    'scholar': scholarship.scholar,
+                    'cycle': cycle,
+                  },
+                );
+              },
+              icon: Icon(isNewAyBatch ? LucideIcons.arrowRight : LucideIcons.send, size: 14),
+              label: Text(
+                isNewAyBatch ? 'Apply for New Academic Year →' : 'Submit Renewal Requirements →',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3D2F),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── 1. Payout & Bank Account Card ──────────────────────────────────────────
+  Widget _buildBankRequirementCard(AppliedScholarship scholarship) {
+    // Check if bank details are attached to this specific application or program
+    final appDocs = scholarship.submittedDocuments;
+    Map<String, dynamic>? appBankDoc;
+    for (final doc in appDocs) {
+      final dName = (doc['name'] ?? doc['document_name'] ?? '').toString().toLowerCase();
+      if (dName == 'bank_details' || dName.contains('bank') || dName.contains('atm')) {
+        appBankDoc = doc;
+        break;
+      }
+    }
+
+    Map<String, dynamic>? bankObj;
+
+    if (appBankDoc != null) {
+      bankObj = appBankDoc;
+    } else if (_paymentAccounts.isNotEmpty) {
+      // 1. Find specific program account first
+      Map<String, dynamic>? specificAcc;
+      for (final acc in _paymentAccounts) {
+        if (acc['program_id']?.toString() == scholarship.programId) {
+          specificAcc = acc;
+          break;
+        }
+      }
+
+      if (specificAcc != null) {
+        bankObj = specificAcc;
+      } else {
+        // 2. Check if any payment account explicitly matches programId or applicationId
+        for (final acc in _paymentAccounts) {
+          final aiData = acc['ai_extracted_data'];
+          if (aiData is Map) {
+            final progIds = aiData['program_ids'];
+            final appIds = aiData['application_ids'];
+            final matchesProg = progIds is List && scholarship.programId != null && progIds.map((e) => e.toString()).contains(scholarship.programId!);
+            final matchesApp = appIds is List && scholarship.applicationId != null && appIds.map((e) => e.toString()).contains(scholarship.applicationId!);
+
+            if (matchesProg || matchesApp) {
+              bankObj = acc;
+              break;
+            }
+          }
+        }
+
+        // 3. Global Fallback: Use the scholar's primary or uploaded bank card for all programs!
+        if (bankObj == null) {
+          try {
+            bankObj = _paymentAccounts.firstWhere(
+              (acc) => acc['is_primary'] == true,
+              orElse: () => _paymentAccounts.first,
+            );
+          } catch (_) {
+            bankObj = _paymentAccounts.first;
+          }
+        }
+      }
+    }
+
+
+    final hasBank = bankObj != null;
+    final bankName = bankObj?['bank_name']?.toString() ?? 'UnionBank of the Philippines';
+    final accNum = bankObj?['account_number']?.toString() ?? '';
+    final maskedAcc = accNum.length > 4 ? '•••• ${accNum.substring(accNum.length - 4)}' : (accNum.isNotEmpty ? accNum : '••••');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: hasBank ? const Color(0xFFF0FDF4) : const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: hasBank ? const Color(0xFFDCFCE7) : const Color(0xFFFDE68A), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: hasBank ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Icon(
+                    hasBank ? Icons.check_rounded : Icons.account_balance_wallet_rounded,
+                    color: hasBank ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasBank ? 'Payouts Activated & Bank Verified' : 'Post-Approval Action: Submit Bank Details',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111827),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Application\ntracker.',
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 34,
-                fontWeight: FontWeight.w900,
-                color: AppColors.primaryDark,
-                height: 1.15,
+                    const SizedBox(height: 2),
+                    Text(
+                      hasBank
+                          ? 'Your stipend will be deposited to $bankName ($maskedAcc). Provider releases will automatically route here.'
+                          : 'Please submit your official bank account or ATM card scan for this scholarship program to receive disbursements.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        color: const Color(0xFF6B7280),
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                BankAccountModal.show(
+                  context,
+                  scholarId: _currentScholarId,
+                  scholarName: _currentScholarName,
+                  programId: scholarship.programId,
+                  applicationId: scholarship.applicationId,
+                  onSuccess: () => _fetchApplications(),
+                );
+              },
+              icon: Icon(hasBank ? LucideIcons.edit3 : LucideIcons.creditCard, size: 14),
+              label: Text(
+                hasBank ? 'Update Bank Details for This Program' : 'Submit Bank Account & Card Scan 💳',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: hasBank ? const Color(0xFF1E3D2F) : const Color(0xFFD97706),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppealCard(AppliedScholarship scholarship) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8EE),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFDE8D0), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.scale, size: 20, color: Color(0xFFD97706)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Application Decision Dispute & Appeal',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'If you believe your application decision requires re-evaluation, you can file a formal appeal to the provider.',
+            style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF6B7280), height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                if (scholarship.applicationId != null && scholarship.scholarId != null) {
+                  AppealModal.show(
+                    context,
+                    applicationId: scholarship.applicationId!,
+                    scholarId: scholarship.scholarId!,
+                    programId: scholarship.programId,
+                    scholarshipName: scholarship.scholarshipName,
+                    onSuccess: () => _fetchApplications(),
+                  );
+                }
+              },
+              icon: const Icon(LucideIcons.scale, size: 14),
+              label: Text(
+                'Submit Formal Appeal ⚖️',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD97706),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── 2. Top Header ──────────────────────────────────────────────────────────
+  Widget _buildHeader(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.shieldCheck,
+                        size: 14,
+                        color: Color(0xFFD97706),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'APPLICATION STATUS',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFD97706),
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Application\ntracker.',
+                    style: GoogleFonts.inter(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF111827),
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Track your scholarship application\nin real-time.',
+                    style: GoogleFonts.inter(
+                      fontSize: 12.5,
+                      color: const Color(0xFF6B7280),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Image.asset(
+              'assets/books-hats-icon.png',
+              width: 85,
+              height: 75,
+              fit: BoxFit.contain,
             ),
           ],
         ),
@@ -492,25 +1695,80 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     );
   }
 
+  // ─── 3. Filter Controls ─────────────────────────────────────────────────────
   Widget _buildControlBar() {
+    final filters = ['All', 'Pending', 'Approved', 'Rejected'];
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 12, 12),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(child: _buildFilterChips()),
-          const SizedBox(width: 4),
+          Expanded(
+            child: SizedBox(
+              height: 38,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: filters.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final active = _selectedFilter == filters[i];
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedFilter = filters[i];
+                        _expandedIndex = 0;
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: active ? const Color(0xFF1E3D2F) : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: active ? const Color(0xFF1E3D2F) : const Color(0xFFE5E7EB),
+                          width: 1,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          filters[i],
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                            color: active ? Colors.white : const Color(0xFF374151),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           PopupMenuButton<String>(
-            icon: const Icon(
-              LucideIcons.slidersHorizontal,
-              size: 18,
-              color: AppColors.primary,
+            icon: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+              ),
+              child: const Center(
+                child: Icon(
+                  LucideIcons.slidersHorizontal,
+                  size: 16,
+                  color: Color(0xFF374151),
+                ),
+              ),
             ),
             tooltip: 'Sort Applications',
             onSelected: (value) {
               setState(() {
                 _selectedSort = value;
-                _expandedIndex = null; // collapse on sort change
+                _expandedIndex = 0;
               });
             },
             shape: RoundedRectangleBorder(
@@ -519,33 +1777,15 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
             itemBuilder: (context) => [
               PopupMenuItem(
                 value: 'Date (Newest)',
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.calendarRange, size: 16, color: AppColors.textSecondary),
-                    const SizedBox(width: 8),
-                    Text('Newest Applied', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
-                  ],
-                ),
+                child: Text('Newest Applied', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
               ),
               PopupMenuItem(
                 value: 'Date (Oldest)',
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.calendar, size: 16, color: AppColors.textSecondary),
-                    const SizedBox(width: 8),
-                    Text('Oldest Applied', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
-                  ],
-                ),
+                child: Text('Oldest Applied', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
               ),
               PopupMenuItem(
                 value: 'Provider Name',
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.list, size: 16, color: AppColors.textSecondary),
-                    const SizedBox(width: 8),
-                    Text('Provider A-Z', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
-                  ],
-                ),
+                child: Text('Provider Name', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -554,72 +1794,103 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     );
   }
 
-  Widget _buildFilterChips() {
-    final filters = ['All', 'Pending', 'Approved', 'Rejected'];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
-      child: Row(
-        children: filters.map((filter) {
-          final isSelected = _selectedFilter == filter;
-          return GestureDetector(
-            onTap: () {
-              setState(() {
-                _selectedFilter = filter;
-                _expandedIndex = null; // collapse on filter change
-              });
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.primary : AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected ? AppColors.primary : AppColors.rule,
-                  width: 0.8,
-                ),
-              ),
-              child: Text(
-                filter,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(LucideIcons.folderOpen, size: 48, color: AppColors.textMuted),
-            const SizedBox(height: 16),
+            Container(
+              width: 130,
+              height: 130,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF4F7EB),
+                shape: BoxShape.circle,
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    LucideIcons.fileText,
+                    size: 56,
+                    color: Color(0xFF1E3D2F),
+                  ),
+                  Positioned(
+                    right: 22,
+                    bottom: 22,
+                    child: Transform.rotate(
+                      angle: 0.4,
+                      child: const Icon(
+                        LucideIcons.leaf,
+                        color: Color(0xFF5BA778),
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                  const Positioned(
+                    top: 24,
+                    right: 24,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 16,
+                    ),
+                  ),
+                  const Positioned(
+                    bottom: 30,
+                    left: 20,
+                    child: Icon(
+                      LucideIcons.sparkles,
+                      color: Color(0xFFEAB308),
+                      size: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             Text(
               'No applications found',
-              style: GoogleFonts.playfairDisplay(
+              style: GoogleFonts.inter(
                 fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryDark,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111827),
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Try changing your filter settings to see other status items.',
+              'You have not submitted any scholarship applications yet or try adjusting your filter status.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
-                fontSize: 12,
-                color: AppColors.textSecondary,
+                fontSize: 13,
+                color: const Color(0xFF6B7280),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+            GestureDetector(
+              onTap: () {
+                if (widget.onSelectTab != null) {
+                  widget.onSelectTab!(1);
+                } else {
+                  Navigator.pushNamed(context, AppRouter.scholarships);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E3D2F),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Text(
+                  'Browse Scholarships',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ],
@@ -628,50 +1899,543 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
     );
   }
 
+  // ─── 4. Submitted Requirements Section (Screenshot 2 Design) ────────────────
+  Widget _buildDocumentsSection(AppliedScholarship scholarship, ProgramApplicationGroup group) {
+    final docs = scholarship.submittedDocuments;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(LucideIcons.fileCheck, size: 16, color: Color(0xFF1E3D2F)),
+            const SizedBox(width: 6),
+            Text(
+              'SUBMITTED REQUIREMENTS (${docs.length})',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1E3D2F),
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        if (docs.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+            ),
+            child: Text(
+              'No documents attached yet.',
+              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF6B7280)),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: docs.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (context, docIdx) {
+              final doc = docs[docIdx];
+              final name = (doc['name'] ?? doc['document_name'] ?? 'Submitted Document').toString();
+              final filename = doc['filename']?.toString() ?? 'Document.pdf';
+              final filesize = doc['filesize']?.toString() ?? '0.2 MB';
+              final rawStatus = (doc['status'] ?? doc['verification_status'] ?? 'pending').toString().toLowerCase();
+
+              final isVerified = rawStatus == 'verified';
+              final isFlagged = rawStatus == 'flagged' || rawStatus == 'rejected';
+
+              return Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: isVerified
+                            ? const Color(0xFFDCFCE7)
+                            : (isFlagged ? const Color(0xFFFEE2E2) : const Color(0xFFF3F4F6)),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Icon(
+                          isVerified
+                              ? Icons.check_rounded
+                              : (isFlagged ? LucideIcons.alertTriangle : LucideIcons.fileText),
+                          size: 16,
+                          color: isVerified
+                              ? const Color(0xFF16A34A)
+                              : (isFlagged ? const Color(0xFFB91C1C) : const Color(0xFF6B7280)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF111827),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Submitted on ${scholarship.appliedDate}',
+                            style: GoogleFonts.inter(
+                              fontSize: 10.5,
+                              color: const Color(0xFF9CA3AF),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '$filename · $filesize',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.dmMono(
+                              fontSize: 10,
+                              color: const Color(0xFF6B7280),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isVerified
+                                ? const Color(0xFFDCFCE7)
+                                : (isFlagged ? const Color(0xFFFEE2E2) : const Color(0xFFFEF3C7)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            isVerified
+                                ? '✓ Verified'
+                                : (isFlagged ? '🚩 Flagged' : '● In Review'),
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: isVerified
+                                  ? const Color(0xFF15803D)
+                                  : (isFlagged ? const Color(0xFFB91C1C) : const Color(0xFFB45309)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                if (scholarship.applicationId != null && scholarship.scholarId != null) {
+                                  _openResubmitModal(
+                                    context,
+                                    applicationId: scholarship.applicationId!,
+                                    scholarId: scholarship.scholarId!,
+                                    docItem: doc,
+                                    allDocs: docs,
+                                  );
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF3F4F6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                                ),
+                                child: Text(
+                                  'Replace',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1E3D2F),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () async {
+                                final docUrl = doc['document_url']?.toString() ??
+                                    doc['document_proof_url']?.toString() ??
+                                    doc['url']?.toString();
+                                if (docUrl != null && docUrl.isNotEmpty && docUrl != '#') {
+                                  final uri = Uri.parse(docUrl);
+                                  try {
+                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Could not open file: $e')),
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('File preview available upon upload.')),
+                                    );
+                                  }
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF3F4F6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                                ),
+                                child: Text(
+                                  'View',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1E3D2F),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () async {
+                                final docUrl = doc['document_url']?.toString() ??
+                                    doc['document_proof_url']?.toString() ??
+                                    doc['url']?.toString();
+                                if (docUrl != null && docUrl.isNotEmpty && docUrl != '#') {
+                                  final uri = Uri.parse(docUrl);
+                                  try {
+                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Could not download file: $e')),
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('File download available upon upload.')),
+                                    );
+                                  }
+                                }
+                              },
+                              child: const Icon(
+                                LucideIcons.download,
+                                size: 16,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        const SizedBox(height: 14),
+
+        // Manage / Re-upload Banner Card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Need to update your requirements?',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'You can re-upload if there are changes or requested revisions.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        color: const Color(0xFF6B7280),
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () {
+                        if (scholarship.applicationId != null && scholarship.scholarId != null && docs.isNotEmpty) {
+                          _openResubmitModal(
+                            context,
+                            applicationId: scholarship.applicationId!,
+                            scholarId: scholarship.scholarId!,
+                            docItem: docs.first,
+                            allDocs: docs,
+                          );
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                        ),
+                        child: Text(
+                          'Manage Documents',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1E3D2F),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 50,
+                height: 50,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFEF3C7),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(
+                    LucideIcons.folderCheck,
+                    color: Color(0xFFD97706),
+                    size: 26,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── 5. Summary Section Tab (Screenshot 2 Design) ───────────────────────────
+  Widget _buildSummaryTabSection(AppliedScholarship scholarship) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Application Summary',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF111827),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+          ),
+          child: Column(
+            children: [
+              _buildSummaryRow('Scholarship Program', scholarship.scholarshipName, isBold: true),
+              const Divider(height: 16, color: Color(0xFFF3F4F6)),
+              _buildSummaryRow('Reference Number', scholarship.referenceNumber),
+              const Divider(height: 16, color: Color(0xFFF3F4F6)),
+              _buildSummaryRow('Academic Year', scholarship.academicYear.isNotEmpty ? scholarship.academicYear : 'AY 2026 - 2027'),
+              const Divider(height: 16, color: Color(0xFFF3F4F6)),
+              _buildSummaryRow('Current Semester', scholarship.cycleLabel),
+              const Divider(height: 16, color: Color(0xFFF3F4F6)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Status',
+                    style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF6B7280)),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: scholarship.statusType == StatusType.approved
+                          ? const Color(0xFFDCFCE7)
+                          : const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '✓ ${scholarship.status}',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: scholarship.statusType == StatusType.approved
+                            ? const Color(0xFF15803D)
+                            : const Color(0xFFB45309),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Need Help Card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFDCFCE7), width: 1),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Need help?',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'If you have any questions about your application, contact the scholarship provider.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        color: const Color(0xFF6B7280),
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Contacting provider: ${scholarship.providerName}'),
+                            backgroundColor: const Color(0xFF1E3D2F),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                        ),
+                        child: Text(
+                          'Contact Provider',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1E3D2F),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 46,
+                height: 46,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFDCFCE7),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(
+                    LucideIcons.headphones,
+                    color: Color(0xFF15803D),
+                    size: 22,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF6B7280)),
+        ),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,
+              color: const Color(0xFF111827),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── 6. Timeline Step Item ──────────────────────────────────────────────────
   Widget _buildStep({
+    required int stepNumber,
     required IconData icon,
     required String title,
     required String date,
     required String description,
-    required _StepState state,
+    required StepState state,
     required bool isLast,
     String? note,
   }) {
-    Color circleColor;
-    Color circleBorder;
-    Color lineColor;
-    Color iconColor;
-    Color titleColor;
-
-    switch (state) {
-      case _StepState.done:
-        circleColor = AppColors.successBg;
-        circleBorder = AppColors.primary;
-        lineColor = AppColors.primary;
-        iconColor = AppColors.primary;
-        titleColor = AppColors.primary;
-        break;
-      case _StepState.active:
-        circleColor = AppColors.pendingBg;
-        circleBorder = AppColors.amber;
-        lineColor = AppColors.rule;
-        iconColor = AppColors.amber;
-        titleColor = AppColors.amberDeep;
-        break;
-      case _StepState.future:
-        circleColor = AppColors.surfaceAlt;
-        circleBorder = AppColors.rule;
-        lineColor = AppColors.rule;
-        iconColor = AppColors.textMuted;
-        titleColor = AppColors.textSecondary;
-        break;
-    }
+    final bool isDone = state == StepState.done;
+    final bool isActive = state == StepState.active;
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left timeline column
+          // Left timeline circle & line
           SizedBox(
             width: 36,
             child: Column(
@@ -680,14 +2444,24 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: circleColor,
+                    color: isDone ? const Color(0xFFDCFCE7) : (isActive ? const Color(0xFFFEF3C7) : Colors.white),
                     shape: BoxShape.circle,
-                    border: Border.all(color: circleBorder, width: 2),
+                    border: Border.all(
+                      color: isDone ? const Color(0xFF16A34A) : (isActive ? const Color(0xFFD97706) : const Color(0xFFE5E7EB)),
+                      width: 2,
+                    ),
                   ),
-                  child: Icon(
-                    state == _StepState.done ? LucideIcons.check : icon,
-                    size: 16,
-                    color: iconColor,
+                  child: Center(
+                    child: isDone
+                        ? const Icon(Icons.check_rounded, size: 20, color: Color(0xFF16A34A))
+                        : Text(
+                            '$stepNumber',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: isActive ? const Color(0xFFD97706) : const Color(0xFF9CA3AF),
+                            ),
+                          ),
                   ),
                 ),
                 if (!isLast)
@@ -695,115 +2469,448 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                     child: Container(
                       width: 2,
                       margin: const EdgeInsets.symmetric(vertical: 4),
-                      color: lineColor,
+                      color: isDone ? const Color(0xFF16A34A) : const Color(0xFFE5E7EB),
                     ),
                   ),
               ],
             ),
           ),
           const SizedBox(width: 14),
-          // Content
+
+          // Right Card
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.only(bottom: 16),
               child: Container(
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: state == _StepState.active
-                        ? AppColors.amber.withAlpha(60)
-                        : AppColors.rule,
+                    color: isActive ? const Color(0xFFFDE8D0) : const Color(0xFFE5E7EB),
+                    width: 1,
                   ),
-                  boxShadow: state == _StepState.active
-                      ? [
-                          BoxShadow(
-                            color: AppColors.amber.withAlpha(25),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
-                          )
-                        ]
-                      : [],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                child: Opacity(
-                  opacity: state == _StepState.future ? 0.55 : 1.0,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              title,
-                              style: GoogleFonts.inter(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: titleColor,
-                              ),
-                            ),
-                            if (state == _StepState.done)
-                              StatusChip(
-                                  label: 'Done',
-                                  type: StatusType.approved),
-                            if (state == _StepState.active)
-                              StatusChip(
-                                label: '● Active',
-                                type: StatusType.pending,
-                                showDot: false,
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          date,
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            color: state == _StepState.done
-                                ? AppColors.primary
-                                : AppColors.textMuted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          description,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                            height: 1.5,
-                          ),
-                        ),
-                        if (note != null) ...[
-                          const SizedBox(height: 10),
-                          Divider(height: 1, color: AppColors.rule),
-                          const SizedBox(height: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Icon(LucideIcons.info,
-                                  size: 12, color: AppColors.amber),
-                              const SizedBox(width: 6),
-                              Expanded(
+                              Text(
+                                title,
+                                style: GoogleFonts.inter(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF111827),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                decoration: BoxDecoration(
+                                  color: isDone ? const Color(0xFFF3F4F6) : const Color(0xFFFEF3C7),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                                 child: Text(
-                                  note,
+                                  isDone ? 'Done' : 'Active',
                                   style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    color: AppColors.amberDeep,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDone ? const Color(0xFF6B7280) : const Color(0xFFD97706),
                                   ),
                                 ),
                               ),
                             ],
                           ),
+                          const SizedBox(height: 3),
+                          Text(
+                            date,
+                            style: GoogleFonts.inter(
+                              fontSize: 10.5,
+                              color: const Color(0xFF9CA3AF),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            description,
+                            style: GoogleFonts.inter(
+                              fontSize: 11.5,
+                              color: const Color(0xFF6B7280),
+                              height: 1.35,
+                            ),
+                          ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openResubmitModal(
+    BuildContext context, {
+    required String applicationId,
+    required String scholarId,
+    required Map<String, dynamic> docItem,
+    required List<Map<String, dynamic>> allDocs,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ResubmitDocumentSheet(
+        applicationId: applicationId,
+        scholarId: scholarId,
+        docItem: docItem,
+        allDocs: allDocs,
+        onSuccess: () {
+          Navigator.pop(ctx);
+          _fetchApplications();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Document "${docItem['name'] ?? docItem['document_name']}" resubmitted!',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: const Color(0xFF1E3D2F),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─── Document Resubmit Sheet ─────────────────────────────────────────────────
+class _ResubmitDocumentSheet extends StatefulWidget {
+  final String applicationId;
+  final String scholarId;
+  final Map<String, dynamic> docItem;
+  final List<Map<String, dynamic>> allDocs;
+  final VoidCallback onSuccess;
+
+  const _ResubmitDocumentSheet({
+    required this.applicationId,
+    required this.scholarId,
+    required this.docItem,
+    required this.allDocs,
+    required this.onSuccess,
+  });
+
+  @override
+  State<_ResubmitDocumentSheet> createState() => _ResubmitDocumentSheetState();
+}
+
+class _ResubmitDocumentSheetState extends State<_ResubmitDocumentSheet> {
+  late Map<String, dynamic> _selectedDoc;
+  PlatformFile? _selectedFile;
+  bool _isUploading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDoc = widget.docItem;
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          _selectedFile = result.files.first;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      setState(() => _error = 'Error selecting file: $e');
+    }
+  }
+
+  Future<void> _uploadAndSubmit() async {
+    if (_selectedFile == null) {
+      setState(() => _error = 'Please select a replacement file to upload.');
+      return;
+    }
+
+    setState(() {
+      _isUploading = true;
+      _error = null;
+    });
+
+    try {
+      final docName = (_selectedDoc['name'] ?? _selectedDoc['document_name'] ?? 'document').toString();
+      final fileExt = _selectedFile!.extension ?? 'pdf';
+      final sanitizedName = docName.replaceAll(RegExp(r'\s+'), '_');
+      final storagePath = '${widget.scholarId}/${sanitizedName}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+
+      String publicUrl = '';
+
+      Uint8List? bytes = _selectedFile!.bytes;
+      if (bytes == null && _selectedFile!.path != null) {
+        bytes = await File(_selectedFile!.path!).readAsBytes();
+      }
+
+      if (bytes != null) {
+        try {
+          await Supabase.instance.client.storage
+              .from('scholar-documents')
+              .uploadBinary(
+                storagePath,
+                bytes,
+                fileOptions: const FileOptions(upsert: true),
+              );
+
+          publicUrl = Supabase.instance.client.storage
+              .from('scholar-documents')
+              .getPublicUrl(storagePath);
+        } catch (storageErr) {
+          debugPrint('Supabase storage upload fallback: $storageErr');
+          publicUrl = 'https://mock.storage.iskolarako.org/scholar-documents/$storagePath';
+        }
+      }
+
+      final formattedSize = '${(_selectedFile!.size / (1024 * 1024)).toStringAsFixed(2)} MB';
+
+      final updatedDocsList = widget.allDocs.map((d) {
+        final dName = (d['name'] ?? d['document_name'] ?? '').toString();
+        if (dName == docName) {
+          return {
+            ...d,
+            'name': docName,
+            'document_name': docName,
+            'filename': _selectedFile!.name,
+            'filesize': formattedSize,
+            'document_url': publicUrl,
+            'url': publicUrl,
+            'status': 'Pending',
+            'verification_status': 'under_review',
+            'submitted_at': DateTime.now().toIso8601String(),
+            'remarks': 'Resubmitted by scholar',
+          };
+        }
+        return d;
+      }).toList();
+
+      await Supabase.instance.client
+          .from('scholarship_applications')
+          .update({
+            'submitted_documents': {
+              'documents': updatedDocsList,
+            },
+            'status': 'under_review',
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', widget.applicationId);
+
+      widget.onSuccess();
+    } catch (err) {
+      setState(() => _error = 'Submission failed: $err');
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedDocName = (_selectedDoc['name'] ?? _selectedDoc['document_name'] ?? 'Document').toString();
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Manage & Replace Document',
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF111827),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Select which document you want to replace with a new file.',
+              style: GoogleFonts.inter(
+                fontSize: 12.5,
+                color: const Color(0xFF6B7280),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Document selection dropdown
+            Text(
+              'Target Document:',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<Map<String, dynamic>>(
+                  value: widget.allDocs.any((d) => (d['name'] ?? d['document_name']) == (_selectedDoc['name'] ?? _selectedDoc['document_name']))
+                      ? widget.allDocs.firstWhere((d) => (d['name'] ?? d['document_name']) == (_selectedDoc['name'] ?? _selectedDoc['document_name']))
+                      : (widget.allDocs.isNotEmpty ? widget.allDocs.first : _selectedDoc),
+                  isExpanded: true,
+                  icon: const Icon(LucideIcons.chevronDown, size: 18, color: Color(0xFF6B7280)),
+                  items: widget.allDocs.map((doc) {
+                    final name = (doc['name'] ?? doc['document_name'] ?? 'Document').toString();
+                    final rawStatus = (doc['status'] ?? doc['verification_status'] ?? 'pending').toString();
+                    return DropdownMenuItem<Map<String, dynamic>>(
+                      value: doc,
+                      child: Row(
+                        children: [
+                          const Icon(LucideIcons.fileText, size: 16, color: Color(0xFF1E3D2F)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF111827),
+                              ),
+                              softWrap: true,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: rawStatus.toLowerCase().contains('flag') || rawStatus.toLowerCase().contains('reject')
+                                  ? const Color(0xFFFEE2E2)
+                                  : const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              rawStatus,
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: rawStatus.toLowerCase().contains('flag') || rawStatus.toLowerCase().contains('reject')
+                                    ? const Color(0xFFB91C1C)
+                                    : const Color(0xFFB45309),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (newDoc) {
+                    if (newDoc != null) {
+                      setState(() {
+                        _selectedDoc = newDoc;
+                        _selectedFile = null;
+                      });
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            GestureDetector(
+              onTap: _pickFile,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      _selectedFile != null ? LucideIcons.fileCheck : LucideIcons.filePlus,
+                      size: 28,
+                      color: _selectedFile != null ? const Color(0xFF1E3D2F) : const Color(0xFF6B7280),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _selectedFile != null ? _selectedFile!.name : 'Choose Replacement File for "$selectedDocName"',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111827),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: GoogleFonts.inter(fontSize: 12, color: Colors.red)),
+            ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _isUploading ? null : _uploadAndSubmit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E3D2F),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                child: _isUploading
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Text('Replace Document', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

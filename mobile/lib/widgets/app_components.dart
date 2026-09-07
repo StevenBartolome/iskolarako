@@ -105,7 +105,7 @@ class SectionHeading extends StatelessWidget {
       children: [
         Text(
           title,
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.inter(
             fontSize: 17,
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark,

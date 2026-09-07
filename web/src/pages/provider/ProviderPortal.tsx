@@ -1,96 +1,97 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
 import { CloseProgramConfirmModal } from './components/CloseProgramConfirmModal';
+import { ForceCloseCycleConfirmModal } from './components/ForceCloseCycleConfirmModal';
 import { DeleteCycleConfirmModal } from './components/DeleteCycleConfirmModal';
 import { RenewCycleModal } from './components/RenewCycleModal';
+import { QuotaFilledModal } from './components/QuotaFilledModal';
+import { ReviewApplicationModal } from './components/ReviewApplicationModal';
+import type { ApplicationDetail, SubmittedDocItem } from './components/ReviewApplicationModal';
+import { ProviderDashboardTab } from './components/ProviderDashboardTab';
+import { ProviderApplicantsTab } from './components/ProviderApplicantsTab';
+import { ProviderProgramsTab } from './components/ProviderProgramsTab';
+import { ProviderDisbursementsTab } from './components/ProviderDisbursementsTab';
+import { ProviderAnnouncementsTab } from './components/ProviderAnnouncementsTab';
+import { ProviderReportsTab } from './components/ProviderReportsTab';
+import { ProviderVerificationTab } from './components/ProviderVerificationTab';
+import { ProviderViewApplicationTab } from './components/ProviderViewApplicationTab';
+import { ProviderProgramFormTab } from './components/ProviderProgramFormTab';
+import { ProviderAppealsTab } from './components/ProviderAppealsTab';
+import { ProfileSettingsTab } from '@/components/common/ProfileSettingsTab';
+import { ProviderNotificationDrawer } from './components/ProviderNotificationDrawer';
+import { sendProviderAnnouncement, fetchProviderBroadcasts, deleteNotification, sendDecisionNotification } from '@/services/notificationService';
+import { createAuditLog } from '@/services/auditLogService';
+import { verifyDocumentAuthenticity, type ApplicantVerificationContext } from '@/services/aiExtractionService';
+import { sanitizeRequirementsSubmitted } from './utils/sanitizeUtils';
+import { sortCyclesNewestFirst } from './utils/cycleUtils';
+import type {
+  ProviderPortalProps,
+  TabType,
+  AnnType,
+  ApplicantStatus,
+  ApplicationCycle,
+  ProgramRequirement,
+  Program,
+  DisbursementTx,
+  ScholarAward,
+} from './types';
+export type { ApplicationCycle, ProgramRequirement, Program };
 
+const parseLocalMidnight = (dateStr: string) => {
+  if (!dateStr) return new Date();
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
 
-interface ProviderPortalProps {
-  onLogout: () => void;
-  showWelcome?: boolean;
-}
+const getTodayMidnight = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+};
 
-type TabType = 'dashboard' | 'applicants' | 'programs' | 'disbursements' | 'announcements' | 'reports' | 'verification';
-type AnnType = 'Examination Schedule' | 'Release of Funds' | 'General Notice' | 'Requirements Update';
-type ApplicantStatus = 'Pending' | 'Under Review' | 'Approved' | 'Rejected' | 'For Exam';
-
-type FundingFreq = 'Per Semester' | 'Once a Year' | 'One-time';
-type RenewalPolicy = 'No Renewal' | 'Automatic Renewal' | 'Conditional Renewal' | 'Annual Reapplication' | 'Semester Renewal';
-type ScholarshipType = 'merit' | 'need_based' | 'merit_and_need' | 'grant' | 'fellowship';
-type AvailabilityScope = 'nationwide' | 'regional' | 'provincial' | 'municipality' | 'barangay' | 'specific_schools';
-
-export interface ApplicationCycle {
-  id: string | number;
-  name: string;
-  startDate: string;
-  endDate: string;
-  status: 'Open' | 'Closed' | 'Evaluating' | 'Upcoming';
-}
-
-export interface ProgramRequirement {
-  name: string;
-  description: string;
-  required: boolean;
-}
-
-export interface Program {
-  id: string | number;
-  provider: string;
-  status: string;
-  statusType: 'success' | 'draft' | 'closing';
-  title: string;
-  description: string;
-  category: string;
-  scholarshipType: ScholarshipType;
-  coverstuition: boolean;
-  coversStipend: boolean;
-  stipendAmount: string;
-  coversAllowance: boolean;
-  allowanceAmount: string;
-  otherBenefits: string[];
-  courseEligibility: string[];
-  yearLevelEligibility: number[];
-  minimumGwa: string;
-  availabilityScope: AvailabilityScope;
-  availableRegions: string[];
-  availableSchools: string;
-  totalSlots: string;
-  applicationRequirements: ProgramRequirement[];
-  renewalPolicy: RenewalPolicy;
-  fundingFrequency: FundingFreq;
-  renewalGwa: string;
-  cycles: ApplicationCycle[];
-  budgetUsed: string;
-  budgetTotal: string;
-  rejectionRemarks?: string;
-}
-
-interface DisbursementTx {
-  id: string;
-  scholar: string;
-  program: string;
-  method: string;
-  amount: string;
-  numericAmount: number;
-  status: 'Completed' | 'Processing' | 'Failed';
-  date: string;
-}
-
-interface ScholarAward {
-  id: number;
-  scholarName: string;
-  programTitle: string;
-  cycleJoined: string;
-  status: 'Maintaining' | 'Awaiting Grades' | 'Requirements Warning' | 'Graduated' | 'Suspended';
-  gwa: string;
-  dateAwarded: string;
-}
 
 export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWelcome }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('programs');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const getTabFromPath = (): TabType => {
+    const segment = location.pathname.replace(/^\/provider\/?/, '').split('/')[0];
+    const validTabs: TabType[] = [
+      'dashboard', 'applicants', 'programs', 'disbursements',
+      'announcements', 'reports', 'verification', 'appeals',
+      'profile', 'view-application', 'create-program', 'edit-program'
+    ];
+    if (validTabs.includes(segment as TabType)) {
+      return segment as TabType;
+    }
+    return 'dashboard';
+  };
+
+  const activeTab = getTabFromPath();
+  const setActiveTab = (tab: TabType) => {
+    navigate(`/provider/${tab}${location.search}`);
+  };
+
+  // Automatically switch to the disbursements tab if returned from PayMongo redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const disbursementStatus = params.get('disbursement');
+    if (disbursementStatus === 'success' || disbursementStatus === 'cancelled') {
+      setActiveTab('disbursements');
+    }
+  }, []);
+
   
+  // Current authenticated user ID
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
+
+  // Notification Drawer State
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+
   // Profile state loaded dynamically from Supabase
   const [profile, setProfile] = useState<{
     firstName: string;
@@ -105,7 +106,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     name: string;
     providerType: string;
     verificationStatus: 'pending' | 'under_review' | 'verified' | 'rejected';
-    requirementsSubmitted: Record<string, string>;
+    requirementsSubmitted: Record<string, any>;
   } | null>(null);
 
   // Requirements checklist configuration for this provider type
@@ -115,6 +116,113 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   // Uploading and submission indicators
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const [submittingVerification, setSubmittingVerification] = useState(false);
+
+  // Tracks whether the provider has edited/re-uploaded a document in the current status window
+  const [hasModifiedDocs, setHasModifiedDocs] = useState(false);
+
+  // Quota-filled resolution modal states
+  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState<boolean>(false);
+  const [quotaCycleId, setQuotaCycleId] = useState<string>('');
+  const [quotaProgramTitle, setQuotaProgramTitle] = useState<string>('');
+  const [quotaCycleName, setQuotaCycleName] = useState<string>('');
+  const [quotaTotalSlots, setQuotaTotalSlots] = useState<number>(0);
+  const [quotaUnselectedApplicants, setQuotaUnselectedApplicants] = useState<any[]>([]);
+  const [quotaPendingApproveIds, setQuotaPendingApproveIds] = useState<string[]>([]);
+
+  const triggerQuotaFilledModal = async (cycleId: string, programTitle: string, cycleName: string, totalSlots: number, excludeAppIds: (string | number)[] = []) => {
+    try {
+      const { data: pendingApps, error } = await supabase
+        .from('scholarship_applications')
+        .select(`
+          id, 
+          status, 
+          cycle_id, 
+          remarks, 
+          created_at, 
+          grade, 
+          gpa_scale, 
+          scholar:scholar(
+            id,
+            first_name, 
+            last_name, 
+            middle_name,
+            suffix,
+            school, 
+            course, 
+            year_level, 
+            phone,
+            gpa_scale,
+            gpa,
+            user:users (
+              id,
+              email,
+              first_name,
+              last_name
+            )
+          )
+        `)
+        .eq('cycle_id', cycleId)
+        .in('status', ['pending', 'under_review', 'for_exam']);
+
+      if (error) throw error;
+
+      const mappedUnselected = (pendingApps || [])
+        .map((app: any) => {
+          const scholar = app.scholar || {};
+          const user = scholar.user || {};
+          const scholarName = [
+            scholar.first_name || user.first_name,
+            scholar.middle_name,
+            scholar.last_name || user.last_name,
+            scholar.suffix
+          ].filter(Boolean).join(' ').trim() || 'Pending Scholar';
+
+          return {
+            id: app.id,
+            name: scholarName,
+            school: scholar.school || '',
+            course: scholar.course || '',
+            yearLevel: scholar.year_level?.toString() || '',
+            grade: app.grade || scholar.gpa || '',
+            gpa_scale: app.gpa_scale || scholar.gpa_scale || 'scale_5',
+            gpaScale: app.gpa_scale || scholar.gpa_scale || 'scale_5',
+            status: app.status === 'under_review' ? 'Under Review' : app.status === 'for_exam' ? 'For Exam' : 'Pending',
+            email: user.email || '',
+            phone: scholar.phone || '',
+            program: programTitle,
+            cycle: cycleName,
+            scholarId: user.id || scholar.user_id || app.scholar_id,
+            rawApplication: app
+          };
+        })
+        .filter((app: any) => !excludeAppIds.map(String).includes(String(app.id)));
+
+      if (mappedUnselected.length > 0) {
+        setQuotaCycleId(cycleId);
+        setQuotaProgramTitle(programTitle);
+        setQuotaCycleName(cycleName);
+        setQuotaTotalSlots(totalSlots);
+        setQuotaUnselectedApplicants(mappedUnselected);
+        setIsQuotaModalOpen(true);
+      }
+    } catch (err) {
+      console.error('Error triggering quota modal:', err);
+    }
+  };
+
+  const handleConfirmApprove = async () => {
+    if (quotaPendingApproveIds.length === 0) return;
+    for (const id of quotaPendingApproveIds) {
+      await handleUpdateStatus(id, 'Approved', undefined, undefined, quotaPendingApproveIds, true);
+    }
+    setQuotaPendingApproveIds([]);
+  };
+
+  // Reset the modification flag whenever the verification status changes,
+  // so a resubmission always requires a fresh document edit/re-upload
+  useEffect(() => {
+    setHasModifiedDocs(false);
+  }, [providerDetails?.verificationStatus]);
 
   const fetchRequirementsConfig = async (providerType: string) => {
     try {
@@ -156,6 +264,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
+        setCurrentUserId(user.id);
 
         // Fetch user record
         const { data: userData, error: userErr } = await supabase
@@ -182,7 +291,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               name: provData.name,
               providerType: provData.provider_type,
               verificationStatus: provData.verification_status as any,
-              requirementsSubmitted: provData.requirements_submitted || {}
+              requirementsSubmitted: sanitizeRequirementsSubmitted(provData.requirements_submitted || {})
             });
 
             // Fetch required documents configuration
@@ -240,7 +349,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               return {
                 ...prev,
                 verificationStatus: updated.verification_status,
-                requirementsSubmitted: updated.requirements_submitted || {}
+                requirementsSubmitted: sanitizeRequirementsSubmitted(updated.requirements_submitted || {})
               };
             });
             showToast('Verification status updated in real-time!');
@@ -303,15 +412,38 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     fetchCategories();
   }, []);
 
+  const mapFundingFreq = (freq: any) => {
+    if (!freq) return 'Per Semester';
+    const s = String(freq).toLowerCase().replace(/_/g, ' ');
+    if (s.includes('sem')) return 'Per Semester';
+    if (s.includes('year') || s.includes('annua')) return 'Annual';
+    if (s.includes('month')) return 'Monthly';
+    if (s.includes('one') || s.includes('single')) return 'One-Time Grant';
+    return String(freq);
+  };
+
   const mapDbToProgram = (dbProg: any): Program => {
+    const fundingFreq = mapFundingFreq(dbProg.funding_frequency || dbProg.fundingFrequency);
+    const renPolicy = dbProg.renewal_policy || dbProg.renewalPolicy || (dbProg.renewal_gwa_requirement ? `Semestral (GWA ≤ ${dbProg.renewal_gwa_requirement})` : dbProg.minimum_gwa ? `Semestral (GWA ≤ ${dbProg.minimum_gwa})` : 'Semestral Re-evaluation');
+
     return {
       id: dbProg.id,
       provider: providerDetails?.name || 'My Provider',
       status: dbProg.status === 'approved' || dbProg.status === 'Approved' || dbProg.status === 'active' || dbProg.status === 'Active' ? 'Approved' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'Pending Review' : dbProg.status === 'paused' ? 'Rejected' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'Draft' : 'Closed',
+      rawStatus: dbProg.status,
       statusType: dbProg.status === 'approved' || dbProg.status === 'Approved' || dbProg.status === 'active' || dbProg.status === 'Active' ? 'success' : dbProg.status === 'pending' || dbProg.status === 'Pending' ? 'draft' : dbProg.status === 'paused' ? 'closing' : dbProg.status === 'draft' || dbProg.status === 'Draft' ? 'draft' : 'closing',
       title: dbProg.title,
       description: dbProg.description,
-      category: dbProg.category?.name || 'Merit-Based',
+      category: (() => {
+        const sType = (dbProg.scholarship_type || '').toLowerCase();
+        if (sType === 'need_based' || sType === 'need') return 'Need-Based';
+        if (sType === 'merit_and_need' || (sType.includes('merit') && sType.includes('need')) || sType.includes('both')) return 'Both Merit and Need';
+        if (sType === 'merit') return 'Merit-Based';
+        const cName = (dbProg.category?.name || '').toLowerCase();
+        if ((cName.includes('need') && cName.includes('merit')) || cName.includes('both')) return 'Both Merit and Need';
+        if (cName.includes('need')) return 'Need-Based';
+        return 'Merit-Based';
+      })(),
       scholarshipType: dbProg.scholarship_type,
       coverstuition: dbProg.covers_tuition,
       coversStipend: dbProg.covers_stipend,
@@ -322,24 +454,91 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       courseEligibility: dbProg.course_eligibility || [],
       yearLevelEligibility: dbProg.year_level_eligibility || [],
       minimumGwa: dbProg.minimum_gwa ? String(dbProg.minimum_gwa) : '',
-      availabilityScope: dbProg.availability_scope,
-      availableRegions: dbProg.available_regions || [],
-      availableSchools: dbProg.available_schools ? dbProg.available_schools.join(', ') : '',
-      totalSlots: dbProg.total_slots ? String(dbProg.total_slots) : '',
-      applicationRequirements: dbProg.application_requirements || [],
-      renewalPolicy: dbProg.renewal_policy,
-      fundingFrequency: dbProg.funding_frequency,
+      covers_tuition: dbProg.covers_tuition,
+      covers_stipend: dbProg.covers_stipend,
+      stipend_amount: dbProg.stipend_amount,
+      covers_allowance: dbProg.covers_allowance,
+      total_slots: dbProg.total_slots,
+      totalSlots: dbProg.total_slots,
+      budget_total: dbProg.budget_total !== undefined && dbProg.budget_total !== null ? Number(dbProg.budget_total) : 0,
+      amount: dbProg.budget_total !== undefined && dbProg.budget_total !== null ? String(dbProg.budget_total) : '',
+      target_education_level: dbProg.target_education_level,
+      targetEducationLevel: dbProg.target_education_level,
+      grading_system: dbProg.grading_system,
+      minimum_gwa: dbProg.minimum_gwa,
+      application_requirements: dbProg.application_requirements,
+      applicationRequirements: dbProg.application_requirements,
+      availability_scope: dbProg.availability_scope,
+      available_regions: dbProg.available_regions,
+      available_provinces: dbProg.available_provinces,
+      available_municipalities: dbProg.available_municipalities,
+      available_barangays: dbProg.available_barangays,
+      available_schools: dbProg.available_schools,
+      allow_freshman_intended_school: dbProg.allow_freshman_intended_school,
+      is_incoming_freshman_supported: dbProg.is_incoming_freshman_supported,
+      disbursement_mode: dbProg.disbursement_mode || 'online',
+      disbursementMode: dbProg.disbursement_mode || 'online',
+      banking_policy: dbProg.banking_policy || 'any_bank',
+      bankingPolicy: dbProg.banking_policy || 'any_bank',
+      online_bank_type: dbProg.banking_policy === 'provider_issued' ? 'provider_issued_card' : 'personal_bank',
+      onlineBankType: dbProg.banking_policy === 'provider_issued' ? 'provider_issued_card' : 'personal_bank',
+      tuition_payout_mode: dbProg.tuition_payout_mode || 'direct_to_student',
+      tuition_coverage_type: dbProg.tuition_coverage_type || 'fixed_cap',
+      tuition_max_amount: dbProg.tuition_max_amount ? String(dbProg.tuition_max_amount) : '',
+      custom_benefits: dbProg.custom_benefits || [],
+      low_budget_threshold: dbProg.low_budget_threshold || 0.20,
       renewalGwa: dbProg.renewal_gwa_requirement ? String(dbProg.renewal_gwa_requirement) : '',
-      cycles: (dbProg.cycles || []).map((cyc: any) => ({
-        id: cyc.id,
-        name: cyc.cycle_name,
-        startDate: cyc.application_start_date,
-        endDate: cyc.application_end_date,
-        status: cyc.status === 'open' ? 'Open' : cyc.status === 'evaluating' ? 'Evaluating' : cyc.status === 'upcoming' ? 'Upcoming' : 'Closed'
-      })),
-      budgetUsed: '₱0',
+      fundingFrequency: fundingFreq,
+      funding_frequency: fundingFreq,
+      renewalPolicy: renPolicy,
+      renewal_policy: renPolicy,
+      approved_count: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
+      approvedCount: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
+      scholars_count: dbProg.approved_count || dbProg.approvedCount || dbProg.scholars_count || 0,
+      cycles: sortCyclesNewestFirst(
+        (dbProg.cycles || []).map((cyc: any) => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const end = cyc.application_end_date ? new Date(cyc.application_end_date + 'T00:00:00') : null;
+          const start = cyc.application_start_date ? new Date(cyc.application_start_date + 'T00:00:00') : null;
+
+          let dynamicStatus = 'Closed';
+          const rawStatus = (cyc.status || '').toLowerCase().trim();
+
+          if (rawStatus === 'closed' || rawStatus === 'archived') {
+            dynamicStatus = 'Closed';
+          } else if (end && end < today) {
+            // Deadline has passed! Automatically mark as Closed
+            dynamicStatus = 'Closed';
+          } else if (start && start > today) {
+            dynamicStatus = 'Upcoming';
+          } else if (rawStatus === 'evaluating') {
+            dynamicStatus = 'Evaluating';
+          } else {
+            dynamicStatus = 'Open';
+          }
+
+          return {
+            id: cyc.id,
+            name: cyc.cycle_name,
+            startDate: cyc.application_start_date,
+            endDate: cyc.application_end_date,
+            status: dynamicStatus,
+            cycleType: cyc.cycle_type,
+            semester: cyc.semester,
+            slotsAvailable: cyc.slots_available,
+            renewalRequirements: cyc.renewal_requirements,
+            created_at: cyc.created_at,
+            createdAt: cyc.created_at,
+          };
+        })
+      ),
+      budgetUsed: dbProg.disbursed_total ? `₱${Number(dbProg.disbursed_total).toLocaleString()}` : '₱0',
       budgetTotal: dbProg.budget_total ? `₱${Number(dbProg.budget_total).toLocaleString()}` : '₱0',
-      rejectionRemarks: dbProg.rejection_remarks || undefined
+      disbursed_total: dbProg.disbursed_total || 0,
+      disbursedTotal: dbProg.disbursedTotal || 0,
+      rejectionRemarks: dbProg.rejection_remarks || undefined,
     };
   };
 
@@ -365,7 +564,83 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       }
 
       if (data) {
-        const mapped = data.map(mapDbToProgram);
+        // Auto-sync expired cycles in the database to status: 'closed'
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const expiredCycleIds = data.flatMap((p: any) =>
+          (p.cycles || [])
+            .filter((c: any) => (c.status === 'open' || c.status === 'active') && c.application_end_date && new Date(c.application_end_date + 'T00:00:00') < today)
+            .map((c: any) => c.id)
+        );
+
+        if (expiredCycleIds.length > 0) {
+          supabase
+            .from('application_cycles')
+            .update({ status: 'closed' })
+            .in('id', expiredCycleIds)
+            .then(() => console.log(`[Auto-Close Cycles]: Synced ${expiredCycleIds.length} expired cycles to closed in DB.`));
+        }
+
+        // Fetch fund releases to calculate disbursed total & approved scholars count
+        let disbursementsMap: Record<string, number> = {};
+        let approvedCountMap: Record<string, number> = {};
+
+        if (data.length > 0) {
+          const programIds = data.map((p: any) => p.id);
+          const { data: releasesData } = await supabase
+            .from('fund_releases')
+            .select('program_id, amount, status, paymongo_status')
+            .in('program_id', programIds);
+
+          if (releasesData) {
+            releasesData.forEach((r: any) => {
+              const rawStatus = (r.status || '').toLowerCase();
+              const pmStatus = (r.paymongo_status || '').toLowerCase();
+              if (rawStatus !== 'failed' && pmStatus !== 'failed' && rawStatus !== 'refunded' && pmStatus !== 'refunded') {
+                const amt = Number(r.amount || 0);
+                disbursementsMap[r.program_id] = (disbursementsMap[r.program_id] || 0) + amt;
+              }
+            });
+          }
+
+          // Count ONLY approved applications per program, deduped by scholar so a
+          // scholar who reapplies/renews for another cycle (e.g. 2nd Sem Renewal)
+          // of the same program is still counted once, not once per application.
+          const { data: approvedAppsData } = await supabase
+            .from('scholarship_applications')
+            .select('id, scholar_id, cycle:cycle_id(program_id)')
+            .eq('status', 'approved');
+
+          if (approvedAppsData) {
+            const seenScholarsByProgram: Record<string, Set<string>> = {};
+            approvedAppsData.forEach((app: any) => {
+              const pId = app.cycle?.program_id;
+              if (!pId) return;
+              const scholarKey = app.scholar_id ? String(app.scholar_id) : `app:${app.id}`;
+              if (!seenScholarsByProgram[pId]) {
+                seenScholarsByProgram[pId] = new Set();
+              }
+              if (!seenScholarsByProgram[pId].has(scholarKey)) {
+                seenScholarsByProgram[pId].add(scholarKey);
+                approvedCountMap[pId] = (approvedCountMap[pId] || 0) + 1;
+              }
+            });
+          }
+        }
+
+        const mapped = data.map((dbProg: any) => {
+          const disbursedAmt = disbursementsMap[dbProg.id] || 0;
+          const approvedCnt = approvedCountMap[dbProg.id] || 0;
+          return mapDbToProgram({
+            ...dbProg,
+            disbursed_total: disbursedAmt,
+            disbursedTotal: disbursedAmt,
+            approved_count: approvedCnt,
+            approvedCount: approvedCnt,
+            scholars_count: approvedCnt,
+          });
+        });
         setProgramsList(mapped);
       }
     } catch (err) {
@@ -375,10 +650,45 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   useEffect(() => {
     fetchPrograms();
+
+    const progChannel = supabase
+      .channel('provider-programs-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_programs' },
+        () => {
+          fetchPrograms();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'application_cycles' },
+        () => {
+          fetchPrograms();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fund_releases' },
+        () => {
+          fetchPrograms();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'scholarship_applications' },
+        () => {
+          fetchPrograms();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(progChannel);
+    };
   }, [providerDetails?.id, categories]);
 
   // Search & filter states
-
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
 
@@ -399,145 +709,33 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   };
 
   // Modal states
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [isBigMapModalOpen, setIsBigMapModalOpen] = useState(false);
 
   // Renew/Reopen Cycle Modal States
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [selectedProgramForRenewal, setSelectedProgramForRenewal] = useState<Program | null>(null);
+  const [cycleToEdit, setCycleToEdit] = useState<any | null>(null);
   const [renewCycleName, setRenewCycleName] = useState('');
   const [renewStartDate, setRenewStartDate] = useState('');
   const [renewEndDate, setRenewEndDate] = useState('');
   const [renewSlots, setRenewSlots] = useState('');
+  const [renewCycleType, setRenewCycleType] = useState<'new_applicant' | 'renewal'>('renewal');
+  const [renewSemester, setRenewSemester] = useState<string>('1st Semester');
+  const [renewRequirements, setRenewRequirements] = useState<Array<{ name: string; description: string }>>([
+    {
+      name: '1st Semester Official Grade Slip / Report of Grades',
+      description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
+    },
+    {
+      name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
+      description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+    },
+  ]);
 
   // Delete Cycle Confirm Modal States
   const [isDeleteCycleConfirmOpen, setIsDeleteCycleConfirmOpen] = useState(false);
   const [cycleToDelete, setCycleToDelete] = useState<{ id: string; name: string } | null>(null);
-
-  // New program form inputs
-  const [formTitle, setFormTitle] = useState('');
-  const [formDesc, setFormDesc] = useState('');
-
-
-  const [formFundingFreq, setFormFundingFreq] = useState<FundingFreq>('Per Semester');
-  const [formRenewalPolicy, setFormRenewalPolicy] = useState<RenewalPolicy>('Conditional Renewal');
-  const [formCycleName, setFormCycleName] = useState('AY 2026-2027');
-  // Extended program form fields
-  const [formCategory, setFormCategory] = useState('Merit-Based');
-  const [formScholarshipType, setFormScholarshipType] = useState<ScholarshipType>('merit');
-  const [formCoverstuition, setFormCoverstuition] = useState(false);
-  const [formCoversStipend, setFormCoversStipend] = useState(false);
-  const [formStipendAmount, setFormStipendAmount] = useState('');
-  const [formCoversAllowance, setFormCoversAllowance] = useState(false);
-  const [formAllowanceAmount, setFormAllowanceAmount] = useState('');
-  const [formOtherBenefits, setFormOtherBenefits] = useState('');
-  const [formCourseEligibility, setFormCourseEligibility] = useState<string[]>([]);
-  const [formCourseInput, setFormCourseInput] = useState('');
-  const [formYearLevelEligibility, setFormYearLevelEligibility] = useState<number[]>([]);
-  const [formMinGwa, setFormMinGwa] = useState('');
-  const [formAvailabilityScope, setFormAvailabilityScope] = useState<AvailabilityScope>('nationwide');
-  const [formAvailableRegions, setFormAvailableRegions] = useState('');
-  const [formAvailableSchools, setFormAvailableSchools] = useState('');
-  const [formTotalSlots, setFormTotalSlots] = useState('');
-  const [formBudgetTotal, setFormBudgetTotal] = useState('');
-  const [formRenewalGwa, setFormRenewalGwa] = useState('');
-  const [formCycleStartDate, setFormCycleStartDate] = useState('');
-  const [formCycleEndDate, setFormCycleEndDate] = useState('');
-  const [formRequirements, setFormRequirements] = useState<ProgramRequirement[]>([
-    { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
-    { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
-  ]);
-  const [formReqName, setFormReqName] = useState('');
-  const [formReqDesc, setFormReqDesc] = useState('');
-  const [formReqRequired, setFormReqRequired] = useState(true);
-  const [formModalStep, setFormModalStep] = useState(1);
-
-  // PSGC Geographic Data States & Fetch Effects
-  const [psgcRegions, setPsgcRegions] = useState<{ code: string; name: string }[]>([]);
-  const [psgcProvinces, setPsgcProvinces] = useState<{ code: string; name: string }[]>([]);
-  const [psgcMunicipalities, setPsgcMunicipalities] = useState<{ code: string; name: string }[]>([]);
-  const [psgcBarangays, setPsgcBarangays] = useState<{ code: string; name: string }[]>([]);
-  const [selectedRegionCode, setSelectedRegionCode] = useState('');
-  const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
-  const [selectedMunicipalityCode, setSelectedMunicipalityCode] = useState('');
-  const [selectedBarangayCode, setSelectedBarangayCode] = useState('');
-
-  useEffect(() => {
-    const fetchRegions = async () => {
-      try {
-        const res = await fetch('https://psgc.gitlab.io/api/regions/');
-        if (res.ok) {
-          const data = await res.json();
-          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-          setPsgcRegions(data);
-        }
-      } catch (err) {
-        console.error('Error fetching PSGC regions:', err);
-      }
-    };
-    fetchRegions();
-  }, []);
-
-  useEffect(() => {
-    const fetchProvinces = async () => {
-      if (!selectedRegionCode) {
-        setPsgcProvinces([]);
-        return;
-      }
-      try {
-        const res = await fetch(`https://psgc.gitlab.io/api/regions/${selectedRegionCode}/provinces/`);
-        if (res.ok) {
-          const data = await res.json();
-          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-          setPsgcProvinces(data);
-        }
-      } catch (err) {
-        console.error('Error fetching PSGC provinces:', err);
-      }
-    };
-    fetchProvinces();
-  }, [selectedRegionCode]);
-
-  useEffect(() => {
-    const fetchMunicipalities = async () => {
-      if (!selectedProvinceCode) {
-        setPsgcMunicipalities([]);
-        return;
-      }
-      try {
-        const res = await fetch(`https://psgc.gitlab.io/api/provinces/${selectedProvinceCode}/cities-municipalities/`);
-        if (res.ok) {
-          const data = await res.json();
-          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-          setPsgcMunicipalities(data);
-        }
-      } catch (err) {
-        console.error('Error fetching PSGC municipalities:', err);
-      }
-    };
-    fetchMunicipalities();
-  }, [selectedProvinceCode]);
-
-  useEffect(() => {
-    const fetchBarangays = async () => {
-      if (!selectedMunicipalityCode) {
-        setPsgcBarangays([]);
-        return;
-      }
-      try {
-        const res = await fetch(`https://psgc.gitlab.io/api/cities-municipalities/${selectedMunicipalityCode}/barangays/`);
-        if (res.ok) {
-          const data = await res.json();
-          data.sort((a: any, b: any) => a.name.localeCompare(b.name));
-          setPsgcBarangays(data);
-        }
-      } catch (err) {
-        console.error('Error fetching PSGC barangays:', err);
-      }
-    };
-    fetchBarangays();
-  }, [selectedMunicipalityCode]);
 
   // New payout form inputs
   const [selectedPayoutProgram, setSelectedPayoutProgram] = useState('DOST-SEI Undergraduate Scholarship');
@@ -619,246 +817,1463 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }, 3000);
   };
 
-  // Announcements mock state
-  const [announcements, setAnnouncements] = useState([
-    {
-      id: 1,
-      title: 'Undergraduate Screening Examination Schedule',
-      body: 'Qualifying exams for new DOST-SEI applicants will be conducted on September 5, 2026. Testing venues and seat assignments have been dispatched to your portal accounts.',
-      type: 'Examination Schedule' as AnnType,
-      audience: 'DOST-SEI Only',
-      date: 'Aug 8, 2026',
-      author: 'Testing Committee',
-      location: 'UP Diliman Examination Hall'
-    },
-    {
-      id: 2,
-      title: '1st Semester Stipend Release Schedule',
-      body: 'Stipends for Tulong Dunong scholars are currently processing. Expect bank transfers to credit by August 18, 2026.',
-      type: 'Release of Funds' as AnnType,
-      audience: 'CHED Only',
-      date: 'Aug 5, 2026',
-      author: 'Finance Unit',
-      location: null
-    }
-  ]);
-
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<any[]>([]);
   const [newAnnTitle, setNewAnnTitle] = useState('');
   const [newAnnBody, setNewAnnBody] = useState('');
   const [newAnnType, setNewAnnType] = useState<AnnType>('General Notice');
   const [newAnnAudience, setNewAnnAudience] = useState('All Scholars');
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
+  const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
 
-  const handleAddAnnouncement = (e: React.FormEvent) => {
+  const fetchBroadcasts = async () => {
+    if (!providerDetails?.id) return;
+    try {
+      const data = await fetchProviderBroadcasts(providerDetails.id, currentUserId);
+      if (data && data.length > 0) {
+        setAnnouncements(data);
+      }
+    } catch (err) {
+      console.error('Error fetching provider broadcasts:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (providerDetails?.id) {
+      fetchBroadcasts();
+
+      const channel = supabase
+        .channel(`provider-announcements-realtime-${providerDetails.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications' },
+          () => {
+            fetchBroadcasts();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [providerDetails?.id, currentUserId]);
+
+  const handleAddAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAnnTitle || !newAnnBody) return;
-    const newAnn = {
-      id: Date.now(),
-      title: newAnnTitle,
-      body: newAnnBody,
-      type: newAnnType,
-      audience: newAnnAudience,
-      date: 'Just Now',
-      author: 'DOST-SEI Admin',
-      location: newAnnType === 'Examination Schedule' ? selectedExamLocation : null
-    };
-    setAnnouncements([newAnn, ...announcements]);
-    setNewAnnTitle('');
-    setNewAnnBody('');
-    showToast(`Successfully broadcasted: "${newAnnTitle}"`);
+    if (!newAnnTitle.trim() || !newAnnBody.trim() || !providerDetails?.id) return;
+
+    if (selectedProgramId === 'single_person' && !selectedTargetUserId) {
+      showToast('Please select a specific person recipient for this direct announcement!');
+      return;
+    }
+
+    // Validate Examination Venue for exam schedules
+    const examLocation = (examCoords.address || selectedExamLocation || '').trim();
+    if (newAnnType === 'Examination Schedule' && !examLocation) {
+      showToast('Examination Venue is required! Please specify a venue location.');
+      return;
+    }
+
+    setIsBroadcasting(true);
+    try {
+      const matchedProg = programsList.find(p => String(p.id) === selectedProgramId);
+      const res = await sendProviderAnnouncement({
+        providerId: providerDetails.id,
+        providerName: providerDetails.name,
+        authorUserId: currentUserId,
+        authorName: profile ? `${profile.firstName} ${profile.lastName}` : providerDetails.name,
+        title: newAnnTitle.trim(),
+        message: newAnnBody.trim(),
+        type: newAnnType,
+        audience: newAnnAudience,
+        programId: selectedProgramId !== 'all' && selectedProgramId !== 'single_person' ? selectedProgramId : undefined,
+        programTitle: matchedProg ? matchedProg.title : undefined,
+        location: newAnnType === 'Examination Schedule' ? examLocation : undefined,
+        coordinates: newAnnType === 'Examination Schedule' ? { lat: examCoords.lat, lng: examCoords.lng, address: examCoords.address } : undefined,
+        targetUserId: selectedProgramId === 'single_person' ? selectedTargetUserId : undefined,
+      });
+
+      if (res.success) {
+        if (selectedProgramId === 'single_person') {
+          showToast(`Direct announcement sent to recipient!`);
+        } else if (newAnnType === 'Examination Schedule') {
+          if (res.count > 0) {
+            showToast(`Exam schedule published & sent to ${res.count} shortlisted "for_exam" candidates!`);
+          } else {
+            showToast(`Exam schedule published (0 candidates currently in "for_exam" status).`);
+          }
+        } else if (selectedProgramId !== 'all' && matchedProg) {
+          if (res.count > 0) {
+            showToast(`Announcement published & sent to ${res.count} approved scholars of "${matchedProg.title}"!`);
+          } else {
+            showToast(`Announcement published (0 approved scholars found for "${matchedProg.title}").`);
+          }
+        } else {
+          showToast(`Announcement published & saved to ${res.count} scholars' inboxes!`);
+        }
+        setNewAnnTitle('');
+        setNewAnnBody('');
+        setSelectedTargetUserId('');
+        await fetchBroadcasts();
+        const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+        createAuditLog(
+          'BROADCAST ANNOUNCEMENT',
+          `Target: ${newAnnAudience} - Program: ${matchedProg ? matchedProg.title : 'All'} - Title: ${newAnnTitle.trim()}`,
+          actor
+        );
+      } else {
+        showToast(`Broadcast failed: ${res.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      console.error('Error broadcasting announcement:', err);
+      showToast(`Broadcast failed: ${err.message || 'Error occurred'}`);
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: string | number) => {
+    try {
+      await deleteNotification(String(id));
+      showToast('Announcement removed.');
+      await fetchBroadcasts();
+    } catch (err) {
+      console.error('Error deleting announcement:', err);
+    }
   };
 
   // Programs State (Loaded dynamically from database)
   const [programsList, setProgramsList] = useState<Program[]>([]);
 
-
-  // Interactive Applicants Mock State (Students in an active application cycle)
-  const [applicantsList, setApplicantsList] = useState([
-    { id: 2, name: 'Juan Dela Cruz', program: 'DOST-SEI Undergraduate', cycle: '2026 Intake', school: 'Ateneo de Manila University', grade: '1.40', status: 'Under Review' as ApplicantStatus, date: 'Aug 08, 2026' },
-    { id: 3, name: 'Ethan Gomez', program: 'Tulong Dunong Assistance', cycle: 'AY 2026-2027', school: 'De La Salle University', grade: '1.75', status: 'Pending' as ApplicantStatus, date: 'Aug 06, 2026' },
-    { id: 5, name: 'Angelo Reyes', program: 'DOST-SEI Graduate Fellowship', cycle: 'AY 2026-2027 Cycle', school: 'Mapua University', grade: '1.10', status: 'For Exam' as ApplicantStatus, date: 'Aug 09, 2026' },
-    { id: 6, name: 'Sofia Lopez', program: 'Tulong Dunong Assistance', cycle: 'AY 2026-2027', school: 'Polytechnic University of the Philippines', grade: '1.90', status: 'Rejected' as ApplicantStatus, date: 'Aug 03, 2026' }
-  ]);
+  // Interactive Applicants State (Students in an active application cycle)
+  const [applicantsList, setApplicantsList] = useState<ApplicationDetail[]>([]);
 
   // Active Scholars (Awarded students under requirements monitoring)
-  const [scholarsList, setScholarsList] = useState<ScholarAward[]>([
-    { id: 10, scholarName: 'Maria Santos', programTitle: 'DOST-SEI Undergraduate', cycleJoined: '2025 Intake', status: 'Maintaining', gwa: '1.25', dateAwarded: 'Aug 07, 2025' },
-    { id: 11, scholarName: 'Princess Diaz', programTitle: 'DOST-SEI Merit Renewal', cycleJoined: 'AY 2026-2027', status: 'Maintaining', gwa: '1.30', dateAwarded: 'Aug 05, 2026' },
-    { id: 12, scholarName: 'Jessica Alva', programTitle: 'DOST-SEI Undergraduate', cycleJoined: '2025 Intake', status: 'Awaiting Grades', gwa: '1.65', dateAwarded: 'Sep 10, 2025' },
-    { id: 13, scholarName: 'Marcus Vian', programTitle: 'DOST-SEI Graduate Fellowship', cycleJoined: 'AY 2025-2026', status: 'Requirements Warning', gwa: '2.10', dateAwarded: 'Oct 02, 2025' }
-  ]);
+  const [scholarsList, setScholarsList] = useState<ScholarAward[]>([]);
 
-  // Handle applicant status update
-  const handleUpdateStatus = (id: number, nextStatus: ApplicantStatus) => {
+  // Review Application Modal states
+  const [selectedAppForReview, setSelectedAppForReview] = useState<ApplicationDetail | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  // Force Close Cycle Modal states
+  const [isForceCloseModalOpen, setIsForceCloseModalOpen] = useState(false);
+  const [cycleToForceClose, setCycleToForceClose] = useState<{ id: string; name: string } | null>(null);
+  const [isClosingCycle, setIsClosingCycle] = useState(false);
+
+  const fetchApplicantsAndScholars = async () => {
+    if (!providerDetails?.id) {
+      console.log('[Provider Portal Debug]: No provider details yet, skipping fetch');
+      return;
+    }
+
+    console.log('[Provider Portal Debug]: Fetching scholarship_applications for provider:', providerDetails.id);
+    try {
+      // First, get the program IDs for this provider
+      const { data: programsData, error: programsError } = await supabase
+        .from('scholarship_programs')
+        .select('id')
+        .eq('provider_id', providerDetails.id);
+
+      if (programsError) {
+        console.error('[Provider Portal Programs Error]:', programsError);
+        return;
+      }
+
+      const programIds = programsData?.map(p => p.id) || [];
+      if (programIds.length === 0) {
+        console.log('[Provider Portal Debug]: No programs found for this provider');
+        setApplicantsList([]);
+        setScholarsList([]);
+        return;
+      }
+
+      // Get cycle IDs for these programs
+      const { data: cyclesData, error: cyclesError } = await supabase
+        .from('application_cycles')
+        .select('id')
+        .in('program_id', programIds);
+
+      if (cyclesError) {
+        console.error('[Provider Portal Cycles Error]:', cyclesError);
+        return;
+      }
+
+      const cycleIds = cyclesData?.map(c => c.id) || [];
+      if (cycleIds.length === 0) {
+        console.log('[Provider Portal Debug]: No cycles found for this provider programs');
+        setApplicantsList([]);
+        setScholarsList([]);
+        return;
+      }
+
+      // Now fetch applications for these cycles only
+      const { data, error } = await supabase
+        .from('scholarship_applications')
+        .select(`
+          *,
+          scholar:scholar (
+            *,
+            user:users (
+              id,
+              email,
+              first_name,
+              last_name
+            )
+          ),
+          cycle:application_cycles (
+            *,
+            program:scholarship_programs (*)
+          )
+        `)
+        .in('cycle_id', cycleIds)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[Provider Portal Query Error - scholarship_applications]:', error);
+        if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
+          console.error('[Provider RLS Permission Warning]: RLS Policy blocking access to "scholarship_applications" table.');
+        }
+        setApplicantsList([]);
+        setScholarsList([]);
+        return;
+      }
+
+      console.log(`[Provider Portal Debug]: Found ${data?.length || 0} applications for provider ${providerDetails.name}`);
+
+      let pendingAppealAppIdsSet = new Set<string>();
+      try {
+        const { data: appealsData } = await supabase
+          .from('application_appeals')
+          .select('application_id, status')
+          .eq('status', 'pending');
+        if (appealsData) {
+          appealsData.forEach((a: any) => {
+            if (a.application_id) pendingAppealAppIdsSet.add(String(a.application_id));
+          });
+        }
+      } catch (aErr) {
+        console.warn('[Provider Portal Appeals Fetch Note]:', aErr);
+      }
+
+      if (data && data.length > 0) {
+          // Fetch scholar_documents for the scholars in these applications
+          const scholarIds = data.map((a: any) => a.scholar_id).filter(Boolean);
+          let scholarDocsMap: Record<string, SubmittedDocItem[]> = {};
+          if (scholarIds.length > 0) {
+            try {
+              const { data: docsData, error: docsErr } = await supabase
+                .from('scholar_documents')
+                .select('*')
+                .in('scholar_id', scholarIds);
+
+              if (docsErr) {
+                console.error('[Provider Scholar Documents Error]:', docsErr);
+                if (docsErr.code === '42501' || docsErr.message?.includes('permission') || docsErr.message?.includes('policy')) {
+                  console.error('[Provider RLS Permission Warning]: RLS Policy blocking access to "scholar_documents" table.');
+                }
+              } else if (docsData) {
+                console.log(`[Provider Scholar Documents Debug]: Loaded ${docsData.length} records from scholar_documents table.`);
+                docsData.forEach((d: any) => {
+                  if (!scholarDocsMap[d.scholar_id]) {
+                    scholarDocsMap[d.scholar_id] = [];
+                  }
+
+                  let aiVerificationObj = undefined;
+                  if (d.ai_verification_status && d.ai_verification_status !== 'pending') {
+                    aiVerificationObj = {
+                      isAuthenticLayout: d.ai_verification_status === 'verified',
+                      tamperingDetected: d.ai_flags && Array.isArray(d.ai_flags) && d.ai_flags.some((f: string) => f.toLowerCase().includes('tamper') || f.toLowerCase().includes('alter')),
+                      hasOfficialSealOrSignature: d.ai_verification_status === 'verified',
+                      isDocumentLegitimate: d.ai_verification_status !== 'rejected',
+                      extractedName: d.ai_extracted_data?.extractedName,
+                      extractedSchool: d.ai_extracted_data?.extractedSchool,
+                      extractedGwa: d.ai_extracted_data?.extractedGwa,
+                      extractedIncome: d.ai_extracted_data?.extractedIncome,
+                      extractedDocType: d.ai_extracted_data?.extractedDocType || d.document_name,
+                      verificationStatus: d.ai_verification_status,
+                      confidenceScore: typeof d.ai_confidence_score === 'number' ? d.ai_confidence_score : 0.9,
+                      flags: Array.isArray(d.ai_flags) ? d.ai_flags : [],
+                      summary: d.remarks || 'Forensic verification recorded.',
+                      aiModelUsed: d.ai_model_used || 'AI Forensic Engine',
+                      provider: 'IskoAko AI',
+                      sha256Hash: d.file_sha256_hash,
+                      crossCheckResults: d.ai_extracted_data?.crossCheckResults || {
+                        nameMatch: true,
+                        schoolMatch: true,
+                        gwaMatch: null,
+                        sealPresent: true,
+                        tamperingFound: false,
+                      },
+                    };
+                  }
+
+                  scholarDocsMap[d.scholar_id].push({
+                    id: d.id,
+                    name: d.document_name,
+                    filename: d.document_name,
+                    document_url: d.document_url,
+                    url: d.document_url,
+                    status: d.verification_status === 'verified' ? 'Verified' : d.verification_status === 'rejected' ? 'Flagged' : 'Pending',
+                    remarks: d.remarks || '',
+                    submitted_at: d.created_at ? new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently',
+                    aiVerification: aiVerificationObj,
+                  });
+                });
+              }
+            } catch (dErr) {
+              console.warn('[Provider Scholar Documents Exception]:', dErr);
+            }
+          }
+
+          let scholarPaymentMap: Record<string, any> = {};
+          let scholarPayoutsMap: Record<string, any[]> = {};
+          if (scholarIds.length > 0) {
+            try {
+              const { data: pAccData } = await supabase
+                .from('scholar_payment_accounts')
+                .select('*')
+                .in('scholar_id', scholarIds)
+                .order('updated_at', { ascending: false });
+              if (pAccData) {
+                pAccData.forEach((p: any) => {
+                  if (p.program_id && !scholarPaymentMap[`${p.scholar_id}_${p.program_id}`]) {
+                    scholarPaymentMap[`${p.scholar_id}_${p.program_id}`] = p;
+                  }
+                  if (!scholarPaymentMap[p.scholar_id]) {
+                    scholarPaymentMap[p.scholar_id] = p;
+                  }
+                });
+              }
+
+            } catch (pErr) {
+              console.warn('[Provider Scholar Payment Accounts Exception]:', pErr);
+            }
+
+            try {
+              const { data: frData } = await supabase
+                .from('fund_releases')
+                .select(`
+                  id,
+                  application_id,
+                  scholar_id,
+                  cycle_id,
+                  program_id,
+                  amount,
+                  status,
+                  blockchain_verified,
+                  fund_type,
+                  created_at,
+                  cycle:cycle_id(program_id, cycle_name, semester, cycle_type)
+                `)
+                .in('scholar_id', scholarIds)
+                .order('created_at', { ascending: true });
+
+              if (frData) {
+                frData.forEach((fr: any) => {
+                  if (!scholarPayoutsMap[fr.scholar_id]) {
+                    scholarPayoutsMap[fr.scholar_id] = [];
+                  }
+                  scholarPayoutsMap[fr.scholar_id].push(fr);
+                });
+              }
+            } catch (frErr) {
+              console.warn('[Provider Fund Releases Exception]:', frErr);
+            }
+          }
+
+          const formatYearLevel = (yl: any) => {
+            if (yl === null || yl === undefined || yl === '') return '1st Year';
+            const num = Number(yl);
+            if (!isNaN(num)) {
+              if (num === 1) return '1st Year';
+              if (num === 2) return '2nd Year';
+              if (num === 3) return '3rd Year';
+              if (num === 4) return '4th Year';
+              if (num === 5) return '5th Year';
+              return `${num}th Year`;
+            }
+            return String(yl);
+          };
+
+          const formatGwa = (raw: any, remarksStr?: string) => {
+            if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
+              return String(raw).trim();
+            }
+            if (remarksStr) {
+              const match = remarksStr.match(/GWA:\s*([0-9\.]+)/i);
+              if (match && match[1]) return match[1];
+            }
+            return 'N/A';
+          };
+
+          const resolveScopedPaymentAccount = (scholarId: string, programId: string | undefined, applicationId: string | undefined, submittedDocs: any) => {
+            // 1. Prioritize application-specific bank details from submitted_documents
+            if (submittedDocs && typeof submittedDocs === 'object' && submittedDocs.bank_details) {
+              const bd = submittedDocs.bank_details;
+              return {
+                id: bd.id || 'app-bank-details',
+                bank_name: bd.bank_name,
+                account_name: bd.account_name,
+                account_number: bd.account_number,
+                document_proof_url: bd.document_proof_url,
+                ai_model_used: bd.ai_model_used || 'Extracted',
+                is_verified: true,
+              };
+            }
+
+            // 1.5. Check if there is a verified Bank Proof document in the submitted documents list
+            if (submittedDocs && typeof submittedDocs === 'object') {
+              const docsArray = Array.isArray(submittedDocs)
+                ? submittedDocs
+                : (submittedDocs.documents && Array.isArray(submittedDocs.documents) ? submittedDocs.documents : []);
+              
+              const verifiedBankDoc = docsArray.find((d: any) => {
+                const docName = (d.name || d.filename || '').toLowerCase();
+                const isBank = docName.includes('bank') || docName.includes('atm') || docName.includes('card') || docName.includes('passbook') || docName.includes('statement');
+                return isBank && (d.status === 'Verified' || d.verification_status === 'verified');
+              });
+
+              if (verifiedBankDoc && verifiedBankDoc.aiVerification) {
+                const ai = verifiedBankDoc.aiVerification;
+                const raw = ai.rawResponse || {};
+                const bankName = ai.extractedBankName || raw.bank_name || 'Verified Bank';
+                const accountNum = ai.extractedAccountNumber || raw.account_number || '';
+                const accountName = ai.extractedName || raw.extracted_name || '';
+
+                if (accountNum) {
+                  return {
+                    id: verifiedBankDoc.id || 'verified-bank-doc-fallback',
+                    bank_name: bankName,
+                    account_name: accountName,
+                    account_number: accountNum,
+                    document_proof_url: verifiedBankDoc.document_url || verifiedBankDoc.url || '',
+                    ai_model_used: ai.aiModelUsed || 'Extracted',
+                    is_verified: true,
+                  };
+                }
+              }
+            }
+
+            // 2. Look up specific payment account for this program
+            if (programId) {
+              const specificAcc = scholarPaymentMap[`${scholarId}_${programId}`];
+              if (specificAcc) return specificAcc;
+            }
+
+            // 3. Fallback to global payment account if scoped to this program/application
+            const globalPaymentAccount = scholarPaymentMap[scholarId] || null;
+            if (!globalPaymentAccount) return null;
+            
+            const aiData = globalPaymentAccount.ai_extracted_data || {};
+            const hasProgramIds = 'program_ids' in aiData;
+            const hasApplicationIds = 'application_ids' in aiData;
+
+            if (!hasProgramIds && !hasApplicationIds) {
+              return globalPaymentAccount;
+            }
+
+            const programIds: string[] = Array.isArray(aiData.program_ids) 
+              ? aiData.program_ids.map(String) 
+              : [];
+            const applicationIds: string[] = Array.isArray(aiData.application_ids) 
+              ? aiData.application_ids.map(String) 
+              : [];
+            
+            const matchesProg = programId && programIds.includes(String(programId));
+            const matchesApp = applicationId && applicationIds.includes(String(applicationId));
+
+            if (matchesProg || matchesApp) {
+              return globalPaymentAccount;
+            }
+            return null;
+          };
+
+          const mappedApplicants: ApplicationDetail[] = data.map((app: any) => {
+            const scholar = app.scholar || {};
+            const user = scholar.user || {};
+            const cycle = app.cycle || {};
+            const prog = cycle.program || {};
+
+            console.log('[Provider Join Debug]: app.scholar =', JSON.stringify(app.scholar));
+            console.log('[Provider Join Debug]: scholar.user =', JSON.stringify((app.scholar || {}).user));
+            console.log('[Provider Join Debug]: app.cycle =', JSON.stringify(app.cycle));
+
+            const scholarName = [
+              scholar.first_name || user.first_name,
+              scholar.middle_name,
+              scholar.last_name || user.last_name,
+              scholar.suffix
+            ].filter(Boolean).join(' ').trim() || app.applicant_name || user.email || 'Applicant Student';
+
+            const email = user.email || scholar.email || app.email || 'N/A';
+            const phone = scholar.phone || app.phone || 'N/A';
+            const school = scholar.school || scholar.institution || 'Unspecified University';
+            const course = scholar.course || scholar.degree || 'Undergraduate Degree';
+            const yearLevel = formatYearLevel(scholar.year_level);
+            const finalGrade = app.grade !== null && app.grade !== undefined ? app.grade : (scholar.gpa || scholar.gwa);
+            const gpa = formatGwa(finalGrade, app.remarks);
+            const citizenship = scholar.citizenship || 'Filipino';
+            const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
+            const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+
+            const dbStatus = (app.status || 'pending').toLowerCase().trim();
+            const remarksLower = (app.remarks || '').toLowerCase();
+            let status: ApplicantStatus = 'Pending';
+
+            if (remarksLower.includes('waitlist') && dbStatus !== 'approved' && dbStatus !== 'rejected') {
+              status = 'Waitlisted';
+            } else if (dbStatus === 'under_review' || dbStatus === 'under review') {
+              status = 'Under Review';
+            } else if (dbStatus === 'for_exam' || dbStatus === 'for exam') {
+              status = 'For Exam';
+            } else if (dbStatus === 'pending_ranking' || dbStatus === 'pending ranking' || dbStatus === 'for_ranking' || dbStatus === 'for ranking' || (dbStatus === 'pending' && remarksLower.includes('ranking'))) {
+              status = 'Pending for Ranking';
+            } else if (dbStatus === 'approved') {
+              status = 'Approved';
+            } else if (dbStatus === 'rejected') {
+              status = 'Rejected';
+            } else if (dbStatus === 'appealed' || dbStatus === 'disputed') {
+              status = 'Appealed';
+            } else {
+              status = 'Pending';
+            }
+
+            const createdDate = app.created_at ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently';
+
+            let docs: SubmittedDocItem[] = [];
+            if (app.submitted_documents) {
+              let rawDocs: any[] = [];
+              if (Array.isArray(app.submitted_documents)) {
+                rawDocs = app.submitted_documents;
+              } else if (app.submitted_documents.documents && Array.isArray(app.submitted_documents.documents)) {
+                rawDocs = app.submitted_documents.documents;
+              }
+              docs = rawDocs.map((d: any) => ({
+                id: d.id,
+                name: d.name || d.document_name || d.filename || 'Submitted Document',
+                filename: d.filename || d.name || d.document_name,
+                filesize: d.filesize,
+                document_url: d.document_url || d.url,
+                url: d.document_url || d.url,
+                submitted_at: d.submitted_at || (app.created_at ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently'),
+                status: d.status || (d.verification_status === 'verified' ? 'Verified' : d.verification_status === 'rejected' ? 'Flagged' : 'Pending'),
+                remarks: d.remarks || '',
+                aiVerification: d.aiVerification,
+              }));
+
+              if (app.submitted_documents.bank_details) {
+                const bd = app.submitted_documents.bank_details;
+                docs.push({
+                  id: bd.id || 'bank-details-doc',
+                  name: 'Bank Details / ATM Proof',
+                  filename: bd.document_proof_url ? bd.document_proof_url.split('/').pop() : 'bank_proof.pdf',
+                  document_url: bd.document_proof_url,
+                  url: bd.document_proof_url,
+                  submitted_at: bd.updated_at || 'Recently',
+                  status: 'Verified',
+                  remarks: '',
+                  aiVerification: undefined,
+                });
+              }
+            }
+
+            if (scholarDocsMap[scholar.id]) {
+              scholarDocsMap[scholar.id].forEach(sd => {
+                const sdName = (sd.name || '').toLowerCase().trim();
+                const sdUrl = (sd.document_url || sd.url || '').toLowerCase().trim();
+
+                const existingIdx = docs.findIndex(d => {
+                  const dUrl = (d.document_url || d.url || '').toLowerCase().trim();
+                  if (dUrl && sdUrl && (dUrl === sdUrl || dUrl.includes(sdUrl) || sdUrl.includes(dUrl))) return true;
+                  const dName = (d.name || '').toLowerCase().trim();
+                  return sdName && dName && (sdName === dName || sdName.includes(dName) || dName.includes(sdName));
+                });
+
+                if (existingIdx !== -1) {
+                  const currentDoc = docs[existingIdx];
+                  const cachedAiVerif = currentDoc.aiVerification || sd.aiVerification;
+                  const cachedStatus = (currentDoc.status === 'Verified' || currentDoc.status === 'Flagged')
+                    ? currentDoc.status
+                    : (cachedAiVerif?.verificationStatus === 'verified' ? 'Verified' : (sd.status || currentDoc.status || 'Pending'));
+
+                  docs[existingIdx] = {
+                    ...currentDoc,
+                    id: sd.id || currentDoc.id,
+                    status: cachedStatus,
+                    remarks: currentDoc.remarks || sd.remarks || '',
+                    aiVerification: cachedAiVerif,
+                    document_url: currentDoc.document_url || sd.document_url,
+                    url: currentDoc.url || sd.url,
+                  };
+                }
+              });
+            }
+
+            // Final strict deduplication of docs list
+            const uniqueDocsList: SubmittedDocItem[] = [];
+            const seenNamesSet = new Set<string>();
+            const seenUrlsSet = new Set<string>();
+
+            for (const docItem of docs) {
+              const nKey = (docItem.name || '').toLowerCase().trim();
+              const uKey = (docItem.document_url || docItem.url || docItem.filename || '').toLowerCase().trim();
+              const isDupN = nKey && seenNamesSet.has(nKey);
+              const isDupU = uKey && seenUrlsSet.has(uKey);
+
+              if (!isDupN && !isDupU) {
+                if (nKey) seenNamesSet.add(nKey);
+                if (uKey) seenUrlsSet.add(uKey);
+                uniqueDocsList.push(docItem);
+              }
+            }
+            docs = uniqueDocsList;
+
+            const fatherFull = [scholar.father_first_name, scholar.father_middle_name, scholar.father_last_name].filter(Boolean).join(' ').trim();
+            const motherFull = [scholar.mother_first_name, scholar.mother_middle_name, scholar.mother_last_name].filter(Boolean).join(' ').trim();
+            const guardianFull = [scholar.guardian_first_name, scholar.guardian_middle_name, scholar.guardian_last_name].filter(Boolean).join(' ').trim();
+
+            return {
+              id: app.id,
+              scholarId: scholar.id,
+              name: scholarName,
+              email: email,
+              phone: phone,
+              birthDate: scholar.birth_date,
+              gender: scholar.gender,
+              educationLevel: scholar.education_level,
+              program: prog.title || 'Scholarship Program',
+              program_id: prog.id ? String(prog.id) : undefined,
+              disbursement_mode: prog.disbursement_mode || 'online',
+              banking_policy: prog.banking_policy || 'any_bank',
+              paymentAccount: resolveScopedPaymentAccount(scholar.id, prog.id, app.id, app.submitted_documents),
+              cycle: cycle.cycle_name || 'Active Cycle',
+              cycle_type: cycle.cycle_type,
+              semester: cycle.semester,
+              school: school,
+              course: course,
+              yearLevel: yearLevel,
+              grade: gpa,
+              gpa_scale: app.gpa_scale || scholar.gpa_scale || scholar.gpaScale || 'scale_5',
+              gpaScale: app.gpa_scale || scholar.gpa_scale || scholar.gpaScale || 'scale_5',
+              citizenship: citizenship,
+              address: address,
+              barangay: scholar.barangay,
+              municipality: scholar.municipality,
+              province: scholar.province,
+              region: scholar.region,
+              fatherName: fatherFull || undefined,
+              fatherOccupation: scholar.father_occupation || undefined,
+              motherName: motherFull || undefined,
+              motherOccupation: scholar.mother_occupation || undefined,
+              guardianName: guardianFull || undefined,
+              guardianRelationship: scholar.guardian_relationship || undefined,
+              guardianOccupation: scholar.guardian_occupation || undefined,
+              siblingsCount: scholar.number_of_siblings || scholar.siblings_count,
+              status: status,
+              date: createdDate,
+              submittedDocuments: docs,
+              remarks: app.remarks || '',
+              hasPendingAppeal: pendingAppealAppIdsSet.has(String(app.id)),
+              rawApplication: app
+            };
+          });
+
+          // Preserve applications per scholar per intake cycle
+          const applicantMap = new Map<string, ApplicationDetail>();
+          for (const app of mappedApplicants) {
+            const cycleKey = app.rawApplication?.cycle_id || app.cycle || app.program;
+            const key = `${app.scholarId || app.name}_${app.program}_${cycleKey}`;
+            if (!applicantMap.has(key)) {
+              const isRenewal = app.cycle_type === 'renewal' || (app.cycle || '').toLowerCase().includes('renewal') || (app.cycle || '').toLowerCase().includes('2nd sem');
+              if (isRenewal) {
+                app.isContinuingScholar = true;
+              }
+              applicantMap.set(key, app);
+            } else {
+              const existing = applicantMap.get(key)!;
+              
+              // Multiple applications for the same program implies continuing scholar
+              existing.isContinuingScholar = true;
+              app.isContinuingScholar = true;
+              
+              // We want to keep the application that is more recent or renewal
+              const existingIsRenewal = existing.cycle_type === 'renewal' || (existing.cycle || '').toLowerCase().includes('renewal') || (existing.cycle || '').toLowerCase().includes('2nd sem');
+              const currentIsRenewal = app.cycle_type === 'renewal' || (app.cycle || '').toLowerCase().includes('renewal') || (app.cycle || '').toLowerCase().includes('2nd sem');
+              
+              const existingDate = existing.rawApplication?.created_at ? new Date(existing.rawApplication.created_at) : new Date(0);
+              const currentDate = app.rawApplication?.created_at ? new Date(app.rawApplication.created_at) : new Date(0);
+              
+              if ((currentIsRenewal && !existingIsRenewal) || currentDate >= existingDate) {
+                app.isContinuingScholar = true;
+                applicantMap.set(key, app);
+              } else {
+                existing.isContinuingScholar = true;
+              }
+            }
+          }
+          const deduplicatedApplicants = Array.from(applicantMap.values());
+          setApplicantsList(deduplicatedApplicants);
+
+          const approvedApps = data.filter((app: any) => (app.status || '').toLowerCase() === 'approved');
+          const mappedScholars: ScholarAward[] = approvedApps.map((app: any) => {
+            const scholar = app.scholar || {};
+            const user = scholar.user || {};
+            const cycle = app.cycle || {};
+            const prog = cycle.program || {};
+
+            const scholarName = [
+              scholar.first_name || user.first_name,
+              scholar.middle_name,
+              scholar.last_name || user.last_name,
+              scholar.suffix
+            ].filter(Boolean).join(' ').trim() || 'Awarded Scholar';
+
+            const awardedDate = app.updated_at ? new Date(app.updated_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently';
+
+            const email = user.email || scholar.email || 'N/A';
+            const phone = scholar.phone || 'N/A';
+            const school = scholar.school || scholar.institution || 'Unspecified University';
+            const course = scholar.course || scholar.degree || 'Undergraduate Degree';
+            const yearLevel = formatYearLevel(scholar.year_level);
+            const gpa = formatGwa(scholar.gpa || scholar.gwa || app.grade, app.remarks);
+            const citizenship = scholar.citizenship || 'Filipino';
+            const addressParts = [scholar.barangay, scholar.municipality, scholar.province, scholar.region].filter(Boolean);
+            const address = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+
+            let docs: SubmittedDocItem[] = [];
+            if (app.submitted_documents) {
+              let rawDocs: any[] = [];
+              if (Array.isArray(app.submitted_documents)) {
+                rawDocs = app.submitted_documents;
+              } else if (app.submitted_documents.documents && Array.isArray(app.submitted_documents.documents)) {
+                rawDocs = app.submitted_documents.documents;
+              }
+              docs = rawDocs.map((d: any) => {
+                const docName = d.name || d.document_name || d.filename || 'Submitted Document';
+                const mobileScan = app.ai_scan_summary ? app.ai_scan_summary[docName] : undefined;
+                const mobileUnderReview = app.under_review_reasons ? app.under_review_reasons[docName] : undefined;
+
+                const isDocValid = d.status === 'valid' || d.status === 'Verified' || mobileScan?.status === 'valid';
+
+                const remarksText = isDocValid
+                  ? ''
+                  : (d.remarks || d.ai_remarks || d.ai_rejection_reason || d.aiRejectionReason ||
+                     (Array.isArray(mobileUnderReview) ? mobileUnderReview.join('; ') : mobileUnderReview) ||
+                     (mobileScan?.rejection_reason) || '');
+
+                const aiVerif = d.aiVerification || (d.ai_confidence || mobileScan ? {
+                  verificationStatus: isDocValid ? 'verified' : ((d.status === 'flagged' || mobileScan?.status === 'flagged' || mobileUnderReview) ? 'flagged' : 'pending'),
+                  confidenceScore: d.ai_confidence || mobileScan?.confidence || 0.95,
+                  extractedDocType: d.ai_document_detected || mobileScan?.document_detected || docName,
+                  flags: isDocValid ? [] : (d.ai_flags || mobileScan?.flags || (Array.isArray(mobileUnderReview) ? mobileUnderReview : [])),
+                  rejectionReason: isDocValid ? null : (d.ai_rejection_reason || d.aiRejectionReason || remarksText || mobileScan?.rejection_reason || null),
+                  summary: isDocValid
+                    ? 'Verified authentic by IskoAko AI Engine'
+                    : (remarksText || (mobileScan?.flags && mobileScan.flags.length > 0 ? mobileScan.flags.join('; ') : 'Document flagged for review')),
+                  extractedGwa: d.extractedGwa || d.extracted_gpa || app.grade,
+                  extractedGwaScale: d.extractedGwaScale || d.extracted_gpa_scale || app.gpa_scale,
+                  extractedTuitionAmount: d.extractedTuitionAmount || d.extracted_tuition_amount,
+                  provider: 'IskoAko Mobile AI Engine',
+                } : undefined);
+
+                return {
+                  id: d.id,
+                  name: docName,
+                  filename: d.filename || docName,
+                  filesize: d.filesize,
+                  document_url: d.document_url || d.url,
+                  url: d.document_url || d.url,
+                  submitted_at: d.submitted_at || 'Recently',
+                  status: isDocValid ? 'Verified' : (d.status || 'Pending'),
+                  remarks: remarksText,
+                  aiVerification: aiVerif,
+                };
+              });
+
+              if (app.submitted_documents.bank_details) {
+                const bd = app.submitted_documents.bank_details;
+                docs.push({
+                  id: bd.id || 'bank-details-doc',
+                  name: 'Bank Details / ATM Proof',
+                  filename: bd.document_proof_url ? bd.document_proof_url.split('/').pop() : 'bank_proof.pdf',
+                  document_url: bd.document_proof_url,
+                  url: bd.document_proof_url,
+                  submitted_at: bd.updated_at || 'Recently',
+                  status: 'Verified',
+                  remarks: '',
+                  aiVerification: undefined,
+                });
+              }
+            }
+
+            if (scholarDocsMap[scholar.id]) {
+              scholarDocsMap[scholar.id].forEach(sd => {
+                const sdName = (sd.name || '').toLowerCase().trim();
+                const sdUrl = (sd.document_url || sd.url || '').toLowerCase().trim();
+
+                const existingIdx = docs.findIndex(d => {
+                  const dUrl = (d.document_url || d.url || '').toLowerCase().trim();
+                  if (dUrl && sdUrl && (dUrl === sdUrl || dUrl.includes(sdUrl) || sdUrl.includes(dUrl))) return true;
+                  const dName = (d.name || '').toLowerCase().trim();
+                  return sdName && dName && (sdName === dName || sdName.includes(dName) || dName.includes(sdName));
+                });
+
+                if (existingIdx !== -1) {
+                  const currentDoc = docs[existingIdx];
+                  const cachedAiVerif = currentDoc.aiVerification || sd.aiVerification;
+                  const cachedStatus = (currentDoc.status === 'Verified' || currentDoc.status === 'Flagged')
+                    ? currentDoc.status
+                    : (cachedAiVerif?.verificationStatus === 'verified' ? 'Verified' : (sd.status || currentDoc.status || 'Pending'));
+
+                  docs[existingIdx] = {
+                    ...currentDoc,
+                    id: sd.id || currentDoc.id,
+                    status: cachedStatus,
+                    remarks: currentDoc.remarks || sd.remarks || '',
+                    aiVerification: cachedAiVerif,
+                    document_url: currentDoc.document_url || sd.document_url,
+                    url: currentDoc.url || sd.url,
+                  };
+                }
+              });
+            }
+
+            // Final strict deduplication of docs list
+            const uniqueDocsList: SubmittedDocItem[] = [];
+            const seenNamesSet = new Set<string>();
+            const seenUrlsSet = new Set<string>();
+
+            for (const docItem of docs) {
+              const nKey = (docItem.name || '').toLowerCase().trim();
+              const uKey = (docItem.document_url || docItem.url || docItem.filename || '').toLowerCase().trim();
+              const isDupN = nKey && seenNamesSet.has(nKey);
+              const isDupU = uKey && seenUrlsSet.has(uKey);
+
+              if (!isDupN && !isDupU) {
+                if (nKey) seenNamesSet.add(nKey);
+                if (uKey) seenUrlsSet.add(uKey);
+                uniqueDocsList.push(docItem);
+              }
+            }
+            docs = uniqueDocsList;
+
+            const appDetail: ApplicationDetail = {
+              id: app.id,
+              scholarId: scholar.id,
+              name: scholarName,
+              email: email,
+              phone: phone,
+              program: prog.title || 'Scholarship Program',
+              program_id: prog.id ? String(prog.id) : undefined,
+              disbursement_mode: prog.disbursement_mode || 'online',
+              banking_policy: prog.banking_policy || 'any_bank',
+              paymentAccount: resolveScopedPaymentAccount(scholar.id, prog.id, app.id, app.submitted_documents),
+              cycle: cycle.cycle_name || 'Active Cycle',
+              school: school,
+              course: course,
+              yearLevel: yearLevel,
+              grade: gpa,
+              citizenship: citizenship,
+              address: address,
+              status: 'Approved',
+              date: awardedDate,
+              submittedDocuments: docs,
+              remarks: app.remarks || '',
+              rawApplication: app
+            };
+
+            const payouts = (scholarPayoutsMap[scholar.id] || []).filter((p: any) => {
+              const pProgId = p.program_id || p.cycle?.program_id;
+              if (pProgId && prog.id) {
+                return String(pProgId) === String(prog.id);
+              }
+              if (p.application_id && app.id) {
+                return String(p.application_id) === String(app.id);
+              }
+              return true;
+            });
+            const releaseHistory = payouts.map(p => ({
+              id: p.id,
+              applicationId: p.application_id,
+              cycleId: p.cycle_id,
+              cycleName: p.cycle?.cycle_name || 'Intake Cycle',
+              academicYear: p.cycle?.academic_year || p.cycle?.program?.academic_year || '',
+              semester: p.cycle?.semester || '1st Semester',
+              amount: Number(p.amount) || 0,
+              status: p.status || (p.blockchain_verified ? 'released' : 'pending'),
+              paymongoStatus: p.paymongo_status,
+              date: p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'Recently',
+              isRenewal: p.cycle?.cycle_type === 'renewal' ||
+                (p.cycle?.cycle_name || '').toLowerCase().includes('renewal') ||
+                (p.cycle?.cycle_name || '').toLowerCase().includes('2nd sem') ||
+                (p.cycle?.semester || '').toLowerCase().includes('2nd')
+            }));
+
+            appDetail.payoutHistory = releaseHistory;
+
+            return {
+              id: app.id,
+              scholarName: scholarName,
+              programTitle: prog.title || 'Scholarship Program',
+              cycleJoined: cycle.cycle_name || 'Active Cycle',
+              status: 'Maintaining',
+              gwa: gpa,
+              dateAwarded: awardedDate,
+              disbursement_mode: prog.disbursement_mode || 'online',
+              banking_policy: prog.banking_policy || 'any_bank',
+              paymentAccount: appDetail.paymentAccount,
+              payoutHistory: releaseHistory,
+              appDetail: appDetail
+            };
+          });
+
+          // Strictly deduplicate scholars by scholar ID (or name) + program title
+          // We prioritize the most recent approved application (data is already sorted by created_at DESC)
+          const scholarMap = new Map<string, ScholarAward>();
+          for (const sch of mappedScholars) {
+            const scholarKey = `${sch.appDetail.scholarId || sch.scholarName}_${sch.programTitle}`;
+            if (!scholarMap.has(scholarKey)) {
+              scholarMap.set(scholarKey, sch);
+            } else {
+              const existing = scholarMap.get(scholarKey)!;
+              // If existing lacks payment account but this older row has it, merge it
+              if (!existing.paymentAccount && sch.paymentAccount) {
+                existing.paymentAccount = sch.paymentAccount;
+                existing.appDetail.paymentAccount = sch.paymentAccount;
+              }
+              // Merge payout history without duplicates
+              if (sch.payoutHistory && sch.payoutHistory.length > 0) {
+                const existingIds = new Set((existing.payoutHistory || []).map((p: any) => p.id));
+                const newPayouts = sch.payoutHistory.filter((p: any) => !existingIds.has(p.id));
+                existing.payoutHistory = [...(existing.payoutHistory || []), ...newPayouts];
+                if (existing.appDetail) {
+                  existing.appDetail.payoutHistory = existing.payoutHistory;
+                }
+              }
+            }
+          }
+
+          setScholarsList(Array.from(scholarMap.values()));
+        } else {
+          setApplicantsList([]);
+          setScholarsList([]);
+        }
+    } catch (err) {
+      console.error('Error fetching applicants:', err);
+      setApplicantsList([]);
+      setScholarsList([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchApplicantsAndScholars();
+
+    const appChannel = supabase
+      .channel('provider-applications-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scholarship_applications'
+        },
+        () => {
+          fetchApplicantsAndScholars();
+          showToast('Applications refreshed with latest student updates!');
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'scholar_documents'
+        },
+        () => {
+          fetchApplicantsAndScholars();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'application_appeals'
+        },
+        () => {
+          fetchApplicantsAndScholars();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(appChannel);
+    };
+  }, [providerDetails?.id]);
+
+  // Keep selectedAppForReview synchronized in real-time when applicantsList updates
+  useEffect(() => {
+    if (selectedAppForReview) {
+      const updated = applicantsList.find(a => a.id === selectedAppForReview.id);
+      if (updated && updated !== selectedAppForReview) {
+        setSelectedAppForReview(updated);
+      }
+    }
+  }, [applicantsList, selectedAppForReview]);
+
+
+
+  // Handle applicant status and document decision updates
+  const handleUpdateStatus = async (
+    id: string | number,
+    nextStatus: ApplicantStatus,
+    remarks?: string,
+    updatedDocs?: SubmittedDocItem[],
+    excludeAppIds?: (string | number)[],
+    bypassQuotaCheck?: boolean
+  ) => {
+    let dbStatus = 'pending';
+    if (nextStatus === 'Under Review') dbStatus = 'under_review';
+    else if (nextStatus === 'For Exam') dbStatus = 'for_exam';
+    else if (nextStatus === 'Pending for Ranking' || nextStatus === 'Pending Ranking' || nextStatus === 'Pending') dbStatus = 'pending';
+    else if (nextStatus === 'Approved') dbStatus = 'approved';
+    else if (nextStatus === 'Rejected') dbStatus = 'rejected';
+
     const applicant = applicantsList.find(a => a.id === id);
-    if (!applicant) return;
+    const existingRefNum = applicant?.rawApplication?.submitted_documents?.reference_number || `ISK-${new Date().getFullYear()}-${id.toString().substring(0, 5).toUpperCase()}`;
 
-    if (nextStatus === 'Approved') {
-      // Transition from applicant to awarded scholar
+    // Pre-approval check for slots capacity to prevent race conditions
+    if (nextStatus === 'Approved' && applicant && !bypassQuotaCheck) {
+      const cycleId = applicant.rawApplication?.cycle_id;
+      if (cycleId) {
+        try {
+          const { data: approvedApps } = await supabase
+            .from('scholarship_applications')
+            .select('id')
+            .eq('cycle_id', cycleId)
+            .eq('status', 'approved');
+
+          const approvedCount = approvedApps?.length || 0;
+
+          const { data: cycData } = await supabase
+            .from('application_cycles')
+            .select('slots_available, program:program_id(total_slots)')
+            .eq('id', cycleId)
+            .maybeSingle();
+
+          const slots = cycData?.slots_available || (cycData?.program as any)?.total_slots;
+
+          if (slots && approvedCount + 1 >= Number(slots)) {
+            // Check if there are other pending applications to reject
+            const { data: pendingApps } = await supabase
+              .from('scholarship_applications')
+              .select('id')
+              .eq('cycle_id', cycleId)
+              .in('status', ['pending', 'under_review', 'for_exam'])
+              .neq('id', id);
+
+            if (pendingApps && pendingApps.length > 0) {
+              // Open the resolution modal first, suspending approval
+              setQuotaPendingApproveIds([String(id)]);
+              triggerQuotaFilledModal(cycleId, applicant.program, applicant.cycle, Number(slots), [id]);
+              return; // Abort approval update!
+            } else {
+              // No other pending applications to resolve, so approve candidate and close cycle directly
+              await supabase
+                .from('application_cycles')
+                .update({ status: 'closed', updated_at: new Date().toISOString() })
+                .eq('id', cycleId);
+              showToast(`Scholarship slot limit of ${slots} reached! Cycle automatically marked as Closed.`);
+            }
+          }
+        } catch (slotErr) {
+          console.warn('Error checking slot limit during pre-approval check:', slotErr);
+        }
+      }
+    }
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData?.user?.id;
+
+      const updatePayload: any = {
+        status: dbStatus,
+        updated_at: new Date().toISOString(),
+        reviewed_at: new Date().toISOString(),
+      };
+      if (currentUserId) {
+        updatePayload.reviewed_by = currentUserId;
+      }
+      if (remarks !== undefined && remarks !== '') {
+        updatePayload.remarks = remarks;
+      } else if (nextStatus === 'Pending for Ranking' || nextStatus === 'Pending Ranking') {
+        updatePayload.remarks = 'Pending for Ranking';
+      }
+      if (updatedDocs !== undefined) {
+        updatePayload.submitted_documents = {
+          reference_number: existingRefNum,
+          documents: updatedDocs
+        };
+      }
+
+      await supabase
+        .from('scholarship_applications')
+        .update(updatePayload)
+        .eq('id', id);
+
+      // Synchronize document verification statuses to scholar_documents table
+      let scholarId = applicant?.scholarId || applicant?.rawApplication?.scholar_id;
+
+      if (!scholarId && typeof id === 'string' && id.includes('-') && id.length > 20) {
+        try {
+          const { data: appData } = await supabase
+            .from('scholarship_applications')
+            .select('scholar_id')
+            .eq('id', id)
+            .maybeSingle();
+          if (appData?.scholar_id) {
+            scholarId = appData.scholar_id;
+          }
+        } catch (fetchScholarErr) {
+          console.warn('[Fetch scholar_id fallback note]:', fetchScholarErr);
+        }
+      }
+
+      // Sync approved scholar GWA and scale back to scholar profile table
+      if (nextStatus === 'Approved' && scholarId) {
+        try {
+          const appGrade = applicant?.rawApplication?.grade || applicant?.grade;
+          const appScale = applicant?.rawApplication?.gpa_scale || applicant?.gpaScale;
+          if (appGrade != null) {
+            await supabase
+              .from('scholar')
+              .update({
+                gpa: appGrade,
+                gpa_scale: appScale || 'scale_5',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', scholarId);
+          }
+        } catch (scholarSyncErr) {
+          console.warn('[Sync scholar profile GWA error]:', scholarSyncErr);
+        }
+      }
+
+      if (scholarId && updatedDocs && updatedDocs.length > 0) {
+        for (const doc of updatedDocs) {
+          try {
+            const docName = doc.name || doc.filename || '';
+            const docUrl = doc.document_url || doc.url || '';
+            let docStatusDb = 'pending';
+            if (doc.status === 'Verified') docStatusDb = 'verified';
+            else if (doc.status === 'Flagged') docStatusDb = 'rejected';
+
+            const docRemarks = doc.remarks || (docStatusDb === 'verified' ? 'Verified by provider' : docStatusDb === 'rejected' ? 'Flagged during provider review' : '');
+
+            let recordIdToUpdate = doc.id;
+            if (!recordIdToUpdate || typeof recordIdToUpdate === 'number' || (typeof recordIdToUpdate === 'string' && !recordIdToUpdate.includes('-'))) {
+              const { data: existingRecords } = await supabase
+                .from('scholar_documents')
+                .select('id, document_name, document_url')
+                .eq('scholar_id', scholarId);
+
+              if (existingRecords && existingRecords.length > 0) {
+                const match = existingRecords.find(r =>
+                  (r.document_name && r.document_name.toLowerCase().trim() === docName.toLowerCase().trim()) ||
+                  (r.document_url && docUrl && r.document_url.trim() === docUrl.trim())
+                );
+                if (match) recordIdToUpdate = match.id;
+              }
+            }
+
+            const aiPayload: any = {};
+            if (doc.aiVerification) {
+              aiPayload.ai_verification_status = doc.aiVerification.verificationStatus;
+              aiPayload.ai_confidence_score = doc.aiVerification.confidenceScore;
+              aiPayload.ai_flags = doc.aiVerification.flags;
+              aiPayload.ai_extracted_data = {
+                extractedName: doc.aiVerification.extractedName,
+                extractedSchool: doc.aiVerification.extractedSchool,
+                extractedGwa: doc.aiVerification.extractedGwa,
+                extractedIncome: doc.aiVerification.extractedIncome,
+                extractedDocType: doc.aiVerification.extractedDocType,
+                crossCheckResults: doc.aiVerification.crossCheckResults,
+              };
+              aiPayload.ai_model_used = doc.aiVerification.aiModelUsed;
+              aiPayload.file_sha256_hash = doc.aiVerification.sha256Hash;
+            }
+
+            if (recordIdToUpdate) {
+              const { error: updErr } = await supabase
+                .from('scholar_documents')
+                .update({
+                  verification_status: docStatusDb,
+                  remarks: docRemarks,
+                  document_url: docUrl || undefined,
+                  updated_at: new Date().toISOString(),
+                  ...aiPayload,
+                })
+                .eq('id', recordIdToUpdate);
+
+              if (updErr) {
+                if (updErr.message?.includes('column') || updErr.code === '42703') {
+                  await supabase
+                    .from('scholar_documents')
+                    .update({
+                      verification_status: docStatusDb,
+                      remarks: docRemarks,
+                      document_url: docUrl || undefined,
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', recordIdToUpdate);
+                } else {
+                  console.error(`[Error updating scholar_documents record ${recordIdToUpdate}]:`, updErr);
+                }
+              } else {
+                console.log(`[Success updating scholar_documents record ${recordIdToUpdate}]: status -> ${docStatusDb}`);
+              }
+            } else if (docUrl || docName) {
+              const { error: insErr } = await supabase
+                .from('scholar_documents')
+                .insert({
+                  scholar_id: scholarId,
+                  document_name: docName,
+                  document_url: docUrl || '',
+                  verification_status: docStatusDb,
+                  remarks: docRemarks,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  ...aiPayload,
+                });
+
+              if (insErr) {
+                if (insErr.message?.includes('column') || insErr.code === '42703') {
+                  await supabase
+                    .from('scholar_documents')
+                    .insert({
+                      scholar_id: scholarId,
+                      document_name: docName,
+                      document_url: docUrl || '',
+                      verification_status: docStatusDb,
+                      remarks: docRemarks,
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    });
+                } else {
+                  console.error('[Error inserting scholar_documents record]:', insErr);
+                }
+              } else {
+                console.log(`[Success inserting scholar_documents record]: ${docName} -> ${docStatusDb}`);
+              }
+            }
+          } catch (docSyncErr) {
+            console.error('[Doc Sync Exception]:', docSyncErr);
+          }
+        }
+      }
+
+      await fetchApplicantsAndScholars();
+
+      // Trigger decision notification (EmailJS + Database In-App + FCM Push Notification)
+      if (applicant) {
+        sendDecisionNotification({
+          toEmail: applicant.email,
+          toName: applicant.name,
+          programTitle: applicant.program,
+          providerName: providerDetails?.name || 'Scholarship Provider',
+          status: nextStatus,
+          remarks: remarks || '',
+          scholarId: applicant.scholarId,
+        }).catch((notifErr) => console.warn('[Decision Notification Error]:', notifErr));
+      }
+
+    } catch (e) {
+      console.error('Error updating application status in Supabase:', e);
+    }
+
+    if (nextStatus === 'Approved' && applicant) {
       const newScholar: ScholarAward = {
-        id: Date.now(),
+        id: applicant.id,
         scholarName: applicant.name,
         programTitle: applicant.program,
         cycleJoined: applicant.cycle,
         status: 'Maintaining',
         gwa: applicant.grade,
-        dateAwarded: 'Today'
+        dateAwarded: 'Today',
+        appDetail: { ...applicant, status: 'Approved', remarks: remarks || applicant.remarks, submittedDocuments: updatedDocs || applicant.submittedDocuments }
       };
-      setScholarsList([...scholarsList, newScholar]);
-      setApplicantsList(prev => prev.filter(app => app.id !== id));
-      showToast(`Approved ${applicant.name}! Transitioned them into Active Scholars monitoring.`);
-    } else {
-      // Just change status within application
+      setScholarsList(prev => [newScholar, ...prev]);
       setApplicantsList(prev =>
-        prev.map(app => (app.id === id ? { ...app, status: nextStatus } : app))
+        prev.map(a => (a.id === id ? { ...a, status: 'Approved', remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
       );
-      showToast(`Updated ${applicant.name}'s status to: ${nextStatus}`);
+      showToast(`Approved application for ${applicant.name}! Scholar record created.`);
+
+      // Check slot limit auto-close for cycle
+      try {
+        const cycleId = applicant.rawApplication?.cycle_id;
+        if (cycleId) {
+          supabase
+            .from('scholarship_applications')
+            .select('id')
+            .eq('cycle_id', cycleId)
+            .eq('status', 'approved')
+            .then(({ data: approvedApps }) => {
+              const approvedCount = approvedApps?.length || 0;
+               supabase
+                 .from('application_cycles')
+                 .select('status, slots_available, program:program_id(total_slots)')
+                 .eq('id', cycleId)
+                 .maybeSingle()
+                 .then(({ data: cycData }) => {
+                   const slots = cycData?.slots_available || (cycData?.program as any)?.total_slots;
+                   if (cycData?.status !== 'closed' && slots && approvedCount >= Number(slots)) {
+                     supabase
+                       .from('application_cycles')
+                       .update({ status: 'closed', updated_at: new Date().toISOString() })
+                       .eq('id', cycleId)
+                       .then(() => {
+                         showToast(`Scholarship slot limit of ${slots} reached! Cycle automatically marked as Closed.`);
+                         fetchApplicantsAndScholars();
+                         triggerQuotaFilledModal(cycleId, applicant.program, applicant.cycle, Number(slots), excludeAppIds || [id]);
+                       });
+                   }
+                 });
+            });
+        }
+      } catch (slotCheckErr) {
+        console.warn('Slot limit auto-close check warning:', slotCheckErr);
+      }
+    } else {
+      setApplicantsList(prev =>
+        prev.map(a => (a.id === id ? { ...a, status: nextStatus, remarks: remarks || a.remarks, submittedDocuments: updatedDocs || a.submittedDocuments } : a))
+      );
+      showToast(`Application updated to ${nextStatus}.`);
+    }
+
+    if (applicant) {
+      const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+      createAuditLog(
+        `UPDATED APPLICANT STATUS: ${nextStatus.toUpperCase()}`,
+        `Applicant: ${applicant.name} - Program: ${applicant.program}`,
+        actor
+      );
     }
   };
 
-  // Interactive Disbursements Mock State
-  const [disbursementsList, setDisbursementsList] = useState<DisbursementTx[]>([
-    { id: 'TXN-9081', scholar: 'Maria Santos', program: 'DOST-SEI Undergraduate Scholarship', method: 'Landbank', amount: '₱40,000', numericAmount: 40000, status: 'Completed', date: 'Aug 07, 2026' },
-    { id: 'TXN-9082', scholar: 'Princess Diaz', program: 'DOST-SEI Merit Renewal 2026', method: 'GCash', amount: '₱25,000', numericAmount: 25000, status: 'Completed', date: 'Aug 06, 2026' },
-    { id: 'TXN-9083', scholar: 'Juan Dela Cruz', program: 'DOST-SEI Undergraduate Scholarship', method: 'Landbank', amount: '₱40,000', numericAmount: 40000, status: 'Processing', date: 'Aug 08, 2026' },
-    { id: 'TXN-9084', scholar: 'Ethan Gomez', program: 'Tulong Dunong Financial Assistance', method: 'PayMaya', amount: '₱15,000', numericAmount: 15000, status: 'Processing', date: 'Aug 08, 2026' },
-    { id: 'TXN-9085', scholar: 'Sofia Lopez', program: 'Tulong Dunong Financial Assistance', method: 'GCash', amount: '₱15,000', numericAmount: 15000, status: 'Failed', date: 'Aug 04, 2026' }
-  ]);
+  // Interactive Disbursements State (loaded from Supabase)
+  const [disbursementsList, setDisbursementsList] = useState<DisbursementTx[]>([]);
+  const [_loadingDisbursements, setLoadingDisbursements] = useState(false);
+
+  const fetchDisbursements = async () => {
+    if (!providerDetails?.id) return;
+    setLoadingDisbursements(true);
+    try {
+      const { data, error } = await supabase
+        .from('fund_releases')
+        .select(`
+          *,
+          scholar:scholar (
+            first_name,
+            last_name
+          ),
+          program:scholarship_programs!inner (
+            title,
+            provider_id
+          )
+        `)
+        .eq('program.provider_id', providerDetails.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) {
+        const mapped: DisbursementTx[] = data.map((d: any) => ({
+          id: d.id,
+          scholar: d.scholar ? `${d.scholar.first_name} ${d.scholar.last_name}` : 'Unknown Scholar',
+          program: d.program?.title || 'Unknown Program',
+          method: d.fund_type ? `${d.fund_type.charAt(0).toUpperCase() + d.fund_type.slice(1)} Release` : 'Bank Transfer',
+          amount: `₱${Number(d.amount).toLocaleString()}`,
+          numericAmount: Number(d.amount) || 0,
+          status: d.status === 'released' ? 'Completed' : (d.status === 'pending' || d.status === 'processing' ? 'Pending' : d.status),
+          date: d.created_at ? new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : 'N/A',
+        }));
+        setDisbursementsList(mapped);
+      }
+    } catch (err) {
+      console.error('Error fetching disbursements:', err);
+    } finally {
+      setLoadingDisbursements(false);
+    }
+  };
 
   const totalCredited = disbursementsList
-    .filter(tx => tx.status === 'Completed')
+    .filter(tx => tx.status === 'COMPLETED' || tx.status === 'Completed' || tx.status === 'released')
     .reduce((sum, tx) => sum + tx.numericAmount, 0);
 
   const totalPending = disbursementsList
-    .filter(tx => tx.status === 'Processing')
+    .filter(tx => tx.status === 'PENDING' || tx.status === 'Pending' || tx.status === 'PROCESSING' || tx.status === 'Processing' || tx.status === 'pending' || tx.status === 'processing')
     .reduce((sum, tx) => sum + tx.numericAmount, 0);
 
-  // Handle program payout release first
-  const handleReleaseProgramFunds = (e: React.FormEvent) => {
-    e.preventDefault();
-    let updatedCount = 0;
-    setDisbursementsList(prev =>
-      prev.map(tx => {
-        if (tx.program === selectedPayoutProgram && tx.status === 'Processing') {
-          updatedCount++;
-          return { ...tx, status: 'Completed' };
+  // Fetch disbursements when provider details are loaded
+  useEffect(() => {
+    fetchDisbursements();
+  }, [providerDetails?.id]);
+
+  // Subscribe to realtime disbursement updates
+  useEffect(() => {
+    if (!providerDetails?.id) return;
+
+    const channel = supabase
+      .channel('provider-disbursements-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fund_releases'
+        },
+        () => {
+          fetchDisbursements();
+          fetchPrograms();
+          showToast('Disbursements updated in real-time!');
         }
-        return tx;
-      })
-    );
-    setIsPayoutModalOpen(false);
-    if (updatedCount > 0) {
-      showToast(`Released funds! Completed ${updatedCount} transactions for "${selectedPayoutProgram}".`);
-    } else {
-      showToast(`No pending transactions in queue for "${selectedPayoutProgram}".`);
-    }
-  };
+      )
+      .subscribe();
 
-  const handleCreateProgram = async (e: React.FormEvent) => {
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [providerDetails?.id]);
+
+  // Handle program payout release first
+  const handleReleaseProgramFunds = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTitle || !formDesc || !providerDetails?.id) {
-      showToast("Cannot create program: Provider details missing.");
-      return;
-    }
-
-    const matchedCat = categories.find(c => c.name === formCategory);
-    const categoryId = matchedCat ? matchedCat.id : null;
+    if (!providerDetails?.id) return;
 
     try {
-      // 1. Insert into scholarship_programs
-      const { data: progData, error: progErr } = await supabase
-        .from('scholarship_programs')
-        .insert({
-          provider_id: providerDetails.id,
-          title: formTitle,
-          description: formDesc,
-          category_id: categoryId,
-          scholarship_type: formScholarshipType,
-          covers_tuition: formCoverstuition,
-          covers_stipend: formCoversStipend,
-          stipend_amount: formStipendAmount ? parseFloat(formStipendAmount) : null,
-          covers_allowance: formCoversAllowance,
-          allowance_amount: formAllowanceAmount ? parseFloat(formAllowanceAmount) : null,
-          other_benefits: formOtherBenefits ? formOtherBenefits.split(',').map(s => s.trim()).filter(Boolean) : [],
-          course_eligibility: formCourseEligibility.length > 0 ? formCourseEligibility : ['All Courses'],
-          year_level_eligibility: formYearLevelEligibility,
-          minimum_gwa: formMinGwa ? parseFloat(formMinGwa) : null,
-          availability_scope: formAvailabilityScope,
-          available_regions: formAvailableRegions ? formAvailableRegions.split(',').map(s => s.trim()) : [],
-          available_provinces: formAvailabilityScope === 'provincial' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
-          available_schools: formAvailabilityScope === 'specific_schools' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
-          application_requirements: formRequirements,
-          total_slots: formTotalSlots ? parseInt(formTotalSlots, 10) : null,
-          budget_total: formBudgetTotal ? parseFloat(formBudgetTotal) : null,
-          funding_frequency: formFundingFreq,
-          renewal_policy: formRenewalPolicy,
-          renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
-          status: 'pending'
-        })
-        .select()
-        .single();
-
-      if (progErr || !progData) {
-        console.error('Error inserting program:', progErr);
-        showToast('Error creating scholarship program.');
+      // Get the program ID for the selected program
+      const program = programsList.find(p => p.title === selectedPayoutProgram);
+      if (!program) {
+        showToast(`Program "${selectedPayoutProgram}" not found.`);
         return;
       }
 
-      // 2. Insert initial application cycle
-      const cycleStatus = formCycleStartDate && new Date(formCycleStartDate) > new Date() ? 'upcoming' : 'open';
-      const { error: cycleErr } = await supabase
-        .from('application_cycles')
-        .insert({
-          program_id: progData.id,
-          cycle_name: formCycleName,
-          application_start_date: formCycleStartDate || new Date().toISOString().split('T')[0],
-          application_end_date: formCycleEndDate || new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
-          status: cycleStatus
-        });
+      // Update fund releases for this program that are pending/processing
+      const { error } = await supabase
+        .from('fund_releases')
+        .update({ status: 'released', updated_at: new Date().toISOString() })
+        .eq('program_id', program.id)
+        .in('status', ['pending', 'processing', 'PENDING', 'Pending']);
 
-      if (cycleErr) {
-        console.error('Error inserting application cycle:', cycleErr);
-        showToast('Program created, but error creating cycle.');
-      } else {
-        showToast(`Created program: "${formTitle}" with cycle "${formCycleName}"!`);
-      }
+      if (error) throw error;
 
-      // Reload programs from DB
-      await fetchPrograms();
-
-      // Reset Form State
-      setIsCreateModalOpen(false);
-      setFormTitle('');
-      setFormDesc('');
-      setFormCategory('Merit-Based');
-      setFormScholarshipType('merit');
-      setFormCoverstuition(false);
-      setFormCoversStipend(false);
-      setFormStipendAmount('');
-      setFormCoversAllowance(false);
-      setFormAllowanceAmount('');
-      setFormOtherBenefits('');
-      setFormCourseEligibility([]);
-      setFormCourseInput('');
-      setFormYearLevelEligibility([]);
-      setFormMinGwa('');
-      setFormAvailabilityScope('nationwide');
-      setFormAvailableRegions('');
-      setFormAvailableSchools('');
-      setFormTotalSlots('');
-      setFormBudgetTotal('');
-      setFormRenewalGwa('');
-      setFormCycleName('AY 2026-2027');
-      setFormCycleStartDate('');
-      setFormCycleEndDate('');
-      setFormRequirements([
-        { name: 'Transcript of Records', description: 'Official TOR from your registrar', required: true },
-        { name: 'Certificate of Good Moral Character', description: 'From your school registrar or dean', required: true },
-      ]);
-      setFormModalStep(1);
-
-    } catch (err) {
-      console.error('Failed to create program:', err);
-      showToast('An unexpected error occurred.');
+      setIsPayoutModalOpen(false);
+      showToast(`Released funds! Completed pending transactions for "${selectedPayoutProgram}".`);
+      // Real-time subscription will refresh the list
+    } catch (err: any) {
+      console.error('Error releasing funds:', err);
+      showToast(`Error: ${err.message || 'Failed to release funds'}`);
     }
   };
 
@@ -867,98 +2282,36 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const [programToClose, setProgramToClose] = useState<Program | null>(null);
-  const [isEditMode, setIsEditMode] = useState(false);
 
   const handleViewDetails = (prog: Program) => {
     setSelectedProgram(prog);
     setIsViewModalOpen(true);
   };
 
-  const handleEditProgram = (prog: Program) => {
-    // Pre-fill all form fields from the selected program
-    setFormTitle(prog.title);
-    setFormDesc(prog.description);
-    setFormCategory(prog.category);
-    setFormScholarshipType(prog.scholarshipType);
-    setFormCoverstuition(prog.coverstuition);
-    setFormCoversStipend(prog.coversStipend);
-    setFormStipendAmount(prog.stipendAmount);
-    setFormCoversAllowance(prog.coversAllowance);
-    setFormAllowanceAmount(prog.allowanceAmount);
-    setFormOtherBenefits(prog.otherBenefits.join(', '));
-    setFormCourseEligibility(prog.courseEligibility);
-    setFormYearLevelEligibility(prog.yearLevelEligibility);
-    setFormMinGwa(prog.minimumGwa);
-    setFormAvailabilityScope(prog.availabilityScope);
-    setFormAvailableRegions(prog.availableRegions.join(', '));
-    setFormAvailableSchools(prog.availableSchools);
-    setFormTotalSlots(prog.totalSlots);
-    setFormBudgetTotal(prog.budgetTotal.replace(/[₱,]/g, '').replace('M', '000000'));
-    setFormRenewalPolicy(prog.renewalPolicy);
-    setFormFundingFreq(prog.fundingFrequency);
-    setFormRenewalGwa(prog.renewalGwa);
-    setFormRequirements(prog.applicationRequirements);
-    setFormCycleName(prog.cycles[0]?.name || 'AY 2026-2027');
-    setFormCycleStartDate(prog.cycles[0]?.startDate || '');
-    setFormCycleEndDate(prog.cycles[0]?.endDate || '');
-    setFormModalStep(1);
-    setSelectedProgram(prog);
-    setIsEditMode(true);
-    setIsCreateModalOpen(true);
+  const handleOpenCreateProgram = () => {
+    setSelectedProgram(null);
+    setActiveTab('create-program');
   };
 
-  const handleUpdateProgram = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedProgram || !formTitle || !formDesc) return;
+  const [isCycleSelectModalOpen, setIsCycleSelectModalOpen] = useState(false);
+  const [programForCycleSelect, setProgramForCycleSelect] = useState<Program | null>(null);
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
 
-    const matchedCat = categories.find(c => c.name === formCategory);
-    const categoryId = matchedCat ? matchedCat.id : null;
+  const handleEditProgram = (prog: Program) => {
+    const cycles = prog.cycles || [];
+    const openCycles = cycles.filter((c: any) => (c.status || '').toLowerCase() === 'open');
 
-    try {
-      const { error } = await supabase
-        .from('scholarship_programs')
-        .update({
-          title: formTitle,
-          description: formDesc,
-          category_id: categoryId,
-          scholarship_type: formScholarshipType,
-          covers_tuition: formCoverstuition,
-          covers_stipend: formCoversStipend,
-          stipend_amount: formStipendAmount ? parseFloat(formStipendAmount) : null,
-          covers_allowance: formCoversAllowance,
-          allowance_amount: formAllowanceAmount ? parseFloat(formAllowanceAmount) : null,
-          other_benefits: formOtherBenefits ? formOtherBenefits.split(',').map(s => s.trim()).filter(Boolean) : [],
-          course_eligibility: formCourseEligibility.length > 0 ? formCourseEligibility : ['All Courses'],
-          year_level_eligibility: formYearLevelEligibility,
-          minimum_gwa: formMinGwa ? parseFloat(formMinGwa) : null,
-          availability_scope: formAvailabilityScope,
-          available_regions: formAvailableRegions ? formAvailableRegions.split(',').map(s => s.trim()) : [],
-          available_schools: formAvailabilityScope === 'specific_schools' && formAvailableSchools ? formAvailableSchools.split(',').map(s => s.trim()) : [],
-          application_requirements: formRequirements,
-          total_slots: formTotalSlots ? parseInt(formTotalSlots, 10) : null,
-          budget_total: formBudgetTotal ? parseFloat(formBudgetTotal) : null,
-          funding_frequency: formFundingFreq,
-          renewal_policy: formRenewalPolicy,
-          renewal_gwa_requirement: formRenewalGwa ? parseFloat(formRenewalGwa) : null,
-        })
-        .eq('id', selectedProgram.id);
-
-      if (error) {
-        console.error('Error updating program:', error);
-        showToast('Error updating scholarship program.');
-        return;
-      }
-
-      showToast(`"${formTitle}" updated successfully!`);
-      await fetchPrograms();
-
-      setIsCreateModalOpen(false);
-      setIsEditMode(false);
-      setSelectedProgram(null);
-      setFormModalStep(1);
-    } catch (err) {
-      console.error('Failed to update program:', err);
-      showToast('An unexpected error occurred.');
+    if (openCycles.length > 1) {
+      setProgramForCycleSelect(prog);
+      setIsCycleSelectModalOpen(true);
+    } else if (openCycles.length === 1) {
+      setSelectedCycleId(openCycles[0].id);
+      setSelectedProgram(prog);
+      setActiveTab('create-program');
+    } else {
+      setSelectedCycleId(null);
+      setSelectedProgram(prog);
+      setActiveTab('create-program');
     }
   };
 
@@ -975,6 +2328,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         showToast('Error closing program.');
       } else {
         showToast(`"${programToClose.title}" has been closed.`);
+        const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+        createAuditLog('CLOSED PROGRAM', `Program: ${programToClose.title}`, actor);
         await fetchPrograms();
       }
     } catch (err) {
@@ -986,45 +2341,117 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
-  const getNextCycleName = (lastCycleName: string): string => {
-    const rangeRegex = /(\d{4})\s*-\s*(\d{4})/;
-    const singleRegex = /(\d{4})/;
+  const handleOpenRenewModal = (prog: Program, targetMode?: 'renewal_2nd_sem' | 'next_academic_year') => {
+    setSelectedProgramForRenewal(prog);
+    setCycleToEdit(null);
     
-    const rangeMatch = lastCycleName.match(rangeRegex);
-    if (rangeMatch) {
-      const startYear = parseInt(rangeMatch[1], 10);
-      const endYear = parseInt(rangeMatch[2], 10);
-      return lastCycleName.replace(rangeRegex, `${startYear + 1}-${endYear + 1}`);
+    // Extract current / latest Academic Year from existing program cycles
+    let currentAYString = '';
+    let latestEndYear = 0;
+
+    if (prog.cycles && prog.cycles.length > 0) {
+      for (let i = prog.cycles.length - 1; i >= 0; i--) {
+        const c = prog.cycles[i];
+        const ayMatch = (c.name || '').match(/AY\s*(\d{4})[-–](\d{4})/i);
+        if (ayMatch) {
+          if (!currentAYString) currentAYString = `AY ${ayMatch[1]}-${ayMatch[2]}`;
+          const endY = parseInt(ayMatch[2], 10);
+          if (endY > latestEndYear) latestEndYear = endY;
+        } else {
+          const yrs = (c.name || '').match(/\d{4}/g);
+          if (yrs && yrs.length >= 2) {
+            if (!currentAYString) currentAYString = `AY ${yrs[0]}-${yrs[1]}`;
+            const endY = parseInt(yrs[1], 10);
+            if (endY > latestEndYear) latestEndYear = endY;
+          }
+        }
+      }
     }
-    
-    const singleMatch = lastCycleName.match(singleRegex);
-    if (singleMatch) {
-      const year = parseInt(singleMatch[1], 10);
-      return lastCycleName.replace(singleRegex, `${year + 1}`);
+
+    if (!currentAYString) {
+      const curYear = new Date().getFullYear();
+      currentAYString = `AY ${curYear}-${curYear + 1}`;
+      latestEndYear = curYear + 1;
     }
-    
-    const currentYear = new Date().getFullYear();
-    return `AY ${currentYear}-${currentYear + 1}`;
+
+    const isRenewal2ndSem = targetMode === 'renewal_2nd_sem';
+
+    if (isRenewal2ndSem) {
+      setRenewCycleType('renewal');
+      setRenewSemester('2nd Semester');
+      setRenewCycleName(`${currentAYString} • 2nd Sem Renewal`);
+      setRenewRequirements([
+        {
+          name: '1st Semester Official Grade Slip / Report of Grades',
+          description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
+        },
+        {
+          name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
+          description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+        },
+      ]);
+    } else {
+      const nextStartYear = latestEndYear > 0 ? latestEndYear : new Date().getFullYear();
+      const nextAY = `AY ${nextStartYear}-${nextStartYear + 1}`;
+      setRenewCycleType('new_applicant');
+      setRenewSemester('1st Semester');
+      setRenewCycleName(nextAY);
+      setRenewRequirements([
+        {
+          name: 'Official Grade Slip / Report of Grades',
+          description: 'Signed copy or student portal screenshot of latest grades/GWA',
+        },
+        {
+          name: 'Certificate of Enrollment / Registration',
+          description: 'Official proof of enrollment for the new academic year',
+        },
+      ]);
+    }
+
+    setRenewStartDate(new Date().toISOString().split('T')[0]);
+    setRenewEndDate(new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0]);
+    setRenewSlots(prog.totalSlots || '');
+    setIsRenewModalOpen(true);
   };
 
-  const handleOpenRenewModal = (prog: Program) => {
+  const handleOpenEditCycle = (prog: Program, cyc: any) => {
     setSelectedProgramForRenewal(prog);
+    setCycleToEdit(cyc);
+    setRenewCycleName(cyc.name || '');
+    setRenewStartDate(cyc.startDate || new Date().toISOString().split('T')[0]);
+    setRenewEndDate(cyc.endDate || new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0]);
+    setRenewSlots(cyc.slotsAvailable ? String(cyc.slotsAvailable) : '');
     
-    // Sort cycles to find the latest one
-    const latestCycle = prog.cycles && prog.cycles.length > 0
-      ? [...prog.cycles].sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())[0]
+    const isRenewal = cyc.cycleType === 'renewal' || (cyc.name && cyc.name.toLowerCase().includes('renewal'));
+    setRenewCycleType(isRenewal ? 'renewal' : 'new_applicant');
+    setRenewSemester(cyc.semester || '1st Semester');
+
+    const rawReqs = (cyc.renewalRequirements && Array.isArray(cyc.renewalRequirements) && cyc.renewalRequirements.length > 0)
+      ? cyc.renewalRequirements
+      : (prog.applicationRequirements && Array.isArray(prog.applicationRequirements) && prog.applicationRequirements.length > 0)
+      ? prog.applicationRequirements
       : null;
-      
-    if (latestCycle) {
-      setRenewCycleName(getNextCycleName(latestCycle.name));
+
+    if (rawReqs && rawReqs.length > 0) {
+      setRenewRequirements(
+        rawReqs.map((r: any) =>
+          typeof r === 'string'
+            ? { name: r, description: '' }
+            : { name: r.name || 'Document', description: r.description || '' }
+        )
+      );
     } else {
-      const currentYear = new Date().getFullYear();
-      setRenewCycleName(`AY ${currentYear}-${currentYear + 1}`);
+      setRenewRequirements([
+        {
+          name: 'Official Grade Slip / Report of Grades',
+          description: 'Signed copy or portal screenshot of your latest term grades/GWA',
+        },
+        {
+          name: 'Certificate of Registration (COR) / Enrollment Form',
+          description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+        },
+      ]);
     }
-    
-    setRenewStartDate(new Date().toISOString().split('T')[0]);
-    setRenewEndDate(new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0]);
-    setRenewSlots(prog.totalSlots || '');
     setIsRenewModalOpen(true);
   };
 
@@ -1035,38 +2462,245 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       return;
     }
 
-    try {
-      const cycleStatus = new Date(renewStartDate) > new Date() ? 'upcoming' : 'open';
-      
-      // 1. Insert new cycle
-      const { error: cycleErr } = await supabase
-        .from('application_cycles')
-        .insert({
-          program_id: selectedProgramForRenewal.id,
-          cycle_name: renewCycleName,
-          application_start_date: renewStartDate,
-          application_end_date: renewEndDate,
-          slots_available: renewSlots ? parseInt(renewSlots, 10) : null,
-          status: cycleStatus
-        });
+    if (renewCycleType === 'renewal' && renewRequirements.length === 0) {
+      showToast('Please select or add at least one required renewal document.');
+      return;
+    }
 
-      if (cycleErr) {
-        console.error('Error inserting renewal cycle:', cycleErr);
-        showToast('Error creating new application cycle.');
-        return;
+    try {
+      const todayMid = getTodayMidnight();
+      const startMid = parseLocalMidnight(renewStartDate);
+      const endMid = parseLocalMidnight(renewEndDate);
+
+      let cycleStatus = 'open';
+      if (startMid > todayMid) {
+        cycleStatus = 'upcoming';
+      } else if (endMid < todayMid) {
+        cycleStatus = 'closed';
       }
 
-      // 2. Update program status to 'active'
-      const { error: progErr } = await supabase
-        .from('scholarship_programs')
-        .update({ status: 'active' })
-        .eq('id', selectedProgramForRenewal.id);
+      if (cycleToEdit && cycleToEdit.id) {
+        const rawSlots = (renewSlots && renewSlots.trim() !== '') ? renewSlots : (selectedProgramForRenewal.totalSlots || selectedProgramForRenewal.total_slots || null);
+        const slots = (rawSlots !== undefined && rawSlots !== null && rawSlots !== '' && !isNaN(parseInt(String(rawSlots), 10)))
+          ? parseInt(String(rawSlots), 10)
+          : null;
+        if (slots && cycleStatus === 'open') {
+          const { count, error: countErr } = await supabase
+            .from('scholarship_applications')
+            .select('id', { count: 'exact', head: true })
+            .eq('cycle_id', cycleToEdit.id)
+            .eq('status', 'approved');
 
-      if (progErr) {
-        console.error('Error updating program status on renewal:', progErr);
-        showToast('Cycle added, but failed to set program status to active.');
+          if (!countErr && count !== null && count >= slots) {
+            cycleStatus = 'closed';
+          }
+        }
+      }
+      
+      if (cycleToEdit && cycleToEdit.id) {
+        // ─── Edit Existing Cycle ───
+        const updatePayload: any = {
+          cycle_name: renewCycleName,
+          cycle_type: renewCycleType,
+          semester: renewSemester,
+          application_start_date: renewStartDate,
+          application_end_date: renewEndDate,
+          slots_available: renewCycleType === 'renewal' ? null : (renewSlots ? parseInt(renewSlots, 10) : null),
+          status: cycleStatus,
+        };
+
+        if (renewCycleType === 'renewal') {
+          updatePayload.renewal_requirements = renewRequirements;
+        }
+
+        const { error: updateErr } = await supabase
+          .from('application_cycles')
+          .update(updatePayload)
+          .eq('id', cycleToEdit.id);
+
+        if (updateErr) {
+          console.warn('Update attempt error, retrying without renewal_requirements:', updateErr);
+          delete updatePayload.renewal_requirements;
+          const { error: fallbackUpdateErr } = await supabase
+            .from('application_cycles')
+            .update(updatePayload)
+            .eq('id', cycleToEdit.id);
+
+          if (fallbackUpdateErr) {
+            console.error('Error updating cycle:', fallbackUpdateErr);
+            showToast('Error updating application cycle.');
+            return;
+          }
+        }
+
+        showToast(`Cycle "${renewCycleName}" updated successfully!`);
+        const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+        createAuditLog('UPDATED CYCLE', `Program: ${selectedProgramForRenewal.title} - Cycle: ${renewCycleName}`, actor);
       } else {
-        showToast(`Successfully renewed "${selectedProgramForRenewal.title}" with cycle "${renewCycleName}"!`);
+        // ─── Insert New Cycle ───
+        const insertPayload: any = {
+          program_id: selectedProgramForRenewal.id,
+          cycle_name: renewCycleName,
+          cycle_type: renewCycleType,
+          semester: renewSemester,
+          application_start_date: renewStartDate,
+          application_end_date: renewEndDate,
+          slots_available: renewCycleType === 'renewal' ? null : (renewSlots ? parseInt(renewSlots, 10) : null),
+          status: cycleStatus,
+        };
+
+        if (renewCycleType === 'renewal') {
+          insertPayload.renewal_requirements = renewRequirements;
+        }
+
+        let newCycleId = '';
+        const { data: cycleData, error: cycleErr } = await supabase
+          .from('application_cycles')
+          .insert(insertPayload)
+          .select('id')
+          .single();
+
+        if (cycleErr) {
+          console.warn('First insert attempt error, retrying standard payload:', cycleErr);
+          delete insertPayload.renewal_requirements;
+          const { data: fallbackData, error: fallbackErr } = await supabase
+            .from('application_cycles')
+            .insert(insertPayload)
+            .select('id')
+            .single();
+
+          if (fallbackErr) {
+            console.error('Error inserting renewal cycle:', fallbackErr);
+            showToast('Error creating new application cycle.');
+            return;
+          }
+          newCycleId = fallbackData?.id || '';
+        } else {
+          newCycleId = cycleData?.id || '';
+        }
+
+        // If Semestral Renewal, notify continuing scholars of this program with requirements
+        if (renewCycleType === 'renewal') {
+          try {
+            // Fetch all approved applications for this program (using singular 'scholar')
+            const { data: approvedApps } = await supabase
+              .from('scholarship_applications')
+              .select(`
+                id,
+                scholar_id,
+                scholar:scholar(
+                  id,
+                  user_id,
+                  first_name,
+                  last_name
+                ),
+                cycle:application_cycles!inner(program_id)
+              `)
+              .eq('status', 'approved')
+              .eq('cycle.program_id', selectedProgramForRenewal.id);
+
+            let userIdsToSend: string[] = [];
+
+            if (approvedApps && approvedApps.length > 0) {
+              for (const app of approvedApps as any[]) {
+                const uId = app.scholar?.user_id;
+                if (uId && !userIdsToSend.includes(uId)) {
+                  userIdsToSend.push(uId);
+                }
+              }
+            }
+
+            // Fallback: If join didn't return user_ids, fetch scholar table directly
+            if (userIdsToSend.length === 0) {
+              const { data: rawApps } = await supabase
+                .from('scholarship_applications')
+                .select('scholar_id, cycle:application_cycles!inner(program_id)')
+                .eq('status', 'approved')
+                .eq('cycle.program_id', selectedProgramForRenewal.id);
+
+              if (rawApps && rawApps.length > 0) {
+                const sIds = Array.from(new Set(rawApps.map((a: any) => a.scholar_id).filter(Boolean)));
+                if (sIds.length > 0) {
+                  const { data: scholarRows } = await supabase
+                    .from('scholar')
+                    .select('user_id')
+                    .in('id', sIds);
+                  if (scholarRows) {
+                    userIdsToSend = scholarRows.map((s: any) => s.user_id).filter(Boolean);
+                  }
+                }
+              }
+            }
+
+            if (userIdsToSend.length > 0) {
+              const notifInserts = userIdsToSend.map((uId: string) => ({
+                user_id: uId,
+                title: `📢 ${renewSemester} Renewal Open — ${selectedProgramForRenewal.title}`,
+                message: `Notice for Continuing Scholars: The renewal for ${selectedProgramForRenewal.title} (${renewSemester}) is now open until ${renewEndDate}.\n\nRequired Documents to Submit:\n${renewRequirements.map((r, i) => `${i + 1}. ${r.name}${r.description ? ` — ${r.description}` : ''}`).join('\n')}\n\nPlease upload them in your IskoAko app to maintain your grant.`,
+                type: 'info',
+                is_read: false,
+                metadata: {
+                  program_id: selectedProgramForRenewal.id,
+                  cycle_id: newCycleId,
+                  cycle_name: renewCycleName,
+                  semester: renewSemester,
+                  deadline: renewEndDate,
+                  renewal_requirements: renewRequirements,
+                  action: 'renewal_submission',
+                },
+              }));
+
+              const { error: notifInsertErr } = await supabase.from('notifications').insert(notifInserts);
+              if (notifInsertErr) {
+                console.error('Error inserting renewal notifications:', notifInsertErr);
+              } else {
+                console.log(`[Renewal Broadcast]: Successfully sent in-app notifications to ${userIdsToSend.length} approved scholars!`);
+              }
+            }
+          } catch (notifErr) {
+            console.warn('[Renewal Scholar Notification Exception]:', notifErr);
+          }
+        }
+
+        // Update program status and application_requirements
+        if (renewCycleType === 'renewal') {
+          const formattedReqs = renewRequirements.map((r) => ({
+            name: r.name,
+            description: r.description || '',
+            required: true,
+          }));
+          await supabase
+            .from('scholarship_programs')
+            .update({
+              application_requirements: formattedReqs,
+              status: 'active',
+            })
+            .eq('id', selectedProgramForRenewal.id);
+        } else {
+          await supabase
+            .from('scholarship_programs')
+            .update({ status: 'active' })
+            .eq('id', selectedProgramForRenewal.id);
+        }
+
+        showToast(`Successfully opened "${renewCycleName}" with ${renewRequirements.length} required documents!`);
+        const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+        createAuditLog('OPENED CYCLE', `Program: ${selectedProgramForRenewal.title} - Cycle: ${renewCycleName}`, actor);
+      }
+
+      // If editing renewal cycle, also sync requirements to program
+      if (cycleToEdit && renewCycleType === 'renewal') {
+        const formattedReqs = renewRequirements.map((r) => ({
+          name: r.name,
+          description: r.description || '',
+          required: true,
+        }));
+        await supabase
+          .from('scholarship_programs')
+          .update({
+            application_requirements: formattedReqs,
+          })
+          .eq('id', selectedProgramForRenewal.id);
       }
 
       // Reload programs
@@ -1075,10 +2709,23 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       // Close modal & reset state
       setIsRenewModalOpen(false);
       setSelectedProgramForRenewal(null);
+      setCycleToEdit(null);
       setRenewCycleName('');
       setRenewStartDate('');
       setRenewEndDate('');
       setRenewSlots('');
+      setRenewCycleType('renewal');
+      setRenewSemester('1st Semester');
+      setRenewRequirements([
+        {
+          name: '1st Semester Official Grade Slip / Report of Grades',
+          description: 'Signed copy or student portal screenshot of your 1st semester grades/GWA',
+        },
+        {
+          name: 'Certificate of Registration (COR) / Enrollment Form (2nd Semester)',
+          description: 'Official proof of enrollment for the upcoming semester with enrolled units',
+        },
+      ]);
     } catch (err) {
       console.error('Unexpected error during renewal:', err);
       showToast('An unexpected error occurred.');
@@ -1113,7 +2760,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       showToast(`Successfully deleted cycle "${cycleName}".`);
       
       if (selectedProgram) {
-        const updatedCycles = selectedProgram.cycles.filter(c => c.id !== cycleId);
+        const updatedCycles = selectedProgram.cycles.filter((c: any) => c.id !== cycleId);
         setSelectedProgram({
           ...selectedProgram,
           cycles: updatedCycles
@@ -1130,17 +2777,86 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
     }
   };
 
+  const handleCloseCycle = (cycleId: string, cycleName: string) => {
+    setCycleToForceClose({ id: cycleId, name: cycleName });
+    setIsForceCloseModalOpen(true);
+  };
+
+  const handleConfirmForceCloseCycle = async () => {
+    if (!cycleToForceClose) return;
+    setIsClosingCycle(true);
+
+    try {
+      const { error } = await supabase
+        .from('application_cycles')
+        .update({ status: 'closed', updated_at: new Date().toISOString() })
+        .eq('id', cycleToForceClose.id);
+
+      if (error) {
+        console.error('Error closing cycle:', error);
+        showToast('Error closing application cycle.');
+        return;
+      }
+
+      showToast(`Successfully closed cycle "${cycleToForceClose.name}".`);
+      setIsForceCloseModalOpen(false);
+      setCycleToForceClose(null);
+      await fetchPrograms();
+    } catch (err) {
+      console.error('Unexpected error closing cycle:', err);
+      showToast('An unexpected error occurred.');
+    } finally {
+      setIsClosingCycle(false);
+    }
+  };
+
+
+
 
 
   const filteredApplicants = applicantsList.filter(app => {
+    // Exclude appealed scholars from applicants listing (they belong in Appeals & Disputes tab)
+    const isAppealed = 
+      app.hasPendingAppeal === true ||
+      app.status === 'Appealed' || 
+      app.status === 'appealed' || 
+      app.status === 'Appeals' ||
+      (Boolean(app.rawApplication?.dispute_note) && app.status !== 'under_review' && app.status !== 'Under Review' && app.status !== 'Approved' && app.status !== 'Rejected') ||
+      (Boolean(app.remarks && (app.remarks.includes('Formal Appeal Filed') || app.remarks.toLowerCase().includes('dispute'))) && app.status !== 'under_review' && app.status !== 'Under Review' && app.status !== 'Approved' && app.status !== 'Rejected');
+    if (isAppealed) {
+      return false;
+    }
+
     const matchesSearch = app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.program.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || app.status === statusFilter;
+      app.program.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (app.cycle && app.cycle.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const isRenewal = Boolean(app.cycle_type === 'renewal' || (app.cycle && app.cycle.toLowerCase().includes('renewal')));
+
+    let matchesStatus = true;
+    if (statusFilter === 'Renewals') {
+      matchesStatus = isRenewal && app.status !== 'Approved' && app.status !== 'Rejected';
+    } else if (statusFilter === 'New Applicants') {
+      matchesStatus = !isRenewal && app.status !== 'Approved' && app.status !== 'Rejected';
+    } else if (statusFilter === 'All') {
+      matchesStatus = app.status !== 'Approved' && app.status !== 'Rejected'; // Exclude approved and rejected
+    } else if (statusFilter.toLowerCase() === 'pending') {
+      matchesStatus = app.status === 'Pending' || app.status?.toLowerCase() === 'pending' || app.status?.toLowerCase() === 'submitted';
+    } else {
+      matchesStatus = app.status?.toLowerCase() === statusFilter.toLowerCase();
+    }
+
     return matchesSearch && matchesStatus;
   });
 
   const filteredScholars = scholarsList.filter(sch => {
+    // Exclude appealed scholars from active scholars listing (they belong in Appeals & Disputes tab)
+    const isAppealed = (sch as any).status === 'Appealed' || (sch as any).status === 'appealed';
+    if (isAppealed) {
+      return false;
+    }
+
     const matchesSearch = sch.scholarName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       sch.programTitle.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
@@ -1168,18 +2884,66 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         publicUrl = urlData?.publicUrl || `https://mock.storage.iskolarako.org/provider-documents/${filePath}`;
       }
 
-      // Update local state with the uploaded document URL
-      const updatedReqs = {
+      // Update local state with the uploaded document URL (draft mode until explicitly submitted)
+      showToast(`Running AI forensic scan on ${fieldName}...`);
+
+      // Run AI document authenticity & requirement verification
+      let aiResult: any = null;
+      try {
+        const applicantContext: ApplicantVerificationContext = {
+          isProviderOrg: true,
+          organizationName: providerDetails.name,
+          representativeName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : providerDetails.name,
+          providerType: providerDetails.providerType,
+        };
+
+        aiResult = await verifyDocumentAuthenticity({
+          documentUrl: publicUrl,
+          documentName: fieldName,
+          applicantContext,
+        });
+      } catch (aiErr) {
+        console.warn('AI document scan warning during upload:', aiErr);
+      }
+
+      const existingAiVerifs = providerDetails.requirementsSubmitted._aiVerification || {};
+      const updatedAiVerifs = aiResult ? {
+        ...existingAiVerifs,
+        [fieldName]: aiResult
+      } : existingAiVerifs;
+
+      const rawReqs = {
         ...providerDetails.requirementsSubmitted,
-        [fieldName]: publicUrl
+        [fieldName]: publicUrl,
+        _isSubmitted: false,
+        _aiVerification: updatedAiVerifs
       };
+      const updatedReqs = sanitizeRequirementsSubmitted(rawReqs);
 
       setProviderDetails(prev => prev ? {
         ...prev,
         requirementsSubmitted: updatedReqs
       } : null);
 
-      showToast(`Successfully uploaded ${fieldName}!`);
+      // Persist draft document upload & AI scan result to Supabase DB without changing verification_status
+      try {
+        await supabase
+          .from('provider')
+          .update({
+            requirements_submitted: updatedReqs,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', providerDetails.id);
+      } catch (dbErr) {
+        console.error('Error persisting draft upload:', dbErr);
+      }
+
+      setHasModifiedDocs(true);
+      if (aiResult?.verificationStatus === 'rejected' || aiResult?.tamperingDetected) {
+        showToast(`⚠️ AI Warning: ${fieldName} was flagged/rejected for authenticity mismatch.`);
+      } else {
+        showToast(`Successfully uploaded and AI scanned ${fieldName}!`);
+      }
     } catch (err: any) {
       console.error('Error uploading document:', err);
       showToast(`Upload failed: ${err.message}`);
@@ -1203,8 +2967,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
     setSubmittingVerification(true);
     try {
-      const updatedReqs = { ...providerDetails.requirementsSubmitted };
-      delete updatedReqs._remarks;
+      const rawReqs = { ...providerDetails.requirementsSubmitted };
+      delete rawReqs._remarks;
+      rawReqs._isSubmitted = true;
+      const updatedReqs = sanitizeRequirementsSubmitted(rawReqs);
 
       const { error } = await supabase
         .from('provider')
@@ -1224,6 +2990,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       } : null);
 
       showToast('Verification request submitted successfully!');
+      const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+      createAuditLog('SUBMITTED PROVIDER VERIFICATION REQUEST', providerDetails.name, actor);
     } catch (err: any) {
       console.error('Error submitting verification:', err);
       showToast(`Submission failed: ${err.message}`);
@@ -1241,9 +3009,14 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
     setSubmittingVerification(true);
     try {
+      const rawReqs = { ...providerDetails.requirementsSubmitted };
+      rawReqs._isSubmitted = false;
+      const updatedReqs = sanitizeRequirementsSubmitted(rawReqs);
+
       const { error } = await supabase
         .from('provider')
         .update({
+          requirements_submitted: updatedReqs,
           verification_status: 'pending',
           updated_at: new Date().toISOString()
         })
@@ -1253,10 +3026,13 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       setProviderDetails(prev => prev ? {
         ...prev,
+        requirementsSubmitted: updatedReqs,
         verificationStatus: 'pending'
       } : null);
 
       showToast('Successfully unsubmitted verification request. You can now modify your documents.');
+      const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+      createAuditLog('UNSUBMITTED PROVIDER VERIFICATION REQUEST', providerDetails.name, actor);
     } catch (err: any) {
       console.error('Error unsubmitting verification:', err);
       showToast(`Failed to unsubmit: ${err.message}`);
@@ -1290,7 +3066,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
   if (isLoadingProvider) {
     return (
-      <div className="min-h-screen bg-[#F9F5EF] flex items-center justify-center font-sans">
+      <div className="min-h-screen bg-white flex items-center justify-center font-sans">
         <div className="flex flex-col items-center gap-3">
           <svg className="animate-spin h-10 w-10 text-[#2D5941]" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -1303,7 +3079,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
   }
 
   return (
-    <div className="h-screen bg-[#F9F5EF] flex font-sans overflow-hidden relative">
+    <div className="h-screen bg-white flex font-sans overflow-hidden relative">
 
       {/* Toast Alert */}
       {toastMessage && (
@@ -1312,574 +3088,6 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span className="text-xs font-semibold">{toastMessage}</span>
-        </div>
-      )}
-
-      {/* Program Creation Modal */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm px-4 py-6 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl w-full max-w-3xl relative animate-fade-in my-auto">
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-white rounded-t-3xl z-10 px-8 pt-7 pb-5 border-b border-[#D9D2C5]/50">
-              <button
-                type="button"
-                onClick={() => { setIsCreateModalOpen(false); setFormModalStep(1); setIsEditMode(false); setSelectedProgram(null); }}
-                className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
-              >✕</button>
-              <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">
-                {isEditMode ? 'Edit Scholarship Program' : 'Create Scholarship Program'}
-              </h3>
-              <p className="text-xs text-[#6C6C70] mt-1">
-                {isEditMode
-                  ? 'Update program details below. Changes are saved immediately to the database.'
-                  : 'Fill in all program details. You can manage cycles and update requirements after creation.'}
-              </p>
-              {/* Step indicator */}
-              <div className="flex gap-2 mt-4">
-                {['Basic Info', 'Benefits & Eligibility', 'Requirements', 'Application Cycle'].map((step, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setFormModalStep(i + 1)}
-                    className={`flex-1 text-[10px] font-bold py-1.5 rounded-lg transition-all cursor-pointer border-0 ${
-                      formModalStep === i + 1
-                        ? 'bg-[#1A3C2E] text-white'
-                        : 'bg-[#F9F5EF] text-[#6C6C70] hover:bg-[#EDE8DE]'
-                    }`}
-                  >
-                    {i + 1}. {step}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <form onSubmit={isEditMode ? handleUpdateProgram : handleCreateProgram}>
-              <div className="px-8 py-6 space-y-5">
-
-                {/* ─── STEP 1: Basic Info ─── */}
-                {formModalStep === 1 && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Program Title *</label>
-                        <input
-                          type="text" required placeholder="e.g. DOST-SEI Undergraduate Scholarship"
-                          value={formTitle} onChange={(e) => setFormTitle(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Scholarship Category *</label>
-                        <select
-                          value={formCategory} onChange={(e) => setFormCategory(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                        >
-                          <option>Merit-Based</option>
-                          <option>Need-Based</option>
-                          <option>Merit and Need</option>
-                          <option>STEM</option>
-                          <option>Graduate / Fellowship</option>
-                          <option>Vocational / TVET</option>
-                          <option>Indigenous Peoples</option>
-                          <option>Persons with Disability</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Scholarship Type *</label>
-                        <select
-                          value={formScholarshipType} onChange={(e) => setFormScholarshipType(e.target.value as ScholarshipType)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                        >
-                          <option value="merit">Merit-Based</option>
-                          <option value="need_based">Need-Based</option>
-                          <option value="merit_and_need">Merit and Need</option>
-                          <option value="grant">Grant</option>
-                          <option value="fellowship">Fellowship / Graduate</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Funding Frequency *</label>
-                        <select
-                          value={formFundingFreq} onChange={(e) => setFormFundingFreq(e.target.value as FundingFreq)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                        >
-                          <option value="Per Semester">Per Semester</option>
-                          <option value="Once a Year">Once a Year</option>
-                          <option value="One-time">One-time Grant</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Program Description *</label>
-                      <textarea
-                        required rows={3} placeholder="Describe the scholarship, its goals, and who it supports..."
-                        value={formDesc} onChange={(e) => setFormDesc(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm resize-none"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Renewal Policy</label>
-                        <select
-                          value={formRenewalPolicy} onChange={(e) => setFormRenewalPolicy(e.target.value as RenewalPolicy)}
-                          className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                        >
-                          <option value="No Renewal">No Renewal</option>
-                          <option value="Automatic Renewal">Automatic Renewal</option>
-                          <option value="Conditional Renewal">Conditional Renewal</option>
-                          <option value="Annual Reapplication">Annual Reapplication</option>
-                          <option value="Semester Renewal">Semester Renewal</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Renewal Min. GWA</label>
-                        <input
-                          type="number" step="0.01" min="1" max="5" placeholder="e.g. 1.75"
-                          value={formRenewalGwa} onChange={(e) => setFormRenewalGwa(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Total Slots</label>
-                        <input
-                          type="number" min="1" placeholder="Leave blank for unlimited"
-                          value={formTotalSlots} onChange={(e) => setFormTotalSlots(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Total Budget (₱)</label>
-                        <input
-                          type="number" min="0" placeholder="e.g. 5000000"
-                          value={formBudgetTotal} onChange={(e) => setFormBudgetTotal(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ─── STEP 2: Benefits & Eligibility ─── */}
-                {formModalStep === 2 && (
-                  <div className="space-y-5">
-                    {/* Benefits */}
-                    <div>
-                      <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-3">Coverage / Benefits</h4>
-                      <div className="space-y-3">
-                        <label className="flex items-center gap-3 p-3 rounded-xl border border-[#D9D2C5] cursor-pointer hover:bg-[#F9F5EF]">
-                          <input type="checkbox" checked={formCoverstuition} onChange={(e) => setFormCoverstuition(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
-                          <span className="text-sm font-semibold text-[#1C1C1E]">Full Tuition Coverage</span>
-                        </label>
-                        <div className="p-3 rounded-xl border border-[#D9D2C5] space-y-2">
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input type="checkbox" checked={formCoversStipend} onChange={(e) => setFormCoversStipend(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
-                            <span className="text-sm font-semibold text-[#1C1C1E]">Monthly Stipend</span>
-                          </label>
-                          {formCoversStipend && (
-                            <input
-                              type="number" min="0" placeholder="Monthly amount in ₱ e.g. 7000"
-                              value={formStipendAmount} onChange={(e) => setFormStipendAmount(e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg border border-[#D9D2C5] text-xs font-semibold focus:outline-none"
-                            />
-                          )}
-                        </div>
-                        <div className="p-3 rounded-xl border border-[#D9D2C5] space-y-2">
-                          <label className="flex items-center gap-3 cursor-pointer">
-                            <input type="checkbox" checked={formCoversAllowance} onChange={(e) => setFormCoversAllowance(e.target.checked)} className="w-4 h-4 text-[#2D5941] rounded cursor-pointer" />
-                            <span className="text-sm font-semibold text-[#1C1C1E]">Living / Book Allowance</span>
-                          </label>
-                          {formCoversAllowance && (
-                            <input
-                              type="number" min="0" placeholder="Allowance amount in ₱ e.g. 3000"
-                              value={formAllowanceAmount} onChange={(e) => setFormAllowanceAmount(e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg border border-[#D9D2C5] text-xs font-semibold focus:outline-none"
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Other Benefits (comma-separated)</label>
-                          <input
-                            type="text" placeholder="e.g. Research grant, Laptop allowance, Housing subsidy"
-                            value={formOtherBenefits} onChange={(e) => setFormOtherBenefits(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-[#D9D2C5]/50 pt-5">
-                      <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-3">Eligibility Criteria</h4>
-                      <div className="space-y-4">
-                        {/* Course Eligibility */}
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Courses (leave empty for all)</label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text" placeholder="e.g. BSCS, BSECE, BSME"
-                              value={formCourseInput} onChange={(e) => setFormCourseInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                if ((e.key === 'Enter' || e.key === ',') && formCourseInput.trim()) {
-                                  e.preventDefault();
-                                  setFormCourseEligibility(prev => [...prev, formCourseInput.trim()]);
-                                  setFormCourseInput('');
-                                }
-                              }}
-                              className="flex-1 px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (formCourseInput.trim()) {
-                                  setFormCourseEligibility(prev => [...prev, formCourseInput.trim()]);
-                                  setFormCourseInput('');
-                                }
-                              }}
-                              className="px-4 py-2.5 bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] rounded-xl text-xs font-bold border-0 cursor-pointer"
-                            >+ Add</button>
-                          </div>
-                          {formCourseEligibility.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {formCourseEligibility.map((c, i) => (
-                                <span key={i} className="flex items-center gap-1.5 text-xs font-bold bg-[#EBF5EE] text-[#2D5941] px-2.5 py-1 rounded-lg">
-                                  {c}
-                                  <button type="button" onClick={() => setFormCourseEligibility(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600 font-bold border-0 bg-transparent cursor-pointer leading-none">×</button>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Year Level */}
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Year Levels (check all that apply)</label>
-                          <div className="flex gap-3">
-                            {[1, 2, 3, 4, 5].map(yr => (
-                              <label key={yr} className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={formYearLevelEligibility.includes(yr)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) setFormYearLevelEligibility(prev => [...prev, yr].sort());
-                                    else setFormYearLevelEligibility(prev => prev.filter(y => y !== yr));
-                                  }}
-                                  className="w-4 h-4 text-[#2D5941] rounded cursor-pointer"
-                                />
-                                Year {yr}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* GWA */}
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Minimum GWA Required</label>
-                          <input
-                            type="number" step="0.01" min="1" max="5" placeholder="e.g. 1.75 (blank = no minimum)"
-                            value={formMinGwa} onChange={(e) => setFormMinGwa(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                          />
-                        </div>
-
-                        {/* Availability */}
-                        <div>
-                          <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Geographic Availability</label>
-                          <select
-                            value={formAvailabilityScope}
-                            onChange={(e) => {
-                              setFormAvailabilityScope(e.target.value as AvailabilityScope);
-                              setSelectedRegionCode('');
-                              setSelectedProvinceCode('');
-                              setSelectedMunicipalityCode('');
-                              setSelectedBarangayCode('');
-                              setFormAvailableRegions('');
-                              setFormAvailableSchools('');
-                            }}
-                            className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                          >
-                            <option value="nationwide">Nationwide (All regions)</option>
-                            <option value="regional">Regional (Specific region only)</option>
-                            <option value="provincial">Provincial (Specific province only)</option>
-                            <option value="municipality">Town / Municipality (Specific town only)</option>
-                            <option value="barangay">Barangay (Specific barangay only)</option>
-                            <option value="specific_schools">Specific Schools Only</option>
-                          </select>
-                        </div>
-
-                        {/* Region Selector */}
-                        {(formAvailabilityScope === 'regional' || formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Region *</label>
-                            <select
-                              value={selectedRegionCode}
-                              onChange={(e) => {
-                                const code = e.target.value;
-                                setSelectedRegionCode(code);
-                                const regionObj = psgcRegions.find(r => r.code === code);
-                                setFormAvailableRegions(regionObj ? regionObj.name : '');
-                                setSelectedProvinceCode('');
-                                setSelectedMunicipalityCode('');
-                                setSelectedBarangayCode('');
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                            >
-                              <option value="">-- Choose Region --</option>
-                              {psgcRegions.map(r => (
-                                <option key={r.code} value={r.code}>{r.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {/* Province Selector */}
-                        {(formAvailabilityScope === 'provincial' || formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Province *</label>
-                            <select
-                              value={selectedProvinceCode}
-                              disabled={!selectedRegionCode}
-                              onChange={(e) => {
-                                const code = e.target.value;
-                                setSelectedProvinceCode(code);
-                                const provObj = psgcProvinces.find(p => p.code === code);
-                                setFormAvailableSchools(provObj ? provObj.name : '');
-                                setSelectedMunicipalityCode('');
-                                setSelectedBarangayCode('');
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
-                            >
-                              <option value="">-- Choose Province --</option>
-                              {psgcProvinces.map(p => (
-                                <option key={p.code} value={p.code}>{p.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {/* Town/Municipality Selector */}
-                        {(formAvailabilityScope === 'municipality' || formAvailabilityScope === 'barangay') && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Town / Municipality *</label>
-                            <select
-                              value={selectedMunicipalityCode}
-                              disabled={!selectedProvinceCode}
-                              onChange={(e) => {
-                                const code = e.target.value;
-                                setSelectedMunicipalityCode(code);
-                                const munObj = psgcMunicipalities.find(m => m.code === code);
-                                setFormAvailableSchools(munObj ? munObj.name : '');
-                                setSelectedBarangayCode('');
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
-                            >
-                              <option value="">-- Choose Town/Municipality --</option>
-                              {psgcMunicipalities.map(m => (
-                                <option key={m.code} value={m.code}>{m.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {/* Barangay Selector */}
-                        {formAvailabilityScope === 'barangay' && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Select Barangay *</label>
-                            <select
-                              value={selectedBarangayCode}
-                              disabled={!selectedMunicipalityCode}
-                              onChange={(e) => {
-                                const code = e.target.value;
-                                setSelectedBarangayCode(code);
-                                const brgyObj = psgcBarangays.find(b => b.code === code);
-                                setFormAvailableSchools(brgyObj ? brgyObj.name : '');
-                              }}
-                              className="w-full px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold cursor-pointer bg-white disabled:opacity-50"
-                            >
-                              <option value="">-- Choose Barangay --</option>
-                              {psgcBarangays.map(b => (
-                                <option key={b.code} value={b.code}>{b.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {formAvailabilityScope === 'specific_schools' && (
-                          <div>
-                            <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Eligible Schools (comma-separated) *</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. UP Diliman, DLSU Manila, Ateneo"
-                              value={formAvailableSchools} onChange={(e) => setFormAvailableSchools(e.target.value)}
-                              className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ─── STEP 3: Application Requirements ─── */}
-                {formModalStep === 3 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-bold text-[#1C1C1E]">Document Requirements</h4>
-                        <p className="text-xs text-[#6C6C70] mt-0.5">Add the documents scholars must submit when applying.</p>
-                      </div>
-                    </div>
-
-                    {/* Existing requirements */}
-                    <div className="space-y-2">
-                      {formRequirements.map((req, idx) => (
-                        <div key={idx} className="flex items-start gap-3 p-3.5 rounded-xl border border-[#D9D2C5]/70 bg-[#F9F5EF]/50">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-[#1C1C1E]">{req.name}</span>
-                              {req.required
-                                ? <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQUIRED</span>
-                                : <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">OPTIONAL</span>
-                              }
-                            </div>
-                            <p className="text-xs text-[#6C6C70] mt-0.5">{req.description}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setFormRequirements(prev => prev.filter((_, i) => i !== idx))}
-                            className="text-red-400 hover:text-red-600 font-bold text-base border-0 bg-transparent cursor-pointer shrink-0"
-                          >×</button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Add new requirement */}
-                    <div className="p-4 rounded-2xl border border-dashed border-[#2D5941]/30 bg-[#EBF5EE]/30 space-y-3">
-                      <h5 className="text-xs font-bold text-[#2D5941] uppercase tracking-wide">+ Add New Requirement</h5>
-                      <div className="grid grid-cols-2 gap-3">
-                        <input
-                          type="text" placeholder="Requirement name"
-                          value={formReqName} onChange={(e) => setFormReqName(e.target.value)}
-                          className="px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold"
-                        />
-                        <input
-                          type="text" placeholder="Short description"
-                          value={formReqDesc} onChange={(e) => setFormReqDesc(e.target.value)}
-                          className="px-3 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-xs font-semibold"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                          <input
-                            type="checkbox" checked={formReqRequired} onChange={(e) => setFormReqRequired(e.target.checked)}
-                            className="w-4 h-4 text-[#2D5941] rounded cursor-pointer"
-                          />
-                          Mark as Required
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!formReqName.trim()) return;
-                            setFormRequirements(prev => [...prev, { name: formReqName.trim(), description: formReqDesc.trim(), required: formReqRequired }]);
-                            setFormReqName('');
-                            setFormReqDesc('');
-                            setFormReqRequired(true);
-                          }}
-                          className="px-4 py-2 bg-[#2D5941] hover:bg-[#1A3C2E] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all"
-                        >Add Requirement</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ─── STEP 4: Application Cycle ─── */}
-                {formModalStep === 4 && (
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-bold text-[#1C1C1E]">Initial Application Cycle</h4>
-                      <p className="text-xs text-[#6C6C70] mt-0.5">Set the first cycle's name and application window. You can add more cycles after creation.</p>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Cycle Name *</label>
-                      <input
-                        type="text" required placeholder="e.g. AY 2026-2027"
-                        value={formCycleName} onChange={(e) => setFormCycleName(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Application Start Date *</label>
-                        <input
-                          type="date" required
-                          value={formCycleStartDate} onChange={(e) => setFormCycleStartDate(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm cursor-pointer"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Application End Date *</label>
-                        <input
-                          type="date" required
-                          value={formCycleEndDate} onChange={(e) => setFormCycleEndDate(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] focus:outline-none text-sm cursor-pointer"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Preview summary */}
-                    <div className="bg-[#F9F5EF] rounded-2xl border border-[#D9D2C5]/50 p-5 space-y-3">
-                      <h5 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wider">Program Summary</h5>
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                        <div><span className="text-[#6C6C70]">Title: </span><span className="font-semibold text-[#1C1C1E]">{formTitle || '—'}</span></div>
-                        <div><span className="text-[#6C6C70]">Category: </span><span className="font-semibold text-[#1C1C1E]">{formCategory}</span></div>
-                        <div><span className="text-[#6C6C70]">Type: </span><span className="font-semibold text-[#1C1C1E] capitalize">{formScholarshipType.replace('_', ' ')}</span></div>
-                        <div><span className="text-[#6C6C70]">Funding: </span><span className="font-semibold text-[#1C1C1E]">{formFundingFreq}</span></div>
-                        <div><span className="text-[#6C6C70]">Renewal: </span><span className="font-semibold text-[#1C1C1E]">{formRenewalPolicy}</span></div>
-                        <div><span className="text-[#6C6C70]">Availability: </span><span className="font-semibold text-[#1C1C1E] capitalize">{formAvailabilityScope}</span></div>
-                        <div><span className="text-[#6C6C70]">Slots: </span><span className="font-semibold text-[#1C1C1E]">{formTotalSlots || 'Unlimited'}</span></div>
-                        <div><span className="text-[#6C6C70]">Budget: </span><span className="font-semibold text-[#1C1C1E]">{formBudgetTotal ? `₱${Number(formBudgetTotal).toLocaleString()}` : '—'}</span></div>
-                        <div><span className="text-[#6C6C70]">Min GWA: </span><span className="font-semibold text-[#1C1C1E]">{formMinGwa || 'None'}</span></div>
-                        <div><span className="text-[#6C6C70]">Requirements: </span><span className="font-semibold text-[#1C1C1E]">{formRequirements.length} docs</span></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              <div className="px-8 pb-7 flex gap-3 justify-between border-t border-[#D9D2C5]/40 pt-5">
-                <button
-                  type="button"
-                  onClick={() => setFormModalStep(s => Math.max(1, s - 1))}
-                  disabled={formModalStep === 1}
-                  className="px-6 py-2.5 rounded-xl border border-solid border-[#D9D2C5] text-[#6C6C70] text-xs font-bold cursor-pointer bg-transparent hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  ← Back
-                </button>
-                {formModalStep < 4 ? (
-                  <button
-                    type="button"
-                    onClick={() => setFormModalStep(s => Math.min(4, s + 1))}
-                    className="px-8 py-2.5 bg-[#2D5941] hover:bg-[#1A3C2E] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all"
-                  >
-                    Next →
-                  </button>
-                ) : (
-                  <button type="submit" className="px-8 py-2.5 bg-[#1A3C2E] hover:bg-[#0f2a1d] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all shadow-md">
-                    {isEditMode ? '✏️ Update Scholarship Program' : '🎓 Create Scholarship Program'}
-                  </button>
-                )}
-              </div>
-            </form>
-          </div>
         </div>
       )}
 
@@ -1907,7 +3115,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 </select>
               </div>
 
-              <div className="bg-[#F9F5EF] p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2 text-xs">
+              <div className="bg-white p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2 text-xs">
                 <div className="flex justify-between font-medium">
                   <span className="text-[#6C6C70]">Pending Transactions:</span>
                   <span className="font-bold text-[#1C1C1E]">
@@ -1936,21 +3144,23 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         </div>
       )}
 
-      {/* Large Map Selector Modal */}
+      {/* Large Map Selector Modal (Compact Height) */}
       {isBigMapModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-6 max-w-4xl w-full space-y-4 relative animate-fade-in">
+          <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-5 max-w-2xl w-full space-y-3 relative animate-fade-in max-h-[90vh] overflow-y-auto">
             <button 
               type="button"
               onClick={() => setIsBigMapModalOpen(false)} 
-              className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer bg-transparent border-0"
+              className="absolute top-4 right-4 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-base cursor-pointer bg-transparent border-0"
             >
               ✕
             </button>
-            <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">Select Exam Center Location</h3>
-            <p className="text-xs text-[#6C6C70]">Search for the venue or click anywhere directly on the map to automatically pin and extract coordinates and address details.</p>
+            <div>
+              <h3 className="text-lg font-bold font-serif text-[#1A3C2E]">Select Exam Center Venue</h3>
+              <p className="text-[11px] text-[#6C6C70]">Search or click directly on the map to pin the examination venue.</p>
+            </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {isLoaded ? (
                 <Autocomplete
                   onLoad={onAutocompleteLoad}
@@ -1958,17 +3168,17 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 >
                   <input
                     type="text"
-                    placeholder="Search venue e.g. UP Diliman Examination Hall..."
+                    placeholder="Search venue e.g. UP Bahay ng Alumni..."
                     value={mapSearchText}
                     onChange={(e) => setMapSearchText(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-[#D9D2C5] text-sm font-semibold bg-white focus:outline-none focus:border-[#2D5941]"
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#D9D2C5] text-xs font-semibold bg-white focus:outline-none focus:border-[#2D5941]"
                   />
                 </Autocomplete>
               ) : (
                 <div className="text-xs font-medium text-[#6C6C70]">Loading search script...</div>
               )}
 
-              <div className="w-full h-96 rounded-2xl border border-[#D9D2C5] overflow-hidden relative shadow-inner bg-slate-100">
+              <div className="w-full h-60 rounded-xl border border-[#D9D2C5] overflow-hidden relative shadow-inner bg-slate-100">
                 {isLoaded ? (
                   <GoogleMap
                     mapContainerStyle={{ width: '100%', height: '100%' }}
@@ -1983,34 +3193,34 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                     <Marker position={{ lat: examCoords.lat, lng: examCoords.lng }} />
                   </GoogleMap>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-sm font-semibold text-[#6C6C70]">
+                  <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-[#6C6C70]">
                     Loading Live Google Maps...
                   </div>
                 )}
               </div>
 
-              <div className="flex justify-between items-center text-xs bg-[#F9F5EF] p-3 rounded-xl border border-[#D9D2C5]/50">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-[11px] bg-white p-2.5 rounded-xl border border-[#D9D2C5]/50 gap-1.5">
                 <span className="font-medium text-[#6C6C70]">
-                  <strong>Pinned Coordinates:</strong> {examCoords.lat.toFixed(6)}° N, {examCoords.lng.toFixed(6)}° E
+                  <strong>Coordinates:</strong> {examCoords.lat.toFixed(4)}° N, {examCoords.lng.toFixed(4)}° E
                 </span>
-                <span className="font-medium text-[#1A3C2E] max-w-md truncate">
-                  <strong>Address:</strong> {examCoords.address}
+                <span className="font-medium text-[#1A3C2E] max-w-sm truncate">
+                  <strong>Venue:</strong> {examCoords.address || 'Click map to pin'}
                 </span>
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-2.5 pt-1">
               <button 
                 type="button" 
                 onClick={() => setIsBigMapModalOpen(false)}
-                className="px-5 py-2.5 rounded-xl border border-solid border-[#D9D2C5] hover:bg-slate-50 text-xs font-bold cursor-pointer text-[#6C6C70] bg-transparent"
+                className="px-4 py-2 rounded-xl border border-solid border-[#D9D2C5] hover:bg-slate-50 text-xs font-bold cursor-pointer text-[#6C6C70] bg-transparent"
               >
                 Cancel
               </button>
               <button 
                 type="button" 
                 onClick={() => setIsBigMapModalOpen(false)}
-                className="px-6 py-2.5 rounded-xl bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold cursor-pointer border-0"
+                className="px-5 py-2 rounded-xl bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold cursor-pointer border-0 shadow-sm"
               >
                 Confirm Location
               </button>
@@ -2020,7 +3230,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       )}
 
       <aside className={`transition-all duration-300 bg-[#1A3C2E] text-white flex flex-col justify-between shrink-0 shadow-xl border-r border-[#2D5941]/30 overflow-hidden ${isCollapsed ? 'w-20' : 'w-72'}`}>
-        <div className="p-4 overflow-y-auto overflow-x-hidden flex-1">
+        <div className="p-4 overflow-y-auto overflow-x-hidden flex-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {/* Sidebar Header */}
           <div className={`flex items-center justify-between mb-8 ${isCollapsed ? 'flex-col gap-4' : ''}`}>
             <div className="flex items-center gap-3">
@@ -2066,8 +3276,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 <div className="space-y-1 animate-fade-in">
                   {renderSidebarItem('dashboard', 'Dashboard', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>)}
                   {renderSidebarItem('applicants', 'Applicants & Scholars', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>)}
+                  {renderSidebarItem('appeals', 'Appeals & Disputes', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l9-4 9 4v10a12 12 0 01-18 0V6z" /></svg>)}
                   {renderSidebarItem('programs', 'Programs', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>)}
                   {renderSidebarItem('verification', 'Verification Org', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>)}
+                  {renderSidebarItem('profile', 'Profile Settings', <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>)}
                 </div>
               )}
             </div>
@@ -2160,1019 +3372,487 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-10 max-w-7xl mx-auto">
-
-        {/* ==================== 1. DASHBOARD VIEW ==================== */}
-        {activeTab === 'dashboard' && (
-          <div className="space-y-8 animate-fade-in">
-            <div>
-              <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Dashboard</h2>
-              <p className="text-sm text-[#6C6C70] mt-1 font-medium">Real-time Scholarship Monitoring</p>
+      {/* Main Content Area with Top Header */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
+        {/* Top Header Bar */}
+        <header className="bg-white border-b border-[#D9D2C5]/60 px-8 py-3.5 flex items-center justify-between shrink-0 shadow-xs z-10">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#2D5941] animate-pulse" />
+              <h2 className="text-sm font-bold text-[#1A3C2E] font-serif">
+                {providerDetails?.name || 'Scholarship Provider Portal'}
+              </h2>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Permanent Programs</span>
-                <h3 className="text-3xl font-bold text-[#1A3C2E] font-serif mt-1">{programsList.length}</h3>
-                <span className="text-xs text-[#2D5941] font-semibold flex items-center gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2D5941]" /> Fully Lifecycle Managed
-                </span>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Active Scholars (Awards)</span>
-                <h3 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">{scholarsList.length}</h3>
-                <span className="text-xs text-[#C97B2E] font-semibold flex items-center gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#C97B2E]" /> Undergoing renewal checks
-                </span>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Active Cycle Applicants</span>
-                <h3 className="text-3xl font-bold text-[#B34040] font-serif mt-1">{applicantsList.length}</h3>
-                <span className="text-xs text-[#B34040] font-semibold flex items-center gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#B34040]" /> In active intake cycles
-                </span>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#8E8E93]">Funds Released</span>
-                <h3 className="text-3xl font-bold text-[#2D5941] font-serif mt-1">₱{(totalCredited / 1000000).toFixed(2)}M</h3>
-                <span className="text-xs text-[#2D5941] font-semibold flex items-center gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2D5941]" /> ₱{(totalPending / 1000).toFixed(0)}K pending release
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm lg:col-span-2 space-y-6">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-bold text-[#1A3C2E] font-serif">Fund Allocation Distribution</h4>
-                  <span className="text-xs font-semibold text-[#8E8E93]">AY 2026-2027</span>
-                </div>
-                <div className="space-y-4 pt-2">
-                  {programsList.map(prog => (
-                    <div key={prog.id}>
-                      <div className="flex justify-between text-xs font-semibold text-[#1C1C1E] mb-1.5">
-                        <span>{prog.title}</span>
-                        <span>{prog.budgetUsed} / {prog.budgetTotal}</span>
-                      </div>
-                      <div className="w-full bg-[#EDE8DE] h-3.5 rounded-full overflow-hidden">
-                        <div className="bg-[#2D5941] h-full rounded-full" style={{ width: '65%' }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-5">
-                <h4 className="font-bold text-[#1A3C2E] font-serif">Recent System Events</h4>
-                <div className="space-y-4 text-xs">
-                  <div className="flex gap-3 pb-3 border-b border-[#D9D2C5]/40">
-                    <div className="w-8 h-8 rounded-full bg-[#EBF5EE] text-[#2D5941] flex items-center justify-center font-bold shrink-0">IA</div>
-                    <div>
-                      <p className="font-semibold text-[#1C1C1E]">Scholar Award Issued</p>
-                      <p className="text-[10px] text-[#6C6C70] mt-0.5">Applicant upgraded to continuing status</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-3 pb-3 border-b border-[#D9D2C5]/40">
-                    <div className="w-8 h-8 rounded-full bg-[#F9F0E0] text-[#C97B2E] flex items-center justify-center font-bold shrink-0">RC</div>
-                    <div>
-                      <p className="font-semibold text-[#1C1C1E]">Renewal Policy Warning</p>
-                      <p className="text-[10px] text-[#6C6C70] mt-0.5">Marcus Vian flagged (GWA 2.10 under Conditional Policy)</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ==================== 2. APPLICANTS & SCHOLARS VIEW (SPLIT SECTIONS) ==================== */}
-        {activeTab === 'applicants' && (
-          <div className="space-y-8 animate-fade-in">
-
-            {/* Header and Toggle Button between Applicants and Scholars */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">
-                  {subTab === 'applicants' ? 'Cycle Applicants' : 'Continuing Scholars'}
-                </h2>
-                <p className="text-sm text-[#6C6C70] mt-1 font-medium">
-                  {subTab === 'applicants'
-                    ? 'Review incoming entries for active intake cycles. Approving them creates a continuing Scholar Award.'
-                    : 'Monitor active scholar awards, GWA requirements, and renewal conditions.'
-                  }
-                </p>
-              </div>
-
-              {/* Toggle Selector */}
-              <div className="flex bg-[#EDE8DE]/60 p-1 rounded-xl text-xs font-semibold gap-1">
-                <button
-                  onClick={() => { setSubTab('applicants'); setStatusFilter('All'); }}
-                  className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${subTab === 'applicants' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
-                    }`}
-                >
-                  Applicants ({applicantsList.length})
-                </button>
-                <button
-                  onClick={() => { setSubTab('scholars'); setStatusFilter('All'); }}
-                  className={`px-4 py-2 rounded-lg cursor-pointer transition-all ${subTab === 'scholars' ? 'bg-[#1A3C2E] text-white shadow-sm' : 'text-[#6C6C70] hover:text-[#1A3C2E]'
-                    }`}
-                >
-                  Continuing Scholars ({scholarsList.length})
-                </button>
-              </div>
-            </div>
-
-            {/* Filter bar for Applicants */}
-            {subTab === 'applicants' && (
-              <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-[#D9D2C5]/60 shadow-sm">
-                <div className="relative flex-1 max-w-md">
-                  <svg className="absolute left-4 top-3 w-4 h-4 text-[#8E8E93]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                  <input
-                    type="text" placeholder="Search applicants..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-11 pr-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none focus:border-[#2D5941] text-xs"
-                  />
-                </div>
-
-                <div className="flex gap-1 bg-[#EDE8DE]/45 p-1 rounded-lg text-[10px] font-bold">
-                  {['All', 'Pending', 'Under Review', 'For Exam', 'Rejected'].map(st => (
-                    <button
-                      key={st} onClick={() => setStatusFilter(st)}
-                      className={`px-3 py-1.5 rounded cursor-pointer ${statusFilter === st ? 'bg-[#1A3C2E] text-white' : 'text-[#6C6C70]'}`}
-                    >
-                      {st}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Render table based on toggle */}
-            {subTab === 'applicants' ? (
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="bg-[#F9F5EF] border-b border-[#D9D2C5]/60 text-xs font-bold text-[#6C6C70] uppercase tracking-wider">
-                      <th className="px-6 py-4">Applicant Name</th>
-                      <th className="px-6 py-4">Target Program</th>
-                      <th className="px-6 py-4">Active Cycle</th>
-                      <th className="px-6 py-4 text-center">GWA</th>
-                      <th className="px-6 py-4">Current Status</th>
-                      <th className="px-6 py-4 text-center">Actions / Decision</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-                    {filteredApplicants.map((app) => (
-                      <tr key={app.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
-                        <td className="px-6 py-4 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#1A3C2E] text-white flex items-center justify-center font-bold text-xs uppercase">
-                            {app.name.split(' ').map(n => n[0]).join('')}
-                          </div>
-                          <div>
-                            <span className="block font-bold text-[#1C1C1E]">{app.name}</span>
-                            <span className="text-[10px] text-[#8E8E93]">{app.date}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-[#1C1C1E]">{app.program}</td>
-                        <td className="px-6 py-4 text-xs font-bold text-[#2D5941]">{app.cycle}</td>
-                        <td className="px-6 py-4 text-center font-serif text-[#1C1C1E]">{app.grade}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${app.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                            app.status === 'Pending' ? 'bg-[#F9F0E0] text-[#C97B2E]' :
-                              app.status === 'Under Review' ? 'bg-[#EAF3FA] text-[#2A6BA8]' :
-                                app.status === 'For Exam' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-[#FDF2F2] text-[#B34040]'
-                            }`}>
-                            {app.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <select
-                            value={app.status}
-                            onChange={(e) => handleUpdateStatus(app.id, e.target.value as ApplicantStatus)}
-                            className="bg-white border border-[#D9D2C5] rounded-xl px-2 py-1.5 text-xs font-semibold focus:outline-none cursor-pointer"
-                          >
-                            <option value="Pending">Pending</option>
-                            <option value="Under Review">Under Review</option>
-                            <option value="For Exam">For Exam</option>
-                            <option value="Approved">Approve & Issue Award</option>
-                            <option value="Rejected">Rejected</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              // Active Scholars Monitoring View
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="bg-[#F9F5EF] border-b border-[#D9D2C5]/60 text-xs font-bold text-[#6C6C70] uppercase tracking-wider">
-                      <th className="px-6 py-4">Scholar Name</th>
-                      <th className="px-6 py-4">Awarded Program</th>
-                      <th className="px-6 py-4">Intake Cycle</th>
-                      <th className="px-6 py-4 text-center">Latest GWA</th>
-                      <th className="px-6 py-4">Monitoring Status</th>
-                      <th className="px-6 py-4 text-right">Award Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-                    {filteredScholars.map((sch) => (
-                      <tr key={sch.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
-                        <td className="px-6 py-4 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#C97B2E] text-white flex items-center justify-center font-bold text-xs uppercase">
-                            {sch.scholarName.split(' ').map(n => n[0]).join('')}
-                          </div>
-                          <span className="font-bold text-[#1C1C1E]">{sch.scholarName}</span>
-                        </td>
-                        <td className="px-6 py-4 text-[#1C1C1E]">{sch.programTitle}</td>
-                        <td className="px-6 py-4 text-xs font-semibold text-[#6C6C70]">{sch.cycleJoined}</td>
-                        <td className="px-6 py-4 text-center font-serif font-bold text-[#2D5941]">{sch.gwa}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${sch.status === 'Maintaining' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                            sch.status === 'Awaiting Grades' ? 'bg-amber-50 text-[#C97B2E]' :
-                              sch.status === 'Requirements Warning' ? 'bg-[#FDF2F2] text-[#B34040]' :
-                                'bg-gray-100 text-gray-700'
-                            }`}>
-                            {sch.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right text-xs text-[#8E8E93]">{sch.dateAwarded}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ==================== 3. PROGRAMS VIEW (LIFECYCLE SCHEMAS SHOWN) ==================== */}
-        {activeTab === 'programs' && (
-          <div className="space-y-8 animate-fade-in">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Scholarship Programs</h2>
-                <p className="text-sm text-[#6C6C70] mt-1 font-medium">Permanent scholarship schemas, active application cycles, and renewal rules</p>
-              </div>
-              <button
-                onClick={() => {
-                  if (providerDetails?.verificationStatus !== 'verified') {
-                    showToast('Create locked: Your organization is not verified. Please submit documents in the Verification Org tab.');
-                  } else {
-                    setIsCreateModalOpen(true);
-                  }
-                }}
-                disabled={providerDetails?.verificationStatus !== 'verified'}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all border border-[#1A3C2E]/10 ${
-                  providerDetails?.verificationStatus === 'verified'
-                    ? 'bg-[#E8A838] hover:bg-[#cfa532] text-[#1A3C2E] cursor-pointer'
-                    : 'bg-gray-200 text-gray-500 cursor-not-allowed border-gray-400'
-                }`}
-              >
-                <span>{providerDetails?.verificationStatus === 'verified' ? '+' : '🔒'}</span> New program
-              </button>
-            </div>
-
-            {providerDetails && providerDetails.verificationStatus !== 'verified' && (
-              <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 rounded-2xl p-5 flex items-start gap-4 shadow-sm animate-fade-in">
-                <div className="bg-[#C97B2E]/10 p-2.5 rounded-xl text-[#C97B2E] shrink-0">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0-6h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.3-2.67-1.3-3.44 0L2.18 16c-.77 1.3.2 3 1.73 3z" />
-                  </svg>
-                </div>
-                <div className="space-y-1">
-                  <h4 className="font-bold text-[#1A3C2E] text-sm">Scholarship Creation Locked</h4>
-                  <p className="text-xs text-[#6C6C70] leading-relaxed">
-                    Your organization is currently not verified (Status: <strong className="capitalize">{providerDetails.verificationStatus.replace('_', ' ')}</strong>). 
-                    You must upload and submit your organization credentials under the <strong>Verification Org</strong> tab. Once approved by the administrator, you will be allowed to post scholarships.
-                  </p>
-                  <button 
-                    onClick={() => setActiveTab('verification')}
-                    className="text-xs font-bold text-[#2D5941] hover:text-[#1A3C2E] underline mt-1.5 cursor-pointer block bg-transparent border-0 p-0 text-left font-sans"
-                  >
-                    Go to Verification Org &rarr;
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {programsList.length === 0 ? (
-              <div className="bg-[#F9F5EF]/60 rounded-3xl border border-dashed border-[#D9D2C5] p-12 text-center space-y-4">
-                <div className="w-16 h-16 bg-[#EDE8DE] rounded-full flex items-center justify-center mx-auto text-[#2D5941] text-2xl">
-                  🎓
-                </div>
-                <div className="space-y-1">
-                  <h4 className="font-bold text-[#1A3C2E] font-serif text-lg">No Scholarship Programs Yet</h4>
-                  <p className="text-xs text-[#6C6C70] max-w-sm mx-auto">
-                    You haven't configured any programs yet. Click the <strong>New program</strong> button above to launch your first scholarship and cycle!
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {programsList.map((prog) => (
-                  <div
-                    key={prog.id}
-                    className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-7 shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-[340px] animate-fade-in"
-                  >
-                    <div className="space-y-3.5">
-                      <div className="flex justify-between items-center">
-                        <span className="px-3.5 py-1.5 rounded-xl bg-[#1A3C2E] text-white text-xs font-bold tracking-wider">
-                          {prog.provider}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                            prog.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                            prog.status === 'Pending Review' ? 'bg-[#FFF8EE] text-[#C97B2E]' :
-                            prog.status === 'Rejected' ? 'bg-red-50 text-[#B34040]' :
-                            prog.status === 'Draft' ? 'bg-blue-50 text-blue-600' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
-                            {prog.status}
-                          </span>
-                          <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5]">
-                            ⚙️ Policy: {prog.renewalPolicy}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <h3 className="text-xl font-bold text-[#1A3C2E] font-serif leading-snug truncate">
-                          {prog.title}
-                        </h3>
-                        <p className="text-xs text-[#6C6C70] mt-0.5 font-medium line-clamp-1">
-                          {prog.description}
-                        </p>
-                      </div>
-
-                      {/* Application Cycles checklist sub-layout */}
-                      <div className="space-y-1.5 pt-1">
-                        <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-wide block">Registered Cycles</span>
-                        <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                          {prog.cycles.map((cyc) => (
-                            <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-3 py-1.5 rounded-lg border border-[#D9D2C5]/30 text-xs">
-                              <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
-                                cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
-                                  'bg-gray-200 text-gray-600'
-                                }`}>
-                                {cyc.status}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Rejection Banner */}
-                    {prog.status === 'Rejected' && prog.rejectionRemarks && (
-                      <div className="bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 mb-2">
-                        <span className="text-[9px] uppercase font-bold text-[#B34040] tracking-wider block mb-0.5">Rejection Remarks</span>
-                        <p className="text-[11px] text-[#B34040] leading-snug line-clamp-2">{prog.rejectionRemarks}</p>
-                      </div>
-                    )}
-                    <div className="border-t border-[#D9D2C5]/50 pt-4 flex justify-between items-center text-xs">
-                      <div>
-                        <span className="text-[#8E8E93] font-bold block uppercase tracking-wider text-[9px]">Funding Frequency</span>
-                        <span className="text-[#1C1C1E] font-bold text-xs mt-0.5 block">{prog.fundingFrequency}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleViewDetails(prog)}
-                          className="px-3 py-1.5 rounded-lg bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[10px] font-bold border-0 cursor-pointer transition-all"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={() => handleEditProgram(prog)}
-                          className="px-3 py-1.5 rounded-lg bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[10px] font-bold border-0 cursor-pointer transition-all"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleOpenRenewModal(prog)}
-                          className="px-3 py-1.5 rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-[10px] font-bold border border-[#D9D2C5] cursor-pointer transition-all"
-                        >
-                          Renew / Add Cycle
-                        </button>
-                        {prog.status === 'Rejected' ? (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const { error } = await supabase
-                                  .from('scholarship_programs')
-                                  .update({ status: 'pending', rejection_remarks: null })
-                                  .eq('id', prog.id);
-                                if (error) {
-                                  console.error('Error resubmitting program:', error);
-                                  showToast('Error resubmitting program.');
-                                } else {
-                                  showToast(`"${prog.title}" has been resubmitted for review.`);
-                                  await fetchPrograms();
-                                }
-                              } catch (err) {
-                                console.error('Unexpected error resubmitting program:', err);
-                                showToast('An unexpected error occurred.');
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-[#FFF8EE] hover:bg-amber-100 text-[#C97B2E] text-[10px] font-bold border border-amber-200 cursor-pointer transition-all"
-                          >
-                            Resubmit
-                          </button>
-                        ) : prog.status !== 'Closed' && prog.status !== 'closed' ? (
-                          <button
-                            onClick={() => { setProgramToClose(prog); setIsCloseConfirmOpen(true); }}
-                            className="px-3 py-1.5 rounded-lg bg-[#FDF2F2] hover:bg-red-100 text-[#B34040] text-[10px] font-bold border border-red-200 cursor-pointer transition-all"
-                          >
-                            Close
-                          </button>
-                        ) : (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const { error } = await supabase
-                                  .from('scholarship_programs')
-                                  .update({ status: 'active' })
-                                  .eq('id', prog.id);
-                                if (error) {
-                                  console.error('Error re-opening program:', error);
-                                  showToast('Error re-opening program.');
-                                } else {
-                                  showToast(`"${prog.title}" has been re-opened.`);
-                                  await fetchPrograms();
-                                }
-                              } catch (err) {
-                                console.error('Unexpected error re-opening program:', err);
-                                showToast('An unexpected error occurred.');
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-[#EBF5EE] hover:bg-green-100 text-[#2D5941] text-[10px] font-bold border border-green-200 cursor-pointer transition-all"
-                          >
-                            Re-open
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ==================== 4. DISBURSEMENTS VIEW ==================== */}
-        {activeTab === 'disbursements' && (
-          <div className="space-y-8 animate-fade-in">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Disbursements</h2>
-                <p className="text-sm text-[#6C6C70] mt-1 font-medium">Release specific program batch payouts using the batch wizard</p>
-              </div>
-              <button
-                onClick={() => setIsPayoutModalOpen(true)}
-                className="bg-[#2D5941] hover:bg-[#1A3C2E] text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md cursor-pointer transition-all"
-              >
-                Process Payouts Batch
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Current Cash Allocation</span>
-                <h4 className="text-3xl font-bold text-[#1A3C2E] font-serif mt-1">₱11,100,000</h4>
-                <p className="text-[11px] text-[#6C6C70] mt-2">DOST-SEI provider balance</p>
-              </div>
-              <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Total Credited</span>
-                <h4 className="text-3xl font-bold text-[#2D5941] font-serif mt-1">₱{totalCredited.toLocaleString()}</h4>
-                <p className="text-[11px] text-[#2D5941] mt-2">Credited to linked student accounts</p>
-              </div>
-              <div className="bg-[#EDE8DE]/40 border border-[#D9D2C5] rounded-2xl p-6">
-                <span className="text-[10px] uppercase font-bold text-[#6C6C70]">Pending Release</span>
-                <h4 className="text-3xl font-bold text-[#C97B2E] font-serif mt-1">₱{totalPending.toLocaleString()}</h4>
-                <p className="text-[11px] text-[#C97B2E] mt-2">Waiting in payouts queue</p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 overflow-hidden shadow-sm">
-              <div className="p-5 border-b border-[#D9D2C5]/40 bg-[#F9F5EF]/20">
-                <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Transaction Ledger</h3>
-              </div>
-              <table className="w-full border-collapse text-left text-sm">
-                <thead>
-                  <tr className="bg-[#F9F5EF] border-b border-[#D9D2C5]/60 text-xs font-bold text-[#6C6C70] uppercase tracking-wider">
-                    <th className="px-6 py-4">Transaction ID</th>
-                    <th className="px-6 py-4">Scholar</th>
-                    <th className="px-6 py-4">Target Program</th>
-                    <th className="px-6 py-4">Method</th>
-                    <th className="px-6 py-4">Amount</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#D9D2C5]/40 font-medium">
-                  {disbursementsList.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-[#F9F5EF]/30 transition-colors">
-                      <td className="px-6 py-4 text-xs font-bold text-[#2D5941]">{tx.id}</td>
-                      <td className="px-6 py-4 font-bold text-[#1C1C1E]">{tx.scholar}</td>
-                      <td className="px-6 py-4 text-[#6C6C70]">{tx.program}</td>
-                      <td className="px-6 py-4 text-[#1C1C1E]">{tx.method}</td>
-                      <td className="px-6 py-4 text-[#2D5941] font-bold">{tx.amount}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold ${tx.status === 'Completed'
-                            ? 'bg-[#EBF5EE] text-[#2D5941]'
-                            : tx.status === 'Processing'
-                              ? 'bg-[#F9F0E0] text-[#C97B2E]'
-                              : 'bg-[#FDF2F2] text-[#B34040]'
-                            }`}
-                        >
-                          {tx.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right text-xs text-[#8E8E93]">{tx.date}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ==================== 5. ANNOUNCEMENTS VIEW ==================== */}
-        {activeTab === 'announcements' && (
-          <div className="space-y-8 animate-fade-in">
-            <div>
-              <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Announcements</h2>
-              <p className="text-sm text-[#6C6C70] mt-1 font-medium">Broadcast notices and search exam venues with live Google Maps Autocomplete</p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-              {/* Broadcast Announcement Form */}
-              <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-4">
-                <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Broadcast Announcement</h3>
-                <form onSubmit={handleAddAnnouncement} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Type</label>
-                      <select
-                        value={newAnnType}
-                        onChange={(e) => setNewAnnType(e.target.value as AnnType)}
-                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                      >
-                        <option value="General Notice">General Notice</option>
-                        <option value="Examination Schedule">Exam Schedule</option>
-                        <option value="Release of Funds">Release of Funds</option>
-                        <option value="Requirements Update">Requirements</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Audience</label>
-                      <select
-                        value={newAnnAudience} onChange={(e) => setNewAnnAudience(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold cursor-pointer bg-white"
-                      >
-                        <option value="All Scholars">All Scholars</option>
-                        <option value="DOST-SEI Only">DOST-SEI Only</option>
-                        <option value="CHED Only">CHED Only</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Google Maps Autocomplete Search Input */}
-                  {newAnnType === 'Examination Schedule' && (
-                    <div className="space-y-2 p-2.5 rounded-2xl border border-[#D9D2C5] bg-[#F9F5EF]/50 animate-fade-in">
-                      <div className="flex justify-between items-center">
-                        <label className="block text-[10px] font-bold text-[#1A3C2E] uppercase tracking-wide">🔍 Search Location</label>
-                        <button
-                          type="button"
-                          onClick={() => setIsBigMapModalOpen(true)}
-                          className="text-[10px] font-bold text-[#2D5941] hover:underline cursor-pointer bg-transparent border-0"
-                        >
-                          Choose on Larger Map 🗺️
-                        </button>
-                      </div>
-
-                      {isLoaded ? (
-                        <Autocomplete
-                          onLoad={onAutocompleteLoad}
-                          onPlaceChanged={onPlaceChanged}
-                        >
-                          <input
-                            type="text"
-                            placeholder="Type venue e.g. UP Diliman..."
-                            value={mapSearchText}
-                            onChange={(e) => setMapSearchText(e.target.value)}
-                            className="w-full px-3 py-1.5 rounded-lg border border-[#D9D2C5] text-xs font-semibold bg-white focus:outline-none focus:border-[#2D5941]"
-                          />
-                        </Autocomplete>
-                      ) : (
-                        <div className="text-xs font-medium text-[#6C6C70]">Loading search script...</div>
-                      )}
-
-                      {/* Google Maps live viewport */}
-                      <div className="w-full h-28 rounded-xl border border-[#D9D2C5] overflow-hidden relative flex flex-col justify-between shadow-inner bg-slate-100">
-                        {isLoaded ? (
-                          <GoogleMap
-                            mapContainerStyle={{ width: '100%', height: '100%' }}
-                            center={{ lat: examCoords.lat, lng: examCoords.lng }}
-                            zoom={mapZoom}
-                            onClick={handleMapClick}
-                            options={{
-                              disableDefaultUI: true,
-                              zoomControl: false,
-                            }}
-                          >
-                            <Marker position={{ lat: examCoords.lat, lng: examCoords.lng }} />
-                          </GoogleMap>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-[#6C6C70]">
-                            Loading Live Google Maps...
-                          </div>
-                        )}
-
-                        <div className="absolute top-1.5 left-1.5 z-10 bg-white/90 backdrop-blur px-1.5 py-0.5 rounded text-[7px] text-[#6C6C70] font-semibold border border-[#D9D2C5]/50 shadow-sm">
-                          <span>
-                            {examCoords.lat.toFixed(4)}° N, {examCoords.lng.toFixed(4)}° E
-                          </span>
-                        </div>
-
-                        <div className="absolute bottom-1.5 left-1.5 right-1.5 z-10 flex justify-between items-center">
-                          <span className="text-[6px] text-[#2D5941] bg-white/90 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shadow">
-                            Google Maps
-                          </span>
-                          <div className="flex gap-1">
-                            <button type="button" onClick={() => setMapZoom(prev => Math.min(prev + 1, 18))} className="w-4 h-4 bg-white border border-[#D9D2C5] hover:bg-slate-50 text-[9px] font-bold rounded flex items-center justify-center cursor-pointer shadow-sm">+</button>
-                            <button type="button" onClick={() => setMapZoom(prev => Math.max(prev - 1, 10))} className="w-4 h-4 bg-white border border-[#D9D2C5] hover:bg-slate-50 text-[9px] font-bold rounded flex items-center justify-center cursor-pointer shadow-sm">-</button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <p className="text-[9px] text-[#6C6C70] leading-relaxed italic truncate">
-                        <strong>Address:</strong> {examCoords.address}
-                      </p>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Announcement Title</label>
-                    <input
-                      type="text" required placeholder="e.g. Schedule of Qualifying Examinations"
-                      value={newAnnTitle} onChange={(e) => setNewAnnTitle(e.target.value)}
-                      className="w-full px-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#1C1C1E] uppercase tracking-wide mb-1.5">Message / Details</label>
-                    <textarea
-                      required rows={3} placeholder="Specify date, times, venues or step-by-step info here..."
-                      value={newAnnBody} onChange={(e) => setNewAnnBody(e.target.value)}
-                      className="w-full px-4 py-2 rounded-xl border border-[#D9D2C5]/60 focus:outline-none text-xs font-semibold"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] text-white py-2.5 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer border-0"
-                  >
-                    Publish Announcement
-                  </button>
-                </form>
-              </div>
-
-              <div className="lg:col-span-2 space-y-6">
-                <h3 className="font-bold text-[#1A3C2E] font-serif text-lg">Active Broadcast Board</h3>
-                <div className="space-y-4">
-                  {announcements.map((ann) => (
-                    <div key={ann.id} className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-6 shadow-sm space-y-4 animate-fade-in">
-                      <div className="flex justify-between items-start gap-4">
-                        <div>
-                          <span
-                            className={`inline-block px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${ann.type === 'Examination Schedule'
-                              ? 'bg-amber-100 text-[#C97B2E] border border-amber-200'
-                              : ann.type === 'Release of Funds'
-                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                : ann.type === 'Requirements Update'
-                                  ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                  : 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20'
-                              }`}
-                          >
-                            {ann.type}
-                          </span>
-                          <h4 className="text-lg font-bold text-[#1A3C2E] font-serif mt-2">{ann.title}</h4>
-                          <span className="text-[10px] text-[#6C6C70] font-medium block mt-1">
-                            Published by {ann.author} on {ann.date}
-                          </span>
-                        </div>
-                        <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70]">
-                          {ann.audience}
-                        </span>
-                      </div>
-
-                      <p className="text-sm text-[#6C6C70] leading-relaxed">{ann.body}</p>
-
-                      {ann.location && (
-                        <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#C97B2E]">
-                          <span>📍 Venue:</span>
-                          <span className="underline">{ann.location}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ==================== 6. REPORTS VIEW ==================== */}
-        {activeTab === 'reports' && (
-          <div className="space-y-8 animate-fade-in">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Reports & Audits</h2>
-                <p className="text-sm text-[#6C6C70] mt-1 font-medium">Export system utilization and compliance audit logs</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm flex flex-col justify-between">
-                <div>
-                  <h4 className="text-base font-bold text-[#1A3C2E] font-serif">Fund Utilization Summary</h4>
-                  <p className="text-xs text-[#6C6C70] mt-1">Full breakdown of disbursement ratios and budget balances.</p>
-                </div>
-                <div className="mt-6 flex justify-between items-center border-t border-[#D9D2C5]/40 pt-4">
-                  <span className="text-[10px] text-[#8E8E93] font-bold">PDF / EXCEL</span>
-                  <button className="text-xs font-bold text-[#C97B2E] hover:underline cursor-pointer">Download</button>
-                </div>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm flex flex-col justify-between">
-                <div>
-                  <h4 className="text-base font-bold text-[#1A3C2E] font-serif">Scholar Performance Audit</h4>
-                  <p className="text-xs text-[#6C6C70] mt-1">Summary of scholars\' GWAs, grade sheet validation, and failures.</p>
-                </div>
-                <div className="mt-6 flex justify-between items-center border-t border-[#D9D2C5]/40 pt-4">
-                  <span className="text-[10px] text-[#8E8E93] font-bold">CSV / XLSX</span>
-                  <button className="text-xs font-bold text-[#C97B2E] hover:underline cursor-pointer">Download</button>
-                </div>
-              </div>
-              <div className="bg-white rounded-2xl border border-[#D9D2C5]/60 p-6 shadow-sm flex flex-col justify-between">
-                <div>
-                  <h4 className="text-base font-bold text-[#1A3C2E] font-serif">Announcements Engagement</h4>
-                  <p className="text-xs text-[#6C6C70] mt-1">Metrics on student read acknowledgments and message reach.</p>
-                </div>
-                <div className="mt-6 flex justify-between items-center border-t border-[#D9D2C5]/40 pt-4">
-                  <span className="text-[10px] text-[#8E8E93] font-bold">PDF</span>
-                  <button className="text-xs font-bold text-[#C97B2E] hover:underline cursor-pointer">Download</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ==================== 7. VERIFICATION TAB ==================== */}
-        {activeTab === 'verification' && (
-          <div className="space-y-8 animate-fade-in">
-            <div>
-              <h2 className="text-3xl font-extrabold text-[#1A3C2E] font-serif">Organization Verification</h2>
-              <p className="text-sm text-[#6C6C70] mt-1 font-medium">Manage and submit organizational documentation required to post scholarship programs.</p>
-            </div>
-
-            {/* Status Banner */}
             {providerDetails && (
-              <div className={`p-6 rounded-3xl border shadow-sm flex items-start gap-4 ${
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${
                 providerDetails.verificationStatus === 'verified'
-                  ? 'bg-[#EBF5EE] border-[#2D5941]/30 text-[#1A3C2E]'
+                  ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20'
                   : providerDetails.verificationStatus === 'under_review'
-                    ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#1A3C2E]'
-                    : providerDetails.verificationStatus === 'rejected'
-                      ? 'bg-red-50 border-red-200 text-red-900'
-                      : 'bg-white border-[#D9D2C5]/60 text-[#1C1C1E]'
+                  ? 'bg-[#FFF8EE] text-[#C97B2E] border border-amber-200'
+                  : 'bg-slate-100 text-[#6C6C70]'
               }`}>
-                <div className={`p-3 rounded-2xl shrink-0 ${
-                  providerDetails.verificationStatus === 'verified'
-                    ? 'bg-[#2D5941]/10 text-[#2D5941]'
-                    : providerDetails.verificationStatus === 'under_review'
-                      ? 'bg-[#C97B2E]/10 text-[#C97B2E]'
-                      : providerDetails.verificationStatus === 'rejected'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-[#EDE8DE] text-[#6C6C70]'
-                }`}>
-                  {providerDetails.verificationStatus === 'verified' ? (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                  ) : providerDetails.verificationStatus === 'under_review' ? (
-                    <svg className="w-6 h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  ) : providerDetails.verificationStatus === 'rejected' ? (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M9 16h6m2 4H7a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v12a2 2 0 01-2 2z" />
-                    </svg>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold">
-                    {providerDetails.verificationStatus === 'verified' && 'Verified Provider Partner'}
-                    {providerDetails.verificationStatus === 'under_review' && 'Documents Under Review'}
-                    {providerDetails.verificationStatus === 'rejected' && 'Verification Rejected'}
-                    {providerDetails.verificationStatus === 'pending' && 'Verification Incomplete'}
-                  </h3>
-                  <p className="text-xs opacity-90 leading-relaxed max-w-2xl font-sans">
-                    {providerDetails.verificationStatus === 'verified' && 'Your credentials have been successfully reviewed and verified by our system administrators. You are cleared to publish new scholarship programs and manage applications.'}
-                    {providerDetails.verificationStatus === 'under_review' && 'Your documents are being reviewed by the operations team. The evaluation process usually takes 1-2 business days. You will be notified when your status is updated.'}
-                    {providerDetails.verificationStatus === 'rejected' && 'Your submitted documents did not meet our verification guidelines. Please review the comments below, re-upload the corrected files, and submit a new request.'}
-                    {providerDetails.verificationStatus === 'pending' && 'To enable full access to cycle management and student matches, please upload and submit the credentials required for your provider type.'}
-                  </p>
-
-                  {providerDetails.verificationStatus === 'rejected' && providerDetails.requirementsSubmitted['_remarks'] && (
-                    <div className="mt-3 p-3 bg-red-100/50 border border-red-200/50 rounded-xl text-red-900 text-xs">
-                      <strong>Remarks: </strong> {providerDetails.requirementsSubmitted['_remarks']}
-                    </div>
-                  )}
-
-                  {(providerDetails.verificationStatus === 'under_review' || providerDetails.verificationStatus === 'rejected') && profile?.role === 'provider' && (
-                    <button
-                      type="button"
-                      onClick={handleUnsubmitVerification}
-                      disabled={submittingVerification}
-                      className="mt-3 bg-white/20 hover:bg-white/30 text-current border border-solid border-current px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer font-sans"
-                    >
-                      {submittingVerification ? 'Processing...' : 'Unsubmit & Edit Documents'}
-                    </button>
-                  )}
-                </div>
-              </div>
+                {providerDetails.verificationStatus === 'verified' ? '✓ Verified Partner' : providerDetails.verificationStatus.replace('_', ' ')}
+              </span>
             )}
-
-            {/* Checklist & Form */}
-            <div className="bg-white rounded-3xl border border-[#D9D2C5]/60 p-8 shadow-sm space-y-6">
-              <div className="border-b border-[#D9D2C5]/40 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Required Documents Checklist</h3>
-                  <p className="text-xs text-[#6C6C70] mt-0.5 font-sans">Requirements for <span className="uppercase font-bold text-[#2D5941]">{providerDetails?.providerType || 'public'}</span> providers:</p>
-                </div>
-                {profile?.role === 'provider-member' && (
-                  <span className="px-3.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold font-sans flex items-center gap-1.5 shrink-0">
-                    🔒 Read-only (Member View)
-                  </span>
-                )}
-              </div>
-
-              {profile?.role === 'provider-member' && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-slate-600 text-xs font-sans">
-                  You are viewing this panel as a <strong>Provider Member</strong>. Only the primary <strong>Provider Admin</strong> role is authorized to upload, update, or submit organizational verification requirements.
-                </div>
-              )}
-
-              <div className="space-y-4">
-                {requiredDocs.map((doc, idx) => {
-                  const isUploaded = !!providerDetails?.requirementsSubmitted[doc.name];
-                  const docUrl = providerDetails?.requirementsSubmitted[doc.name];
-                  const isUnderReviewOrVerified = providerDetails?.verificationStatus === 'under_review' || providerDetails?.verificationStatus === 'verified';
-                  const isReadOnly = isUnderReviewOrVerified || profile?.role === 'provider-member';
-
-                  return (
-                    <div 
-                      key={idx}
-                      className="p-5 rounded-2xl border border-[#D9D2C5]/50 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:bg-slate-50/50"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-sm text-[#1C1C1E]">{doc.name}</h4>
-                          {doc.required ? (
-                            <span className="text-[9px] bg-red-50 text-red-600 font-bold px-1.5 py-0.5 rounded border border-red-200">REQUIRED</span>
-                          ) : (
-                            <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">OPTIONAL</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-[#6C6C70] font-sans">{doc.description}</p>
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        {isUploaded ? (
-                          <div className="flex items-center gap-3">
-                            <span className="flex items-center gap-1 text-xs text-[#2D5941] font-bold font-sans">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Uploaded
-                            </span>
-                            <a 
-                              href={docUrl} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="text-xs font-bold text-[#C97B2E] hover:underline"
-                            >
-                              View File
-                            </a>
-                            {!isReadOnly && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  if (!providerDetails) return;
-                                  const updatedReqs = { ...providerDetails.requirementsSubmitted };
-                                  delete updatedReqs[doc.name];
-                                  
-                                  // Update local state
-                                  setProviderDetails({
-                                    ...providerDetails,
-                                    requirementsSubmitted: updatedReqs
-                                  });
-
-                                  // Update Supabase database immediately
-                                  try {
-                                    const { error } = await supabase
-                                      .from('provider')
-                                      .update({
-                                        requirements_submitted: updatedReqs,
-                                        updated_at: new Date().toISOString()
-                                      })
-                                      .eq('id', providerDetails.id);
-                                    if (error) throw error;
-                                    showToast(`Unsubmitted document: ${doc.name}`);
-                                  } catch (err: any) {
-                                    console.error('Error unsubmitting document:', err);
-                                    showToast(`Failed to update database: ${err.message}`);
-                                  }
-                                }}
-                                className="text-xs text-red-500 hover:text-red-700 cursor-pointer bg-transparent border-0 font-sans"
-                              >
-                                Unsubmit File
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div>
-                            {isReadOnly ? (
-                              <span className="text-xs text-gray-400 italic font-sans">Not Provided</span>
-                            ) : (
-                              <div>
-                                <label className="relative flex items-center justify-center bg-[#EBF5EE] hover:bg-[#d5ebd9] text-[#2D5941] px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer border border-[#2D5941]/10">
-                                  {uploadingDoc === doc.name ? (
-                                    <span className="flex items-center gap-1">
-                                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                      </svg>
-                                      Uploading...
-                                    </span>
-                                  ) : (
-                                    <span>Choose & Upload File</span>
-                                  )}
-                                  <input
-                                    type="file"
-                                    disabled={uploadingDoc !== null}
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) handleUploadDocument(doc.name, file);
-                                    }}
-                                  />
-                                </label>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Submit Action */}
-              {providerDetails && providerDetails.verificationStatus !== 'verified' && providerDetails.verificationStatus !== 'under_review' && profile?.role === 'provider' && (
-                <div className="border-t border-[#D9D2C5]/40 pt-6 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleSubmitVerification}
-                    disabled={submittingVerification || uploadingDoc !== null}
-                    className={`px-8 py-3.5 rounded-xl font-bold text-sm shadow-md transition-all border border-[#1A3C2E]/10 cursor-pointer ${
-                      submittingVerification || uploadingDoc !== null
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400'
-                        : 'bg-[#2D5941] hover:bg-[#1A3C2E] text-white'
-                    }`}
-                  >
-                    {submittingVerification ? 'Submitting Request...' : 'Submit Verification Request'}
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
+
+          <div className="flex items-center gap-3">
+            {/* Notification Bell Button */}
+            <button
+              type="button"
+              onClick={() => setIsNotificationDrawerOpen(true)}
+              className="relative p-2.5 rounded-2xl bg-white hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer flex items-center justify-center group"
+              title="Notifications & Admin Broadcasts"
+            >
+              <svg className="w-5 h-5 transition-transform group-hover:scale-110 text-[#1A3C2E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {unreadNotifCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#E8A838] text-[#1A3C2E] text-[10px] font-black rounded-full flex items-center justify-center shadow-sm ring-2 ring-white animate-bounce">
+                  {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                </span>
+              )}
+            </button>
+
+            {/* Quick Broadcast button */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('announcements')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'announcements'
+                  ? 'bg-[#2D5941] text-white shadow-sm'
+                  : 'bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E]'
+              }`}
+            >
+              <span>📢</span>
+              <span>Announcements</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-8 w-full">
+        {activeTab === 'dashboard' && (
+          <ProviderDashboardTab
+            programsList={programsList}
+            scholarsList={scholarsList}
+            applicantsList={applicantsList}
+            totalCredited={totalCredited}
+            totalPending={totalPending}
+            setActiveTab={setActiveTab}
+            onOpenCreateProgram={handleOpenCreateProgram}
+          />
         )}
 
-      </main>
+        {activeTab === 'applicants' && (
+          <ProviderApplicantsTab
+            subTab={subTab}
+            setSubTab={setSubTab}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            applicantsList={applicantsList}
+            scholarsList={scholarsList}
+            filteredApplicants={filteredApplicants}
+            filteredScholars={filteredScholars}
+            setSelectedAppForReview={setSelectedAppForReview}
+            setIsReviewModalOpen={setIsReviewModalOpen}
+            onOpenViewTab={(app) => {
+              setSelectedAppForReview(app);
+              setActiveTab('view-application');
+            }}
+            onNavigateToAppeals={() => setActiveTab('appeals')}
+            handleUpdateStatus={handleUpdateStatus}
+            showToast={showToast}
+            triggerQuotaFilledModal={triggerQuotaFilledModal}
+            setQuotaPendingApproveIds={setQuotaPendingApproveIds}
+          />
+        )}
+
+        {activeTab === 'appeals' && (
+          <ProviderAppealsTab
+            providerId={providerDetails?.id}
+            showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'view-application' && (
+          <ProviderViewApplicationTab
+            application={selectedAppForReview}
+            onBack={() => setActiveTab('applicants')}
+            onUpdateStatus={handleUpdateStatus}
+            onUpdateDocs={(appId, updatedDocs) => {
+              setApplicantsList(prev => prev.map(a => a.id === appId ? { ...a, submittedDocuments: updatedDocs } : a));
+              setSelectedAppForReview(prev => prev && prev.id === appId ? { ...prev, submittedDocuments: updatedDocs } : prev);
+            }}
+          />
+        )}
+
+        {activeTab === 'create-program' && (
+          <ProviderProgramFormTab
+            programToEdit={selectedProgram}
+            selectedCycleId={selectedCycleId}
+            onCancel={() => {
+              setSelectedProgram(null);
+              setSelectedCycleId(null);
+              setActiveTab('programs');
+            }}
+            onSubmit={async (formData, isEdit) => {
+              const fCat = (formData.category || '').toLowerCase();
+              const matchedCat = categories.find(c => {
+                const cName = (c.name || '').toLowerCase();
+                return cName === fCat ||
+                  (fCat.includes('need') && fCat.includes('merit') && cName.includes('need') && cName.includes('merit')) ||
+                  (fCat.includes('need') && !fCat.includes('merit') && cName.includes('need') && !cName.includes('merit')) ||
+                  (fCat.includes('merit') && !fCat.includes('need') && cName.includes('merit') && !cName.includes('need'));
+              });
+              const categoryId = matchedCat ? matchedCat.id : null;
+
+              const parseYearLevels = (raw: any): number[] => {
+                if (!raw) return [1];
+                const list = Array.isArray(raw) ? raw : String(raw).split(',');
+                const numbers: number[] = [];
+                for (const item of list) {
+                  if (typeof item === 'number') {
+                    if (!isNaN(item) && !numbers.includes(Math.round(item))) {
+                      numbers.push(Math.round(item));
+                    }
+                  } else if (typeof item === 'string') {
+                    const match = item.match(/\d+/);
+                    if (match) {
+                      const num = parseInt(match[0], 10);
+                      if (!isNaN(num) && !numbers.includes(num)) {
+                        numbers.push(num);
+                      }
+                    }
+                  }
+                }
+                return numbers.length > 0 ? numbers : [1];
+              };
+
+              const parseStringArray = (raw: any): string[] => {
+                if (!raw) return [];
+                if (Array.isArray(raw)) return raw.map(String).map((s: string) => s.trim()).filter(Boolean);
+                return String(raw).split(',').map((s: string) => s.trim()).filter(Boolean);
+              };
+
+              const mapFundingFreq = (freq: string): string => {
+                if (!freq) return 'Per Semester';
+                const lower = freq.toLowerCase();
+                if (lower.includes('sem')) return 'Per Semester';
+                if (lower.includes('year') || lower.includes('annual')) return 'Once a Year';
+                if (lower.includes('one') || lower.includes('grant')) return 'One-time';
+                return 'Per Semester';
+              };
+
+              const mapScholarshipType = (cat: string): string => {
+                if (!cat) return 'merit';
+                const lower = cat.toLowerCase();
+                if ((lower.includes('need') && lower.includes('merit')) || lower.includes('both')) return 'merit_and_need';
+                if (lower.includes('need')) return 'need_based';
+                return 'merit';
+              };
+
+              if (isEdit) {
+                // Update program
+                const updatePayload: any = {
+                  title: formData.title,
+                  description: formData.description,
+                  scholarship_type: mapScholarshipType(formData.category),
+                  target_education_level: formData.target_education_level || 'college',
+                  grading_system: formData.grading_system || 'scale_5',
+                  minimum_gwa: formData.minimumGwa ? parseFloat(formData.minimumGwa) : null,
+                  total_slots: (formData.total_slots !== undefined && formData.total_slots !== null && formData.total_slots !== '' && !isNaN(parseInt(String(formData.total_slots), 10))) ? parseInt(String(formData.total_slots), 10) : ((formData.totalSlots !== undefined && formData.totalSlots !== null && formData.totalSlots !== '' && !isNaN(parseInt(String(formData.totalSlots), 10))) ? parseInt(String(formData.totalSlots), 10) : null),
+                  budget_total: formData.amount ? parseFloat(formData.amount) : null,
+                  funding_frequency: mapFundingFreq(formData.funding_frequency),
+                  covers_tuition: formData.coverstuition ?? false,
+                  covers_stipend: formData.coversStipend ?? false,
+                  stipend_amount: formData.stipendAmount ? parseFloat(formData.stipendAmount) : null,
+                  covers_allowance: formData.coversAllowance ?? false,
+                  allowance_amount: formData.allowanceAmount ? parseFloat(formData.allowanceAmount) : null,
+                  other_benefits: parseStringArray(formData.otherBenefits),
+                  course_eligibility: parseStringArray(formData.eligible_courses).length > 0 ? parseStringArray(formData.eligible_courses) : ['All Degree Programs'],
+                  year_level_eligibility: parseYearLevels(formData.eligible_year_levels),
+                  application_requirements: formData.applicationRequirements || [],
+                  disbursement_mode: (formData.disbursement_mode === 'in_person_cash' || formData.disbursementMode === 'in_person_cash') ? 'in_person_cash' : 'online',
+                  banking_policy: (formData.online_bank_type === 'provider_issued_card' || formData.onlineBankType === 'provider_issued_card' || formData.banking_policy === 'provider_issued') ? 'provider_issued' : 'any_bank',
+                  tuition_payout_mode: formData.tuition_payout_mode || 'direct_to_student',
+                  tuition_coverage_type: formData.tuition_coverage_type || 'fixed_cap',
+                  tuition_max_amount: formData.tuition_max_amount ? parseFloat(formData.tuition_max_amount) : 0,
+                  custom_benefits: formData.custom_benefits || [],
+                  low_budget_threshold: formData.low_budget_threshold ? parseFloat(formData.low_budget_threshold) : 0.20,
+                  availability_scope: formData.availability_scope || 'nationwide',
+                  available_regions: formData.available_regions || [],
+                  available_provinces: formData.available_provinces || [],
+                  available_municipalities: formData.available_municipalities || [],
+                  available_barangays: formData.available_barangays || [],
+                  available_schools: formData.available_schools || [],
+                };
+                if (categoryId) {
+                  updatePayload.category_id = categoryId;
+                }
+                const { error } = await supabase
+                  .from('scholarship_programs')
+                  .update(updatePayload)
+                  .eq('id', selectedProgram?.id);
+                if (error) {
+                  console.error('Error updating program:', error);
+                  showToast(`Error updating program: ${error.message || 'Check fields'}`);
+                } else {
+                  // Update or insert primary cycle dates
+                  if (selectedProgram?.id && formData.application_start_date && formData.application_end_date) {
+                    const todayMid = getTodayMidnight();
+                    const endMid = parseLocalMidnight(formData.application_end_date);
+                    const startMid = parseLocalMidnight(formData.application_start_date);
+                    let cycleStatus = endMid < todayMid ? 'closed' : (startMid > todayMid ? 'upcoming' : 'open');
+
+                    const cyclesList = selectedProgram.cycles || [];
+                    const openCycles = cyclesList.filter((c: any) => (c.status || '').toLowerCase() === 'open');
+                    const existingCycle = selectedCycleId
+                      ? cyclesList.find((c: any) => c.id === selectedCycleId)
+                      : (openCycles.length > 0 ? openCycles[0] : (cyclesList.length > 0 ? cyclesList[0] : null));
+
+                    if (existingCycle?.id && cycleStatus === 'open') {
+                      const rawSlots = formData.total_slots ?? formData.totalSlots ?? selectedProgram.total_slots ?? selectedProgram.totalSlots ?? null;
+                      const slots = (rawSlots !== undefined && rawSlots !== null && rawSlots !== '' && !isNaN(parseInt(String(rawSlots), 10)))
+                        ? parseInt(String(rawSlots), 10)
+                        : null;
+                      if (slots) {
+                        const { count, error: countErr } = await supabase
+                          .from('scholarship_applications')
+                          .select('id', { count: 'exact', head: true })
+                          .eq('cycle_id', existingCycle.id)
+                          .eq('status', 'approved');
+
+                        if (!countErr && count !== null && count >= slots) {
+                          cycleStatus = 'closed';
+                        }
+                      }
+                    }
+                    if (existingCycle?.id) {
+                      await supabase
+                        .from('application_cycles')
+                        .update({
+                          cycle_name: formData.cycle_name || existingCycle.name || 'AY 2026-2027',
+                          application_start_date: formData.application_start_date,
+                          application_end_date: formData.application_end_date,
+                          status: cycleStatus,
+                        })
+                        .eq('id', existingCycle.id);
+                    } else {
+                      await supabase
+                        .from('application_cycles')
+                        .insert({
+                          program_id: selectedProgram.id,
+                          cycle_name: formData.cycle_name || 'AY 2026-2027',
+                          application_start_date: formData.application_start_date,
+                          application_end_date: formData.application_end_date,
+                          status: cycleStatus,
+                        });
+                    }
+                  }
+
+                  showToast('Program and intake schedule updated successfully!');
+                  const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+                  createAuditLog('UPDATED PROGRAM', `Program: ${formData.title}`, actor);
+                  await fetchPrograms();
+                  setSelectedProgram(null);
+                  setSelectedCycleId(null);
+                  setActiveTab('programs');
+                }
+              } else {
+                // Create program
+                const insertPayload: any = {
+                  provider_id: providerDetails?.id,
+                  title: formData.title,
+                  description: formData.description,
+                  category_id: categoryId,
+                  scholarship_type: mapScholarshipType(formData.category),
+                  target_education_level: formData.target_education_level || 'college',
+                  grading_system: formData.grading_system || 'scale_5',
+                  minimum_gwa: formData.minimumGwa ? parseFloat(formData.minimumGwa) : null,
+                  total_slots: (formData.total_slots !== undefined && formData.total_slots !== null && formData.total_slots !== '' && !isNaN(parseInt(String(formData.total_slots), 10))) ? parseInt(String(formData.total_slots), 10) : ((formData.totalSlots !== undefined && formData.totalSlots !== null && formData.totalSlots !== '' && !isNaN(parseInt(String(formData.totalSlots), 10))) ? parseInt(String(formData.totalSlots), 10) : null),
+                  budget_total: formData.amount ? parseFloat(formData.amount) : null,
+                  funding_frequency: mapFundingFreq(formData.funding_frequency),
+                  covers_tuition: formData.coverstuition ?? false,
+                  covers_stipend: formData.coversStipend ?? false,
+                  stipend_amount: formData.stipendAmount ? parseFloat(formData.stipendAmount) : null,
+                  covers_allowance: formData.coversAllowance ?? false,
+                  allowance_amount: formData.allowanceAmount ? parseFloat(formData.allowanceAmount) : null,
+                  other_benefits: parseStringArray(formData.otherBenefits),
+                  course_eligibility: parseStringArray(formData.eligible_courses).length > 0 ? parseStringArray(formData.eligible_courses) : ['All Degree Programs'],
+                  year_level_eligibility: parseYearLevels(formData.eligible_year_levels),
+                  application_requirements: formData.applicationRequirements || [],
+                  disbursement_mode: (formData.disbursement_mode === 'in_person_cash' || formData.disbursementMode === 'in_person_cash') ? 'in_person_cash' : 'online',
+                  banking_policy: (formData.online_bank_type === 'provider_issued_card' || formData.onlineBankType === 'provider_issued_card' || formData.banking_policy === 'provider_issued') ? 'provider_issued' : 'any_bank',
+                  tuition_payout_mode: formData.tuition_payout_mode || 'direct_to_student',
+                  tuition_coverage_type: formData.tuition_coverage_type || 'fixed_cap',
+                  tuition_max_amount: formData.tuition_max_amount ? parseFloat(formData.tuition_max_amount) : 0,
+                  custom_benefits: formData.custom_benefits || [],
+                  low_budget_threshold: formData.low_budget_threshold ? parseFloat(formData.low_budget_threshold) : 0.20,
+                  availability_scope: formData.availability_scope || 'nationwide',
+                  available_regions: formData.available_regions || [],
+                  available_provinces: formData.available_provinces || [],
+                  available_municipalities: formData.available_municipalities || [],
+                  available_barangays: formData.available_barangays || [],
+                  available_schools: formData.available_schools || [],
+                  status: 'pending',
+                };
+                const { data: progData, error } = await supabase
+                  .from('scholarship_programs')
+                  .insert([insertPayload])
+                  .select()
+                  .single();
+                if (error || !progData) {
+                  console.error('Error creating program:', error);
+                  showToast(`Error creating program: ${error?.message || 'Check fields'}`);
+                } else {
+                  // Create configured intake cycle
+                  const startDate = formData.application_start_date || new Date().toISOString().split('T')[0];
+                  const endDate = formData.application_end_date || new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().split('T')[0];
+                  const todayMid = getTodayMidnight();
+                  const endMid = parseLocalMidnight(endDate);
+                  const startMid = parseLocalMidnight(startDate);
+                  const cycleStatus = endMid < todayMid ? 'closed' : (startMid > todayMid ? 'upcoming' : 'open');
+
+                  await supabase
+                    .from('application_cycles')
+                    .insert({
+                      program_id: progData.id,
+                      cycle_name: formData.cycle_name || 'AY 2026-2027',
+                      application_start_date: startDate,
+                      application_end_date: endDate,
+                      status: cycleStatus,
+                    });
+                  showToast('Program and application cycle published successfully!');
+                  const actor = profile ? `${profile.firstName} ${profile.lastName}`.trim() : (providerDetails?.name || 'Provider');
+                  createAuditLog('PUBLISHED PROGRAM', `Program: ${formData.title}`, actor);
+                  await fetchPrograms();
+                  setSelectedProgram(null);
+                  setActiveTab('programs');
+                }
+              }
+            }}
+            providerDetails={providerDetails}
+          />
+        )}
+
+        {activeTab === 'programs' && (
+          <ProviderProgramsTab
+            providerDetails={providerDetails}
+            programsList={programsList}
+            showToast={showToast}
+            onOpenCreateProgram={handleOpenCreateProgram}
+            setActiveTab={setActiveTab}
+            handleViewDetails={handleViewDetails}
+            handleEditProgram={handleEditProgram}
+            handleOpenRenewModal={handleOpenRenewModal}
+            handleOpenEditCycle={handleOpenEditCycle}
+            handleDeleteCycle={handleDeleteCycle}
+            handleCloseCycle={handleCloseCycle}
+            setProgramToClose={setProgramToClose}
+            setIsCloseConfirmOpen={setIsCloseConfirmOpen}
+            fetchPrograms={fetchPrograms}
+          />
+        )}
+
+        {activeTab === 'disbursements' && (
+          <ProviderDisbursementsTab
+            totalCredited={totalCredited}
+            totalPending={totalPending}
+            disbursementsList={disbursementsList}
+            setIsPayoutModalOpen={setIsPayoutModalOpen}
+            programsList={programsList}
+            fetchPrograms={fetchPrograms}
+            showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'announcements' && (
+          <ProviderAnnouncementsTab
+            handleAddAnnouncement={handleAddAnnouncement}
+            newAnnType={newAnnType}
+            setNewAnnType={setNewAnnType}
+            newAnnAudience={newAnnAudience}
+            setNewAnnAudience={setNewAnnAudience}
+            selectedProgramId={selectedProgramId}
+            setSelectedProgramId={setSelectedProgramId}
+            programsList={programsList}
+            setIsBigMapModalOpen={setIsBigMapModalOpen}
+            isLoaded={isLoaded}
+            onAutocompleteLoad={onAutocompleteLoad}
+            onPlaceChanged={onPlaceChanged}
+            mapSearchText={mapSearchText}
+            setMapSearchText={setMapSearchText}
+            examCoords={examCoords}
+            mapZoom={mapZoom}
+            setMapZoom={setMapZoom}
+            handleMapClick={handleMapClick}
+            newAnnTitle={newAnnTitle}
+            setNewAnnTitle={setNewAnnTitle}
+            newAnnBody={newAnnBody}
+            setNewAnnBody={setNewAnnBody}
+            announcements={announcements}
+            onDeleteAnnouncement={handleDeleteAnnouncement}
+            isBroadcasting={isBroadcasting}
+            applicantsList={applicantsList}
+            scholarsList={scholarsList}
+            selectedTargetUserId={selectedTargetUserId}
+            setSelectedTargetUserId={setSelectedTargetUserId}
+          />
+        )}
+
+        {activeTab === 'reports' && (
+          <ProviderReportsTab
+            programs={programsList}
+            applicants={applicantsList}
+            scholars={scholarsList}
+            disbursements={disbursementsList}
+            announcements={announcements}
+            providerDetails={providerDetails}
+            showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'verification' && (
+          <ProviderVerificationTab
+            providerDetails={providerDetails}
+            profile={profile}
+            handleUnsubmitVerification={handleUnsubmitVerification}
+            submittingVerification={submittingVerification}
+            requiredDocs={requiredDocs}
+            setProviderDetails={setProviderDetails}
+            showToast={showToast}
+            uploadingDoc={uploadingDoc}
+            handleUploadDocument={handleUploadDocument}
+            handleSubmitVerification={handleSubmitVerification}
+            hasModifiedDocs={hasModifiedDocs}
+            onDocsModified={() => setHasModifiedDocs(true)}
+          />
+        )}
+
+        {activeTab === 'profile' && (
+          <ProfileSettingsTab
+            showToast={showToast}
+            providerDetails={providerDetails ? { id: providerDetails.id, name: providerDetails.name } : null}
+            onProfileUpdated={(updated) => setProfile(prev => prev ? { ...prev, ...updated } : prev)}
+            onProviderUpdated={(name) => {
+              setProviderDetails(prev => prev ? { ...prev, name } : prev);
+              setProfile(prev => prev ? { ...prev, providerName: name } : prev);
+            }}
+          />
+        )}
+        </main>
+      </div>
+
+      {/* ─── Provider Notification Drawer ─── */}
+      <ProviderNotificationDrawer
+        isOpen={isNotificationDrawerOpen}
+        onClose={() => setIsNotificationDrawerOpen(false)}
+        userId={currentUserId}
+        onUnreadCountChange={setUnreadNotifCount}
+      />
 
       {/* ─── View Details Modal ─── */}
       {isViewModalOpen && selectedProgram && (
@@ -3194,7 +3874,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             <div className="p-7 space-y-6">
               {/* Status & Policy */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                <div className="bg-white rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Status</span>
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
                     selectedProgram.status === 'Active' || selectedProgram.status === 'Approved' ? 'bg-[#EBF5EE] text-[#2D5941]' :
@@ -3203,13 +3883,13 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                     'bg-[#FDF2F2] text-[#B34040]'
                   }`}>{selectedProgram.status}</span>
                 </div>
-                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                <div className="bg-white rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Renewal Policy</span>
-                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.renewalPolicy}</span>
+                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.renewalPolicy || selectedProgram.renewal_policy || 'Semestral Re-evaluation'}</span>
                 </div>
-                <div className="bg-[#F9F5EF] rounded-2xl p-4 text-center">
+                <div className="bg-white rounded-2xl p-4 text-center">
                   <span className="text-[9px] uppercase font-bold text-[#8E8E93] tracking-wider block mb-1">Funding</span>
-                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.fundingFrequency}</span>
+                  <span className="text-xs font-bold text-[#1C1C1E]">{selectedProgram.fundingFrequency || selectedProgram.funding_frequency || 'Per Semester'}</span>
                 </div>
               </div>
 
@@ -3217,10 +3897,16 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               <div>
                 <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Benefits</h4>
                 <div className="flex flex-wrap gap-2">
-                  {selectedProgram.coverstuition && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Full Tuition</span>}
+                  {selectedProgram.coverstuition && (
+                    <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">
+                      {selectedProgram.tuitionCoverageType === 'fixed_cap' && Number(selectedProgram.tuitionMaxAmount) > 0
+                        ? `Tuition Cap ₱${Number(selectedProgram.tuitionMaxAmount).toLocaleString()}`
+                        : 'Full Tuition'}
+                    </span>
+                  )}
                   {selectedProgram.coversStipend && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Stipend ₱{Number(selectedProgram.stipendAmount).toLocaleString()}/mo</span>}
                   {selectedProgram.coversAllowance && <span className="bg-[#EBF5EE] text-[#2D5941] text-xs font-bold px-3 py-1 rounded-full">Allowance ₱{Number(selectedProgram.allowanceAmount).toLocaleString()}</span>}
-                  {selectedProgram.otherBenefits.map((b, i) => <span key={i} className="bg-[#EDE8DE] text-[#6C6C70] text-xs font-semibold px-3 py-1 rounded-full">{b}</span>)}
+                  {selectedProgram.otherBenefits?.map((b: any, i: number) => <span key={i} className="bg-[#EDE8DE] text-[#6C6C70] text-xs font-semibold px-3 py-1 rounded-full">{b}</span>)}
                 </div>
               </div>
 
@@ -3228,8 +3914,8 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               <div>
                 <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Eligibility</h4>
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div><span className="text-[#8E8E93] font-semibold">Courses: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.courseEligibility.join(', ') || 'All'}</span></div>
-                  <div><span className="text-[#8E8E93] font-semibold">Year Levels: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.yearLevelEligibility.length > 0 ? selectedProgram.yearLevelEligibility.map(y => `Year ${y}`).join(', ') : 'All'}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Courses: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.courseEligibility?.join(', ') || 'All'}</span></div>
+                  <div><span className="text-[#8E8E93] font-semibold">Year Levels: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.yearLevelEligibility?.length > 0 ? selectedProgram.yearLevelEligibility.map((y: any) => `Year ${y}`).join(', ') : 'All'}</span></div>
                   <div><span className="text-[#8E8E93] font-semibold">Min GWA: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.minimumGwa || 'None'}</span></div>
                   <div><span className="text-[#8E8E93] font-semibold">Availability: </span><span className="font-bold text-[#1C1C1E] capitalize">{selectedProgram.availabilityScope}</span></div>
                   <div><span className="text-[#8E8E93] font-semibold">Total Slots: </span><span className="font-bold text-[#1C1C1E]">{selectedProgram.totalSlots || 'Unlimited'}</span></div>
@@ -3238,12 +3924,12 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
               </div>
 
               {/* Requirements */}
-              {selectedProgram.applicationRequirements.length > 0 && (
+              {selectedProgram.applicationRequirements?.length > 0 && (
                 <div>
                   <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-2">Document Requirements</h4>
                   <div className="space-y-2">
-                    {selectedProgram.applicationRequirements.map((req, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-[#D9D2C5]/50 bg-[#F9F5EF]/50 text-xs">
+                    {selectedProgram.applicationRequirements?.map((req: any, i: number) => (
+                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-[#D9D2C5]/50 bg-white/50 text-xs">
                         <div className="flex-1">
                           <span className="font-bold text-[#1C1C1E]">{req.name}</span>
                           {req.description && <span className="text-[#6C6C70] ml-2">— {req.description}</span>}
@@ -3267,18 +3953,36 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {selectedProgram.cycles.map(cyc => (
-                    <div key={cyc.id} className="flex justify-between items-center bg-[#F9F5EF] px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
-                      <span className="font-bold text-[#1C1C1E]">{cyc.name}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[#8E8E93]">{cyc.startDate} → {cyc.endDate}</span>
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' : cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' : cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-600'}`}>{cyc.status}</span>
+                  {sortCyclesNewestFirst(selectedProgram.cycles)?.map((cyc: any) => (
+                    <div key={cyc.id} className="flex justify-between items-center bg-white px-4 py-3 rounded-xl border border-[#D9D2C5]/30 text-xs">
+                      <div>
+                        <span className="font-bold text-[#1C1C1E] block">{cyc.name}</span>
+                        {cyc.semester && <span className="text-[10px] text-[#6C6C70] font-medium">{cyc.semester}</span>}
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-[#8E8E93] text-[11px]">{cyc.startDate} → {cyc.endDate}</span>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                          cyc.status === 'Open' ? 'bg-[#EBF5EE] text-[#2D5941]' :
+                          cyc.status === 'Evaluating' ? 'bg-amber-100 text-amber-700' :
+                          cyc.status === 'Upcoming' ? 'bg-blue-50 text-blue-600' :
+                          'bg-gray-200 text-gray-600'
+                        }`}>{cyc.status}</span>
+                        <button
+                          onClick={() => {
+                            setIsViewModalOpen(false);
+                            handleOpenEditCycle(selectedProgram, cyc);
+                          }}
+                          className="px-2 py-1 bg-white hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5] rounded-lg cursor-pointer transition-all text-[10.5px] font-bold flex items-center gap-1 shadow-2xs"
+                          title="Edit this cycle"
+                        >
+                          <span>✏️</span> Edit
+                        </button>
                         <button
                           onClick={() => handleDeleteCycle(cyc.id.toString(), cyc.name)}
-                          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded bg-transparent border-0 cursor-pointer transition-all text-xs leading-none"
-                          title="Delete Cycle"
+                          className="px-2 py-1 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg cursor-pointer transition-all text-[10.5px] font-bold flex items-center gap-1 shadow-2xs"
+                          title="Delete this cycle"
                         >
-                          🗑️
+                          <span>🗑️</span> Delete
                         </button>
                       </div>
                     </div>
@@ -3288,6 +3992,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             </div>
 
             <div className="p-7 border-t border-[#D9D2C5]/50 flex justify-end gap-3">
+
               <button
                 onClick={() => setIsViewModalOpen(false)}
                 className="px-5 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-sm font-bold border-0 cursor-pointer transition-all"
@@ -3296,6 +4001,74 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                 onClick={() => { setIsViewModalOpen(false); handleEditProgram(selectedProgram); }}
                 className="px-5 py-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-sm font-bold border-0 cursor-pointer transition-all"
               >Edit Program</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Select Open Cycle Modal ─── */}
+      {isCycleSelectModalOpen && programForCycleSelect && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-5">
+            <div className="flex justify-between items-start border-b border-[#EDE8DE] pb-4">
+              <div>
+                <span className="text-[10px] uppercase font-extrabold text-[#D97706] tracking-widest block">Multiple Open Cycles</span>
+                <h3 className="text-lg font-extrabold text-[#1A3C2E] font-serif mt-1">Select Open Cycle to Edit</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsCycleSelectModalOpen(false);
+                  setProgramForCycleSelect(null);
+                }}
+                className="w-8 h-8 rounded-full bg-[#EDE8DE] hover:bg-[#D9D2C5] flex items-center justify-center text-[#1A3C2E] font-bold border-0 cursor-pointer text-sm"
+              >×</button>
+            </div>
+
+            <p className="text-xs text-[#6C6C70]">
+              This program currently has <strong>{(programForCycleSelect.cycles || []).filter((c: any) => (c.status || '').toLowerCase() === 'open').length} open cycles</strong>. Choose which cycle schedule you want to edit:
+            </p>
+
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+              {sortCyclesNewestFirst((programForCycleSelect.cycles || []).filter((c: any) => (c.status || '').toLowerCase() === 'open'))
+                .map((cyc: any) => (
+                  <button
+                    key={cyc.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCycleId(cyc.id);
+                      setSelectedProgram(programForCycleSelect);
+                      setIsCycleSelectModalOpen(false);
+                      setProgramForCycleSelect(null);
+                      setActiveTab('create-program');
+                    }}
+                    className="w-full text-left p-4 rounded-2xl border-2 border-[#1A3C2E]/20 hover:border-[#1A3C2E] bg-white hover:bg-[#EBF5EE] transition-all cursor-pointer group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-extrabold text-[#1A3C2E] group-hover:text-[#15803D]">
+                        {cyc.name || cyc.cycle_name || 'Application Cycle'}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#DCFCE7] text-[#15803D]">
+                        OPEN
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#6C6C70] mt-1.5 flex items-center gap-2">
+                      <span>📅 {cyc.startDate || cyc.application_start_date || 'Open'} → {cyc.endDate || cyc.application_end_date || 'Ongoing'}</span>
+                    </div>
+                  </button>
+                ))}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCycleSelectModalOpen(false);
+                  setProgramForCycleSelect(null);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-xs font-bold border-0 cursor-pointer"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -3317,11 +4090,21 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         onConfirm={handleConfirmDeleteCycle}
       />
 
+      {/* ─── Force Close Cycle Confirm Modal ─── */}
+      <ForceCloseCycleConfirmModal
+        isOpen={isForceCloseModalOpen}
+        cycleName={cycleToForceClose?.name || null}
+        onClose={() => { setIsForceCloseModalOpen(false); setCycleToForceClose(null); }}
+        onConfirm={handleConfirmForceCloseCycle}
+        isSubmitting={isClosingCycle}
+      />
+
       {/* ─── Renew / Add Cycle Modal ─── */}
       <RenewCycleModal
         isOpen={isRenewModalOpen}
         program={selectedProgramForRenewal}
-        onClose={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); }}
+        cycleToEdit={cycleToEdit}
+        onClose={() => { setIsRenewModalOpen(false); setSelectedProgramForRenewal(null); setCycleToEdit(null); }}
         onSubmit={handleRenewProgramCycle}
         renewCycleName={renewCycleName}
         setRenewCycleName={setRenewCycleName}
@@ -3331,6 +4114,43 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
         setRenewEndDate={setRenewEndDate}
         renewSlots={renewSlots}
         setRenewSlots={setRenewSlots}
+        renewCycleType={renewCycleType}
+        setRenewCycleType={setRenewCycleType}
+        renewSemester={renewSemester}
+        setRenewSemester={setRenewSemester}
+        renewRequirements={renewRequirements}
+        setRenewRequirements={setRenewRequirements}
+      />
+
+      {/* ─── Review Application Modal ─── */}
+      <ReviewApplicationModal
+        isOpen={isReviewModalOpen}
+        application={selectedAppForReview}
+        onClose={() => {
+          setIsReviewModalOpen(false);
+          setSelectedAppForReview(null);
+        }}
+        onUpdateStatus={handleUpdateStatus}
+      />
+
+      {/* ─── Quota-Filled Batch Resolution Modal ─── */}
+      <QuotaFilledModal
+        isOpen={isQuotaModalOpen}
+        onClose={() => {
+          setIsQuotaModalOpen(false);
+          setQuotaPendingApproveIds([]);
+        }}
+        programTitle={quotaProgramTitle}
+        cycleName={quotaCycleName}
+        cycleId={quotaCycleId}
+        totalSlots={quotaTotalSlots}
+        unselectedApplicants={quotaUnselectedApplicants}
+        providerName={providerDetails?.name || 'Scholarship Provider'}
+        onSuccess={() => {
+          fetchApplicantsAndScholars();
+        }}
+        showToast={showToast}
+        onConfirmApprove={handleConfirmApprove}
       />
 
     </div>
