@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/custom_button.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -773,7 +773,7 @@ class _RegisterScreenState extends State<RegisterScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(LucideIcons.chrome, color: Color(0xFFDB4437), size: 18),
+                const Icon(LucideIcons.globe, color: Color(0xFFDB4437), size: 18),
                 const SizedBox(width: 10),
                 Text(
                   'Continue with Google',

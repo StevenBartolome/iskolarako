@@ -29,44 +29,19 @@ workflows:
 
       - name: Build iOS (no code signing — Sideloadly will sign it)
         script: |
-          flutter build ios --release --no-codesign || {
-            echo "==> Flutter CLI build had a signing exit code; running xcodebuild directly..."
-            xcodebuild -workspace ios/Runner.xcworkspace \
-              -scheme Runner \
-              -configuration Release \
-              -sdk iphoneos \
-              -destination generic/platform=iOS \
-              -derivedDataPath build/ios_derived \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              PROVISIONING_PROFILE="" \
-              build
-            mkdir -p build/ios/iphoneos
-            cp -r build/ios_derived/Build/Products/Release-iphoneos/Runner.app build/ios/iphoneos/Runner.app
-          }
+          set -e
+          flutter build ios --release --no-codesign
         working_directory: mobile
 
       - name: Package .app into .ipa
         script: |
-          mkdir -p Payload
-          if [ -d "build/ios/iphoneos/Runner.app" ]; then
-            echo "Found Runner.app in build/ios/iphoneos"
-            cp -r build/ios/iphoneos/Runner.app Payload/Runner.app
-          elif [ -d "build/ios_derived/Build/Products/Release-iphoneos/Runner.app" ]; then
-            echo "Found Runner.app in build/ios_derived"
-            cp -r build/ios_derived/Build/Products/Release-iphoneos/Runner.app Payload/Runner.app
-          else
-            echo "Searching for Runner.app..."
-            APP_PATH=$(find build -name "Runner.app" -type d | head -n 1)
-            if [ -n "$APP_PATH" ]; then
-              echo "Found Runner.app at: $APP_PATH"
-              cp -r "$APP_PATH" Payload/Runner.app
-            else
-              echo "ERROR: Runner.app not found anywhere in build/!"
-              exit 1
-            fi
+          set -e
+          if [ ! -f "build/ios/iphoneos/Runner.app/Runner" ]; then
+            echo "ERROR: Runner binary not found! The iOS build was not completed."
+            exit 1
           fi
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/Runner.app
           zip -r IskoAko.ipa Payload
           rm -rf Payload
           ls -lh IskoAko.ipa
@@ -74,3 +49,4 @@ workflows:
 
     artifacts:
       - mobile/IskoAko.ipa
+
