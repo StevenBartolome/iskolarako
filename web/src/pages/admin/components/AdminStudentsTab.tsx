@@ -76,7 +76,7 @@ export const AdminStudentsTab: React.FC<AdminStudentsTabProps> = ({
                           {student.verificationStatus}
                         </span>
                       </div>
-                      <p className="text-xs text-[#6C6C70] mt-1">{student.school} • {student.course} ({student.yearLevel}) • GWA: {student.gpa}</p>
+                      <p className="text-xs text-[#6C6C70] mt-1">{student.school} • {student.course} ({student.yearLevel})</p>
                     </div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                       student.accountStatus === 'Active' ? 'bg-[#EBF5EE] text-[#2D5941]' : 'bg-red-50 text-[#B34040]'
@@ -109,10 +109,6 @@ export const AdminStudentsTab: React.FC<AdminStudentsTabProps> = ({
                   <div>
                     <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Degree Course & Year Level</span>
                     <span className="text-[#1C1C1E] font-medium">{selectedStudent.course} • {selectedStudent.yearLevel}</span>
-                  </div>
-                  <div>
-                    <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Academic GWA / Grade</span>
-                    <span className="text-[#1C1C1E] font-medium font-serif">{selectedStudent.gpa}</span>
                   </div>
                   <div>
                     <span className="text-[#8E8E93] block uppercase font-bold text-[9px]">Citizenship</span>

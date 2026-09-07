@@ -91,10 +91,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
     initialCycle?.endDate || defaultEndDate
   );
 
-  // Freshmen specifics
-  const [allowFreshmanIntendedSchool, setAllowFreshmanIntendedSchool] = useState<boolean>(
-    programToEdit?.allow_freshman_intended_school ?? true
-  );
+  // Freshmen specifics (always enabled)
+  const allowFreshmanIntendedSchool = true;
 
   // Step 2: Financial Benefits
   const [amount, setAmount] = useState(
@@ -1494,40 +1492,6 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               3. Eligibility Criteria, Year Levels & Academic Field Selection
             </h3>
 
-            {/* Special Highlight Banner for Freshmen */}
-            <div className={`p-5 rounded-3xl border transition-all ${
-              isFreshmanTarget ? 'bg-[#E6F4EA] border-[#CEEAD6] text-[#137333]' : 'bg-[#F9F5EF] border-[#D9D2C5]'
-            }`}>
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🎓</span>
-                <div>
-                  <h4 className="text-sm font-extrabold">
-                    {isFreshmanTarget ? 'Incoming College Freshmen Intake Mode Enabled' : 'Standard Student Intake Mode'}
-                  </h4>
-                  <p className="text-xs mt-0.5 opacity-90">
-                    {isFreshmanTarget
-                      ? 'Students applying for 1st Year college might not have an enrolled school yet. They will be prompted for Current High School, Target / Intended College, and Intended Course choices.'
-                      : 'Students will specify their current institution, active course/strand, and enrolled term.'
-                    }
-                  </p>
-                </div>
-              </div>
-
-              {isFreshmanTarget && (
-                <div className="mt-4 pt-3 border-t border-[#CEEAD6] flex items-center justify-between text-xs">
-                  <span className="font-bold">Allow Intended / Target School Inputs for Applicants</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={allowFreshmanIntendedSchool}
-                      onChange={(e) => setAllowFreshmanIntendedSchool(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#137333]"></div>
-                  </label>
-                </div>
-              )}
-            </div>
 
             {/* Academic Standards */}
             <div className="grid grid-cols-1 gap-6">
