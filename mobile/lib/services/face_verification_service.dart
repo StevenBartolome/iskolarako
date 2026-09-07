@@ -249,7 +249,7 @@ CRITICAL MATCHING RULES:
           progress: progress,
           isCompleted: isCompleted,
           hint: isCompleted
-              ? 'Blink detected! ✓'
+              ? 'Blink detected!'
               : (!eyesOpenObserved
                   ? 'Keep eyes open, looking at camera'
                   : 'Blink both eyes naturally now'),
@@ -282,7 +282,7 @@ CRITICAL MATCHING RULES:
           progress: progress,
           isCompleted: isCompleted,
           hint: isCompleted
-              ? 'Turn Left completed 100%! ✓'
+              ? 'Turn Left completed 100%!'
               : progress > 0.05
                   ? 'Turning Left: ${(progress * 100).toInt()}% (Turn more to reach 100%)'
                   : 'Slowly turn your head to the LEFT',
@@ -315,7 +315,7 @@ CRITICAL MATCHING RULES:
           progress: progress,
           isCompleted: isCompleted,
           hint: isCompleted
-              ? 'Turn Right completed 100%! ✓'
+              ? 'Turn Right completed 100%!'
               : progress > 0.05
                   ? 'Turning Right: ${(progress * 100).toInt()}% (Turn more to reach 100%)'
                   : 'Slowly turn your head to the RIGHT',

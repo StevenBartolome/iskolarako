@@ -835,10 +835,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           ),
                                           child: Text(
                                             (_isProfileComplete && _faceVerificationStatus == 'verified')
-                                                ? '✓ Verified Scholar'
+                                                ? 'Verified Scholar'
                                                 : (!_isProfileInfoComplete)
-                                                    ? '● Incomplete Profile'
-                                                    : '● Unverified Identity',
+                                                    ? 'Incomplete Profile'
+                                                    : 'Unverified Identity',
                                             style: GoogleFonts.inter(
                                               fontSize: 10.5,
                                               fontWeight: FontWeight.w700,

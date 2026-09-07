@@ -225,19 +225,19 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
               items: const [
                 DropdownMenuItem(
                   value: '1st Year / Incoming Freshmen',
-                  child: Text('🎓 1st Year / Incoming Freshmen'),
+                  child: Text('1st Year / Incoming Freshmen'),
                 ),
                 DropdownMenuItem(
                   value: '2nd Year College',
-                  child: Text('🏛️ 2nd Year College'),
+                  child: Text('2nd Year College'),
                 ),
                 DropdownMenuItem(
                   value: '3rd Year College',
-                  child: Text('🏛️ 3rd Year College'),
+                  child: Text('3rd Year College'),
                 ),
                 DropdownMenuItem(
                   value: '4th Year / Graduating',
-                  child: Text('🏛️ 4th Year / Graduating'),
+                  child: Text('4th Year / Graduating'),
                 ),
               ],
               onChanged: (val) {

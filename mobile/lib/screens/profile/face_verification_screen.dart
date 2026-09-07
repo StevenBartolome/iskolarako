@@ -488,8 +488,8 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     setState(() {
       _livenessStatus = _LivenessStatus.actionPassed;
       _liveActionHint = action == LivenessAction.blink
-          ? 'Blink detected! ✓'
-          : 'Action Passed 100%! ✓';
+          ? 'Blink detected!'
+          : 'Action Passed 100%!';
       if (action == LivenessAction.blink) _blinkDone = true;
       if (action == LivenessAction.turnLeft) _turnLeftDone = true;
       if (action == LivenessAction.turnRight) _turnRightDone = true;
@@ -1746,7 +1746,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                     children: [
                       Text(
                         isVerified
-                            ? '1 Face Detected — Alone Verified ✓'
+                            ? '1 Face Detected — Alone Verified'
                             : 'Focusing on Face (${remainingSeconds}s)...',
                         style: GoogleFonts.inter(
                           color: const Color(0xFF1E40AF),
@@ -2835,7 +2835,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         setState(() {
           _tempCapturedBytes = null;
           _isClassifyingPhoto = false;
-          _cameraScanError = '❌ $errorMsg';
+          _cameraScanError = errorMsg;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2858,7 +2858,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         setState(() {
           _tempCapturedBytes = null;
           _isClassifyingPhoto = false;
-          _cameraScanError = '❌ Wrong side detected! Found $wrongLabel side. Please align $expectedLabel side.';
+          _cameraScanError = 'Wrong side detected! Found $wrongLabel side. Please align $expectedLabel side.';
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

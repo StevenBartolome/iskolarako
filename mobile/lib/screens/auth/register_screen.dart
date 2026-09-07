@@ -976,13 +976,13 @@ class _RegisterScreenState extends State<RegisterScreen>
                   isExpanded: true,
                   icon: const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.primary),
                   items: const [
-                    DropdownMenuItem(value: 'college',          child: Text('🎓 College / Undergraduate')),
-                    DropdownMenuItem(value: 'graduate',         child: Text('🏛️ Graduate Studies (MA/PhD)')),
-                    DropdownMenuItem(value: 'senior_high',      child: Text('📚 Senior High School (SHS)')),
-                    DropdownMenuItem(value: 'high_school',      child: Text('🏫 High School (JHS)')),
-                    DropdownMenuItem(value: 'elementary',       child: Text('🔖 Elementary')),
-                    DropdownMenuItem(value: 'vocational',       child: Text('🔧 Vocational / TVET')),
-                    DropdownMenuItem(value: 'incoming_college', child: Text('🌟 Incoming College (Graduating SHS)')),
+                    DropdownMenuItem(value: 'college',          child: Text('College / Undergraduate')),
+                    DropdownMenuItem(value: 'graduate',         child: Text('Graduate Studies (MA/PhD)')),
+                    DropdownMenuItem(value: 'senior_high',      child: Text('Senior High School (SHS)')),
+                    DropdownMenuItem(value: 'high_school',      child: Text('High School (JHS)')),
+                    DropdownMenuItem(value: 'elementary',       child: Text('Elementary')),
+                    DropdownMenuItem(value: 'vocational',       child: Text('Vocational / TVET')),
+                    DropdownMenuItem(value: 'incoming_college', child: Text('Incoming College (Graduating SHS)')),
                   ],
                   onChanged: (val) => setState(() {
                     _selectedEduLevel = val;
@@ -1131,13 +1131,19 @@ class _RegisterScreenState extends State<RegisterScreen>
             if (_isScaleLocked)
               Padding(
                 padding: const EdgeInsets.only(top: 6, left: 2),
-                child: Text(
-                  '🔒 Grading system verified for this school and locked.',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.lock, size: 12, color: AppColors.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Grading system verified for this school and locked.',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],
