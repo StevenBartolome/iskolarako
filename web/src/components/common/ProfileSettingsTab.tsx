@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Save } from 'lucide-react';
 import { supabase } from '@/services/supabaseClient';
 import { createAuditLog } from '@/services/auditLogService';
 
@@ -278,9 +279,14 @@ export const ProfileSettingsTab: React.FC<ProfileSettingsTabProps> = ({
             <button
               type="submit"
               disabled={saving}
-              className="px-8 py-2.5 bg-[#1A3C2E] hover:bg-[#2D5941] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center justify-center gap-1.5 px-8 py-2.5 bg-[#1A3C2E] hover:bg-[#2D5941] text-white rounded-xl text-xs font-bold border-0 cursor-pointer transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {saving ? 'Saving...' : '💾 Save Changes'}
+              {saving ? 'Saving...' : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Save Changes</span>
+                </>
+              )}
             </button>
           </div>
         </form>

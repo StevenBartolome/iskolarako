@@ -1,4 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import {
+  LayoutDashboard,
+  Building2,
+  GraduationCap,
+  Users,
+  FileEdit,
+  FileText,
+  Flag,
+  Coins,
+  Megaphone,
+  ScrollText,
+  Settings,
+  User,
+} from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
@@ -163,7 +177,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     fetchPrograms();
   }, [selectedProvider]);
 
-  const renderSidebarBtn = (tab: AdminTab, label: string, emoji: string) => {
+  const renderSidebarBtn = (tab: AdminTab, label: string, icon: React.ReactNode) => {
     const isActive = activeTab === tab;
     return (
       <button
@@ -175,7 +189,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
             : 'text-[#9BA89F] hover:bg-white/5 hover:text-white bg-transparent'
           }`}
       >
-        <span className="text-sm">{emoji}</span>
+        <span className="shrink-0">{icon}</span>
         {!isCollapsed && <span>{label}</span>}
       </button>
     );
@@ -1544,7 +1558,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
 
     if (error) {
       console.error('[Admin] DB update error:', error.code, error.message, error.details, error.hint);
-      showToast(`❌ DB Error (${error.code}): ${error.message}`);
+      showToast(`DB Error (${error.code}): ${error.message}`);
       return;
     }
 
@@ -1552,7 +1566,7 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
     fetchRealScholarships();
     const title = scholarships.find(s => s.id === id)?.title || 'Scholarship';
     addAuditLog(`${action.toUpperCase()} SCHOLARSHIP`, title);
-    showToast(`✅ Scholarship "${title}" is now ${action}.`);
+    showToast(`Scholarship "${title}" is now ${action}.`);
   };
 
   const handleConfirmRejectScholarship = async () => {
@@ -1570,13 +1584,13 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
 
     if (error) {
       console.error('[Admin] Reject error:', error.code, error.message);
-      showToast(`❌ DB Error: ${error.message}`);
+      showToast(`DB Error: ${error.message}`);
       return;
     }
 
     const title = scholarships.find(s => s.id === rejectScholarshipId)?.title || 'Scholarship';
     addAuditLog('REJECTED SCHOLARSHIP', title);
-    showToast(`❌ Scholarship "${title}" has been rejected.`);
+    showToast(`Scholarship "${title}" has been rejected.`);
     setIsRejectScholarshipModalOpen(false);
     setRejectScholarshipId(null);
     setRejectScholarshipRemarks('');
@@ -1722,10 +1736,10 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
               )}
               {(!isCollapsed && collapsedGroups.operations) ? null : (
                 <div className="space-y-1 animate-fade-in">
-                  {renderSidebarBtn('dashboard', 'Dashboard', '📊')}
-                  {renderSidebarBtn('providers', 'Provider Management', '🏢')}
-                  {renderSidebarBtn('scholarships', 'Scholarships', '🎓')}
-                  {renderSidebarBtn('students', 'Scholar Management', '👨‍🎓')}
+                  {renderSidebarBtn('dashboard', 'Dashboard', <LayoutDashboard className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('providers', 'Provider Management', <Building2 className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('scholarships', 'Scholarships', <GraduationCap className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('students', 'Scholar Management', <Users className="w-4 h-4 shrink-0" />)}
                 </div>
               )}
             </div>
@@ -1748,10 +1762,10 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
               )}
               {(!isCollapsed && collapsedGroups.oversight) ? null : (
                 <div className="space-y-1 animate-fade-in">
-                  {renderSidebarBtn('applications', 'Application Monitor', '📝')}
-                  {renderSidebarBtn('documents', 'Docs Oversight', '📄')}
-                  {renderSidebarBtn('reports', 'Reports & Complaints', '🚩')}
-                  {renderSidebarBtn('funds', 'Fund Transactions', '💰')}
+                  {renderSidebarBtn('applications', 'Application Monitor', <FileEdit className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('documents', 'Docs Oversight', <FileText className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('reports', 'Reports & Complaints', <Flag className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('funds', 'Fund Transactions', <Coins className="w-4 h-4 shrink-0" />)}
                 </div>
               )}
             </div>
@@ -1774,10 +1788,10 @@ export const SystemAdminPortal: React.FC<SystemAdminPortalProps> = ({ onLogout, 
               )}
               {(!isCollapsed && collapsedGroups.control) ? null : (
                 <div className="space-y-1 animate-fade-in">
-                  {renderSidebarBtn('notifications', 'Broadcast Portal', '📢')}
-                  {renderSidebarBtn('logs', 'System Audit Logs', '📝')}
-                  {renderSidebarBtn('settings', 'System Settings', '⚙️')}
-                  {renderSidebarBtn('profile', 'Profile Settings', '👤')}
+                  {renderSidebarBtn('notifications', 'Broadcast Portal', <Megaphone className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('logs', 'System Audit Logs', <ScrollText className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('settings', 'System Settings', <Settings className="w-4 h-4 shrink-0" />)}
+                  {renderSidebarBtn('profile', 'Profile Settings', <User className="w-4 h-4 shrink-0" />)}
                 </div>
               )}
             </div>

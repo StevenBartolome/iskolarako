@@ -1,4 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Zap,
+  Bot,
+  Loader2,
+  AlertTriangle,
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+  AlertOctagon,
+  ExternalLink,
+  RefreshCw,
+  Flag,
+  Microscope,
+  AlertCircle,
+  XCircle,
+  Building2,
+  FileText,
+  Lock,
+  Ban,
+  Check,
+} from 'lucide-react';
 import type { ProviderOrg, ProviderDocumentItem, AdminTab } from '../types';
 import { supabase } from '@/services/supabaseClient';
 import {
@@ -336,8 +357,9 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                       {prov.status}
                     </span>
                     {prov.documents?.some(d => d.aiVerification) && (
-                      <span className="text-[9px] font-bold text-[#2D5941] bg-white px-1.5 py-0.5 rounded border border-[#2D5941]/30">
-                        ⚡ AI Audited
+                      <span className="text-[9px] font-bold text-[#2D5941] bg-white px-1.5 py-0.5 rounded border border-[#2D5941]/30 inline-flex items-center gap-0.5">
+                        <Zap className="w-2.5 h-2.5 text-[#2D5941]" />
+                        <span>AI Audited</span>
                       </span>
                     )}
                   </div>
@@ -370,7 +392,10 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                 {/* Batch Verification Toolbar */}
                 <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-[#D9D2C5] gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-[#1A3C2E]">🤖 AI Forensic Engine:</span>
+                    <span className="text-xs font-bold text-[#1A3C2E] inline-flex items-center gap-1">
+                      <Bot className="w-4 h-4 text-[#1A3C2E]" />
+                      <span>AI Forensic Engine:</span>
+                    </span>
                     <span className="text-[10px] text-[#6C6C70]">Pixtral 12B & Gemini Vision</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -382,12 +407,13 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                     >
                       {isBatchScanning ? (
                         <>
-                          <span className="animate-spin text-xs">⏳</span>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           <span>Scanning...</span>
                         </>
                       ) : (
                         <>
-                          <span>⚡ Verify All Org Docs with AI</span>
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>Verify All Org Docs with AI</span>
                         </>
                       )}
                     </button>
@@ -396,7 +422,8 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                       onClick={handleMarkAllVerified}
                       className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-[11px] font-bold border border-[#2D5941]/30 cursor-pointer inline-flex items-center gap-1 transition-all"
                     >
-                      ✓ Mark All Verified
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Mark All Verified</span>
                     </button>
                   </div>
                 </div>
@@ -405,7 +432,7 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                 {isBatchScanning && (
                   <div className="bg-[#FFF8EE] border border-[#C97B2E]/40 p-3 rounded-2xl flex items-center justify-between text-xs animate-pulse">
                     <div className="flex items-center gap-2 text-[#C97B2E] font-bold">
-                      <span className="animate-spin text-base">⚙️</span>
+                      <Loader2 className="w-4 h-4 animate-spin text-[#C97B2E]" />
                       <span>{batchProgressMsg || 'Analyzing organization credentials with multi-AI vision...'}</span>
                     </div>
                   </div>
@@ -419,8 +446,12 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                       : 'bg-[#EBF5EE] border-[#2D5941]/40 text-[#2D5941]'
                   }`}>
                     <div className="flex items-center gap-2.5">
-                      <span className="text-xl">
-                        {autoScanSummary.flagged > 0 ? '⚠️' : '🛡️'}
+                      <span className="shrink-0">
+                        {autoScanSummary.flagged > 0 ? (
+                          <AlertTriangle className="w-5 h-5 text-amber-600" />
+                        ) : (
+                          <ShieldCheck className="w-5 h-5 text-[#2D5941]" />
+                        )}
                       </span>
                       <div>
                         <strong className="block font-bold">
@@ -451,7 +482,8 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                       {selectedProvider.status === 'Pending' && selectedProvider.documents.length === 0 && (
                         <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 text-[#8C4A00] p-4 rounded-2xl text-xs space-y-1">
                           <strong className="font-bold block flex items-center gap-1.5 text-sm">
-                            <span>⏳</span> Pending Verification Request
+                            <Clock className="w-4 h-4" />
+                            <span>Pending Verification Request</span>
                           </strong>
                           <p className="leading-relaxed opacity-90">
                             This organization has not yet submitted a formal verification request. Any files uploaded by the provider are currently in draft mode and will reflect here once they click "Submit Verification Request".
@@ -512,12 +544,23 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                                 ? 'bg-red-100 text-red-800 border-red-300'
                                                 : 'bg-amber-100 text-amber-900 border-amber-300'
                                             }`}>
-                                              <span>
-                                                {aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD'
-                                                  ? '🟢 ✓ AI Verified'
-                                                  : aiRes.tamperingDetected || assessment.quality === 'BAD'
-                                                  ? '🔴 Tampering Alert'
-                                                  : '🟡 ⚠️ AI Flagged'}
+                                              <span className="inline-flex items-center gap-1">
+                                                {aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD' ? (
+                                                  <>
+                                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                    <span>AI Verified</span>
+                                                  </>
+                                                ) : aiRes.tamperingDetected || assessment.quality === 'BAD' ? (
+                                                  <>
+                                                    <AlertOctagon className="w-3 h-3 text-red-600" />
+                                                    <span>Tampering Alert</span>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                                    <span>AI Flagged</span>
+                                                  </>
+                                                )}
                                               </span>
                                               <span className="font-semibold">
                                                 ({assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'})
@@ -525,8 +568,9 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                             </span>
                                           );
                                         })() : submittedDoc?.isAiScanning ? (
-                                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
-                                            ⏳ AI Scanning...
+                                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300 inline-flex items-center gap-1">
+                                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                            <span>AI Scanning...</span>
                                           </span>
                                         ) : null}
                                       </div>
@@ -542,7 +586,8 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                           rel="noreferrer"
                                           className="px-2.5 py-1.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[10.5px] font-bold border-0 cursor-pointer inline-flex items-center gap-1 transition-colors no-underline"
                                         >
-                                          <span>Preview ↗</span>
+                                          <span>Preview</span>
+                                          <ExternalLink className="w-3 h-3" />
                                         </a>
                                       )}
 
@@ -555,12 +600,22 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                         >
                                           {submittedDoc.isAiScanning ? (
                                             <>
-                                              <span className="animate-spin text-xs">⏳</span>
+                                              <Loader2 className="w-3 h-3 animate-spin" />
                                               <span>Scanning...</span>
                                             </>
                                           ) : (
                                             <>
-                                              <span>{aiRes ? '🔄 Re-scan AI' : '⚡ Run AI Scan'}</span>
+                                              {aiRes ? (
+                                                <>
+                                                  <RefreshCw className="w-3 h-3" />
+                                                  <span>Re-scan AI</span>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <Zap className="w-3 h-3" />
+                                                  <span>Run AI Scan</span>
+                                                </>
+                                              )}
                                             </>
                                           )}
                                         </button>
@@ -585,24 +640,26 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                           <button
                                             type="button"
                                             onClick={() => toggleDocVerified(req.name, docStatus === 'Verified' ? 'Pending' : 'Verified')}
-                                            className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border-0 ${
+                                            className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border-0 inline-flex items-center gap-1 ${
                                               docStatus === 'Verified'
                                                 ? 'bg-[#2D5941] text-white shadow-2xs'
                                                 : 'bg-[#EBF5EE] text-[#2D5941] hover:bg-[#2D5941] hover:text-white'
                                             }`}
                                           >
-                                            {docStatus === 'Verified' ? '✓ Verified' : 'Mark Verified'}
+                                            <Check className="w-3 h-3" />
+                                            <span>{docStatus === 'Verified' ? 'Verified' : 'Mark Verified'}</span>
                                           </button>
                                           <button
                                             type="button"
                                             onClick={() => toggleDocVerified(req.name, docStatus === 'Flagged' ? 'Pending' : 'Flagged')}
-                                            className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border-0 ${
+                                            className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold cursor-pointer transition-colors border-0 inline-flex items-center gap-1 ${
                                               docStatus === 'Flagged'
                                                 ? 'bg-[#B34040] text-white shadow-2xs'
                                                 : 'bg-red-50 text-[#B34040] hover:bg-[#B34040] hover:text-white'
                                             }`}
                                           >
-                                            {docStatus === 'Flagged' ? '🚩 Flagged' : 'Flag'}
+                                            <Flag className="w-3 h-3" />
+                                            <span>{docStatus === 'Flagged' ? 'Flagged' : 'Flag'}</span>
                                           </button>
                                         </>
                                       )}
@@ -617,8 +674,9 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                         {/* Assessment Header Bar */}
                                         <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2 flex-wrap gap-2">
                                           <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
-                                              🔬 Forensic Analysis Report
+                                            <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider inline-flex items-center gap-1">
+                                              <Microscope className="w-3.5 h-3.5" />
+                                              <span>Forensic Analysis Report</span>
                                             </span>
                                             <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
                                               Model: <strong>{aiRes.aiModelUsed || 'Gemini 2.5 Flash'}</strong> ({aiRes.provider || 'DeepMind'})
@@ -637,8 +695,14 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                             ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#8C4A00]'
                                             : 'bg-red-50 border-red-200 text-red-900'
                                         }`}>
-                                          <span className="text-sm shrink-0">
-                                            {assessment.quality === 'GOOD' ? '🟢' : assessment.quality === 'CAUTION' ? '🟡' : '🔴'}
+                                          <span className="shrink-0 mt-0.5">
+                                            {assessment.quality === 'GOOD' ? (
+                                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                            ) : assessment.quality === 'CAUTION' ? (
+                                              <AlertCircle className="w-4 h-4 text-amber-600" />
+                                            ) : (
+                                              <XCircle className="w-4 h-4 text-red-600" />
+                                            )}
                                           </span>
                                           <div className="space-y-0.5">
                                             <span className="font-bold block text-xs">
@@ -655,8 +719,9 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                         {/* Left: Declared Org Profile */}
                                         <div className="bg-white p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1">
-                                          <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
-                                            🏢 Declared Organization Profile
+                                          <span className="text-[10px] font-bold text-[#6C6C70] uppercase inline-flex items-center gap-1">
+                                            <Building2 className="w-3 h-3" />
+                                            <span>Declared Organization Profile</span>
                                           </span>
                                           <div className="space-y-1 text-xs">
                                             <div className="flex justify-between">
@@ -676,8 +741,9 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
 
                                         {/* Right: AI Extracted Document Data */}
                                         <div className="bg-white p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1">
-                                          <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
-                                            📄 AI Extracted Legal Data
+                                          <span className="text-[10px] font-bold text-[#6C6C70] uppercase inline-flex items-center gap-1">
+                                            <FileText className="w-3 h-3" />
+                                            <span>AI Extracted Legal Data</span>
                                           </span>
                                           <div className="space-y-1 text-xs">
                                             <div className="flex justify-between items-center">
@@ -685,9 +751,9 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                               <div className="flex items-center gap-1">
                                                 <strong className="text-[#1C1C1E]">{aiRes.extractedName || 'Not detected'}</strong>
                                                 {aiRes.crossCheckResults.nameMatch ? (
-                                                  <span className="text-[10px] text-[#2D5941]" title="Entity matches registration">✓</span>
+                                                  <Check className="w-3 h-3 text-[#2D5941]" />
                                                 ) : (
-                                                  <span className="text-[10px] text-[#B34040]" title="Entity mismatch">⚠️</span>
+                                                  <AlertTriangle className="w-3 h-3 text-[#B34040]" />
                                                 )}
                                               </div>
                                             </div>
@@ -708,19 +774,27 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                       {/* Security Signals */}
                                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
                                         <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
-                                          <span>{aiRes.hasOfficialSealOrSignature ? '🟢' : '🟡'}</span>
+                                          {aiRes.hasOfficialSealOrSignature ? (
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                          ) : (
+                                            <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                          )}
                                           <span className="text-[#1C1C1E]">
                                             {aiRes.hasOfficialSealOrSignature ? 'Official Dry Seal / Stamp Detected' : 'Seal Unclear'}
                                           </span>
                                         </div>
                                         <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
-                                          <span>{aiRes.tamperingDetected ? '🔴' : '🟢'}</span>
+                                          {aiRes.tamperingDetected ? (
+                                            <XCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                                          ) : (
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                          )}
                                           <span className="text-[#1C1C1E]">
                                             {aiRes.tamperingDetected ? 'Visual Alteration Detected' : 'No Digital Tampering'}
                                           </span>
                                         </div>
                                         <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60 col-span-2 sm:col-span-1">
-                                          <span>🔒</span>
+                                          <Lock className="w-3.5 h-3.5 text-[#6C6C70] shrink-0" />
                                           <span className="text-[#6C6C70] truncate font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
                                             Hash: {aiRes.sha256Hash?.slice(0, 10)}...
                                           </span>
@@ -730,8 +804,9 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                                       {/* Flagged Issues */}
                                       {aiRes.flags.length > 0 && (
                                         <div className="p-2.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
-                                          <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider block">
-                                            ⚠️ Compliance Anomalies & Warnings:
+                                          <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider inline-flex items-center gap-1">
+                                            <AlertTriangle className="w-3 h-3 text-[#B34040]" />
+                                            <span>Compliance Anomalies & Warnings:</span>
                                           </span>
                                           <ul className="list-disc list-inside text-xs text-[#B34040] space-y-0.5 font-medium">
                                             {aiRes.flags.map((flag, fIdx) => (
@@ -768,7 +843,8 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                       <div className="flex flex-col gap-2 pt-4 border-t border-[#D9D2C5]">
                         {allRequiredPassed && (
                           <div className="bg-[#EBF5EE] border border-[#2D5941]/30 text-[#2D5941] p-2.5 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5">
-                            <span>✓</span> All required organization compliance documents verified authentic. Ready for Approval.
+                            <Check className="w-3.5 h-3.5" />
+                            <span>All required organization compliance documents verified authentic. Ready for Approval.</span>
                           </div>
                         )}
 
@@ -777,9 +853,10 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                             <button
                               type="button"
                               onClick={() => handleVerifyProvider(selectedProvider.id, 'Suspended')}
-                              className="w-full bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all"
+                              className="w-full bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all inline-flex items-center justify-center gap-1.5"
                             >
-                              ⛔ Suspend Organization with Remarks
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Suspend Organization with Remarks</span>
                             </button>
                             <p className="text-[10px] text-[#6C6C70] font-sans text-center leading-relaxed">
                               Suspending requires the provider to re-upload and re-submit their verification documents.
@@ -801,7 +878,8 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                               }}
                               className="w-full bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold py-3 rounded-xl cursor-pointer border-0 shadow-md transition-all flex items-center justify-center gap-2 font-sans"
                             >
-                              <span>🔄 Reactivate Organization & Clear Remarks</span>
+                              <RefreshCw className="w-4 h-4" />
+                              <span>Reactivate Organization & Clear Remarks</span>
                             </button>
                           </div>
                         ) : (
@@ -809,13 +887,14 @@ export const AdminProvidersTab: React.FC<AdminProvidersTabProps> = ({
                             <button
                               type="button"
                               onClick={() => handleVerifyProvider(selectedProvider.id, 'Verified')}
-                              className={`flex-1 text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all ${
+                              className={`flex-1 text-white text-xs font-bold py-2.5 rounded-xl cursor-pointer border-0 shadow-sm transition-all inline-flex items-center justify-center gap-1.5 ${
                                 allRequiredPassed
                                   ? 'bg-[#2D5941] hover:bg-[#1A3C2E] ring-2 ring-[#2D5941]/40'
                                   : 'bg-[#2D5941] hover:bg-[#1A3C2E]'
                               }`}
                             >
-                              {allRequiredPassed ? '✓ Approve Organization' : 'Approve Organization'}
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Approve Organization</span>
                             </button>
                             <button
                               type="button"

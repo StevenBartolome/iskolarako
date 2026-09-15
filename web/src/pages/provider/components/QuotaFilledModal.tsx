@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Trophy, Info, Send, X } from 'lucide-react';
 import { supabase } from '@/services/supabaseClient';
 import { createAuditLog } from '@/services/auditLogService';
 import { sendDecisionNotification } from '@/services/notificationService';
@@ -112,7 +113,7 @@ export const QuotaFilledModal: React.FC<QuotaFilledModalProps> = ({
           if (scholarId) {
             await supabase.from('notifications').insert({
               user_id: scholarId,
-              title: templateType === 'exam' ? '📋 Qualifying Exam Update' : '📋 Scholarship Application Update',
+              title: templateType === 'exam' ? 'Qualifying Exam Update' : 'Scholarship Application Update',
               message: customMessage || (templateType === 'exam' ? defaultExamMsg : defaultStandardMsg),
               type: 'info',
               is_read: false,
@@ -171,7 +172,8 @@ export const QuotaFilledModal: React.FC<QuotaFilledModalProps> = ({
         <div className="flex items-start justify-between border-b border-[#EDE8DE] pb-4">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold mb-2">
-              🏆 Slot Capacity Reached ({totalSlots} / {totalSlots} Approved)
+              <Trophy className="w-3.5 h-3.5 text-amber-700" />
+              <span>Slot Capacity Reached ({totalSlots} / {totalSlots} Approved)</span>
             </div>
             <h3 className="text-2xl font-extrabold text-[#1A3C2E] font-serif leading-snug">
               Batch Resolution for Pending Applicants
@@ -184,14 +186,14 @@ export const QuotaFilledModal: React.FC<QuotaFilledModalProps> = ({
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 cursor-pointer transition-colors"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Informative Alert Box */}
         <div className="bg-[#F9F5EF] p-4 rounded-2xl border border-[#D9D2C5]/60 text-xs space-y-1.5">
           <div className="flex items-center gap-2 font-bold text-[#1A3C2E]">
-            <span>ℹ️</span>
+            <Info className="w-4 h-4 text-[#1A3C2E] shrink-0" />
             <span>Unbiased Candidate Ranking & Automated Resolution</span>
           </div>
           <p className="text-[#6C6C70] leading-relaxed">
@@ -400,7 +402,7 @@ export const QuotaFilledModal: React.FC<QuotaFilledModalProps> = ({
               </>
             ) : (
               <>
-                <span>📨</span>
+                <Send className="w-3.5 h-3.5" />
                 <span>Confirm & Send Notifications ({candidatesToClose.length})</span>
               </>
             )}

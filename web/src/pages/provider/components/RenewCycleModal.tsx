@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Pencil, RefreshCw, Sparkles, X, FileText, AlertTriangle, Users, Megaphone } from 'lucide-react';
 import type { Program } from '../ProviderPortal';
 
 export interface RenewalRequirementItem {
@@ -152,20 +153,33 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-[#D9D2C5]/30">
         <div className="bg-[#1A3C2E] p-6 text-white flex justify-between items-center shrink-0">
           <div>
-            <h3 className="text-lg font-bold font-serif">
-              {isEditing
-                ? `✏️ Edit Cycle: ${renewCycleName || 'Cycle'}`
-                : renewCycleType === 'renewal'
-                ? '🔄 Open Semestral Renewal Period'
-                : '✨ New Application Cycle'}
+            <h3 className="text-lg font-bold font-serif flex items-center gap-2">
+              {isEditing ? (
+                <>
+                  <Pencil className="w-4 h-4 text-white/90" />
+                  <span>Edit Cycle: {renewCycleName || 'Cycle'}</span>
+                </>
+              ) : renewCycleType === 'renewal' ? (
+                <>
+                  <RefreshCw className="w-4 h-4 text-white/90" />
+                  <span>Open Semestral Renewal Period</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-white/90" />
+                  <span>New Application Cycle</span>
+                </>
+              )}
             </h3>
             <p className="text-xs text-white/70 mt-1">For: {program.title}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-white/80 hover:text-white bg-transparent border-0 cursor-pointer text-xl"
-          >&times;</button>
+            className="text-white/80 hover:text-white bg-transparent border-0 cursor-pointer p-1 rounded-full hover:bg-white/10"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <form onSubmit={onSubmit} className="p-7 space-y-5 overflow-y-auto flex-1">
@@ -192,7 +206,8 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                   }`}
                 >
                   <div className="text-xs font-bold flex items-center gap-1.5">
-                    <span>🔄 Semestral Renewal</span>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Semestral Renewal</span>
                   </div>
                   <p className="text-[10.5px] text-[#6C6C70] mt-1">
                     For approved/continuing scholars submitting renewal requirements
@@ -216,7 +231,8 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                   }`}
                 >
                   <div className="text-xs font-bold flex items-center gap-1.5">
-                    <span>✨ New Applicant Batch</span>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>New Applicant Batch</span>
                   </div>
                   <p className="text-[10.5px] text-[#6C6C70] mt-1">
                     For fresh applicants & incoming new scholars
@@ -289,8 +305,9 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
             {renewCycleType === 'renewal' && (
               <div className="space-y-3 p-4 rounded-2xl bg-[#F9F5EF] border border-[#D9D2C5]/60">
                 <div>
-                  <label className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wider block">
-                    📋 Required Documents for this Renewal *
+                  <label className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-[#1A3C2E]" />
+                    <span>Required Documents for this Renewal *</span>
                   </label>
                   <p className="text-[11px] text-[#6C6C70] mt-0.5">
                     Scholars will be required to upload these documents before their renewal can be submitted.
@@ -398,8 +415,9 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
                 </div>
 
                 {renewRequirements.length === 0 && (
-                  <p className="text-[11px] text-rose-600 font-medium">
-                    ⚠️ Please select or add at least one required renewal document.
+                  <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Please select or add at least one required renewal document.</span>
                   </p>
                 )}
               </div>
@@ -421,7 +439,7 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
             ) : (
               <div className="p-3.5 rounded-xl bg-[#EBF5EE] border border-[#2D5941]/30 text-xs text-[#1A3C2E] flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm">👥</span>
+                  <Users className="w-4 h-4 text-[#1A3C2E]" />
                   <span className="font-bold">Renewal Slots:</span>
                 </div>
                 <span className="font-extrabold bg-[#1A3C2E] text-white px-3 py-1 rounded-full text-[11px] shadow-sm">
@@ -432,8 +450,9 @@ export const RenewCycleModal: React.FC<RenewCycleModalProps> = ({
 
             {renewCycleType === 'renewal' && (
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-[#C97B2E] space-y-1">
-                <div className="font-bold flex items-center gap-1">
-                  <span>📢 Automatic Continuing Scholar Notification</span>
+                <div className="font-bold flex items-center gap-1.5">
+                  <Megaphone className="w-3.5 h-3.5" />
+                  <span>Automatic Continuing Scholar Notification</span>
                 </div>
                 <p className="text-[11px] text-[#8C5216] leading-relaxed">
                   Opening this renewal will notify all approved scholars of <strong>{program.title}</strong> with the requirement checklist ({renewRequirements.length} documents) and deadline.

@@ -1,4 +1,5 @@
 import React from 'react';
+import { XCircle } from 'lucide-react';
 
 interface RejectScholarshipModalProps {
   isOpen: boolean;
@@ -22,7 +23,7 @@ export const RejectScholarshipModal: React.FC<RejectScholarshipModalProps> = ({
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 text-left">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
-            <span className="text-lg">❌</span>
+            <XCircle className="w-5 h-5 text-red-600" />
           </div>
           <div>
             <h3 className="text-lg font-bold text-[#1A3C2E] font-serif">Reject Scholarship</h3>

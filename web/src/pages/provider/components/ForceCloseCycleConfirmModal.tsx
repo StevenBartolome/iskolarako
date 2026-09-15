@@ -1,4 +1,5 @@
 import React from 'react';
+import { Lock, AlertTriangle, Loader2 } from 'lucide-react';
 
 interface ForceCloseCycleConfirmModalProps {
   isOpen: boolean;
@@ -20,8 +21,8 @@ export const ForceCloseCycleConfirmModal: React.FC<ForceCloseCycleConfirmModalPr
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-5 border border-[#D9D2C5]">
-        <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-800 text-2xl mx-auto shadow-xs">
-          🔒
+        <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-800 mx-auto shadow-xs">
+          <Lock className="w-7 h-7 text-amber-800" />
         </div>
         <div className="text-center space-y-2">
           <h3 className="text-xl font-extrabold text-[#1A3C2E] font-serif">Force Close Cycle?</h3>
@@ -29,7 +30,10 @@ export const ForceCloseCycleConfirmModal: React.FC<ForceCloseCycleConfirmModalPr
             Are you sure you want to close the cycle <strong className="text-[#1C1C1E]">"{cycleName}"</strong>?
           </p>
           <div className="bg-[#F9F5EF] p-3 rounded-2xl border border-[#D9D2C5]/70 text-[11px] text-[#6C6C70] text-left leading-normal space-y-1">
-            <span className="font-bold text-[#1A3C2E] block">⚠️ Impact of Closing:</span>
+            <span className="font-bold text-[#1A3C2E] inline-flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+              <span>Impact of Closing:</span>
+            </span>
             <ul className="list-disc pl-4 space-y-0.5">
               <li>This marks the cycle as <strong>Closed</strong>, enabling you to start a new academic year or semester renewal.</li>
               <li>Scholars who haven't completed their bank info can still upload details and be processed manually later.</li>
@@ -53,12 +57,12 @@ export const ForceCloseCycleConfirmModal: React.FC<ForceCloseCycleConfirmModalPr
           >
             {isSubmitting ? (
               <>
-                <span className="animate-spin text-xs">⏳</span>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 <span>Closing...</span>
               </>
             ) : (
               <>
-                <span>🔒</span>
+                <Lock className="w-3.5 h-3.5" />
                 <span>Yes, Force Close</span>
               </>
             )}

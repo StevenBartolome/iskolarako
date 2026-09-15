@@ -1,4 +1,5 @@
 import React from 'react';
+import { Pencil, Check, X } from 'lucide-react';
 import type { RequirementItem, CategoryItem } from '../types';
 
 interface AdminSettingsTabProps {
@@ -134,18 +135,18 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleSaveEditCategory(cat.id)}
-                        className="text-[#2D5941] hover:text-[#1A3C2E] font-bold text-xs cursor-pointer border-0 bg-transparent p-0"
+                        className="text-[#2D5941] hover:text-[#1A3C2E] cursor-pointer border-0 bg-transparent p-0"
                         title="Save"
                       >
-                        ✓
+                        <Check className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingCategoryId(null)}
-                        className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-xs cursor-pointer border-0 bg-transparent p-0"
+                        className="text-[#8E8E93] hover:text-[#1C1C1E] cursor-pointer border-0 bg-transparent p-0"
                         title="Cancel"
                       >
-                        ✕
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ) : (
@@ -154,18 +155,18 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleStartEditCategory(cat)}
-                        className="w-3.5 h-3.5 rounded-full hover:bg-[#2D5941]/20 text-[#2D5941] flex items-center justify-center text-[9px] cursor-pointer transition-all border-0 p-0"
+                        className="w-4 h-4 rounded-full hover:bg-[#2D5941]/20 text-[#2D5941] inline-flex items-center justify-center cursor-pointer transition-all border-0 p-0"
                         title={`Edit ${cat.name}`}
                       >
-                        ✏️
+                        <Pencil className="w-2.5 h-2.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteCategory(cat.id, cat.name)}
-                        className="w-3.5 h-3.5 rounded-full bg-[#B34040]/10 hover:bg-[#B34040] text-[#B34040] hover:text-white flex items-center justify-center text-[8px] font-bold cursor-pointer transition-all border-0 p-0"
+                        className="w-4 h-4 rounded-full bg-[#B34040]/10 hover:bg-[#B34040] text-[#B34040] hover:text-white inline-flex items-center justify-center cursor-pointer transition-all border-0 p-0"
                         title={`Delete ${cat.name}`}
                       >
-                        ✕
+                        <X className="w-2.5 h-2.5" />
                       </button>
                     </>
                   )}
@@ -394,10 +395,10 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
                           <button
                             type="button"
                             onClick={() => handleStartEditRequirement(idx, item)}
-                            className="text-[#2D5941] hover:bg-[#2D5941]/10 p-1.5 rounded-lg cursor-pointer transition-all border-0 bg-transparent"
+                            className="text-[#2D5941] hover:bg-[#2D5941]/10 p-1.5 rounded-lg cursor-pointer transition-all border-0 bg-transparent inline-flex items-center justify-center"
                             title="Edit document requirement"
                           >
-                            ✏️
+                            <Pencil className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"

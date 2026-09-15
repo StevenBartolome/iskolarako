@@ -1,4 +1,15 @@
 import React, { useState, useMemo } from 'react';
+import {
+  BarChart3,
+  Download,
+  CreditCard,
+  Target,
+  GraduationCap,
+  Sparkles,
+  ShieldCheck,
+  Check,
+  Search,
+} from 'lucide-react';
 import type { Program, ScholarAward, DisbursementTx, Announcement } from '../types';
 import type { ApplicationDetail, SubmittedDocItem } from './ReviewApplicationModal';
 import { downloadCsv, dateStampedFilename } from '@/utils/csvExport';
@@ -387,7 +398,9 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
       <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-2xl bg-[#EBF5EE] text-[#2D5941] text-lg font-bold">📊</span>
+            <span className="p-2 rounded-2xl bg-[#EBF5EE] text-[#2D5941] flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-[#2D5941]" />
+            </span>
             <div>
               <h2 className="text-2xl font-extrabold text-[#1A3C2E] font-serif tracking-tight">
                 Analytics, Reports & Audit Hub
@@ -440,7 +453,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
               onClick={exportApplicantsCsv}
               className="px-4 py-2 rounded-2xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold shadow-xs cursor-pointer border-0 transition-all flex items-center gap-1.5"
             >
-              <span>📥</span>
+              <Download className="w-3.5 h-3.5" />
               <span>Export Applicants CSV</span>
             </button>
             <button
@@ -448,7 +461,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
               onClick={exportDisbursementsCsv}
               className="px-4 py-2 rounded-2xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-xs font-bold cursor-pointer border-0 transition-all flex items-center gap-1.5"
             >
-              <span>💳</span>
+              <CreditCard className="w-3.5 h-3.5" />
               <span>Export Ledger</span>
             </button>
           </div>
@@ -489,7 +502,9 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Approval Rate</span>
-            <span className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-sm">🎯</span>
+            <span className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-sm">
+              <Target className="w-4 h-4 text-amber-700" />
+            </span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
@@ -510,7 +525,9 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Avg. Grade %</span>
-            <span className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm">🎓</span>
+            <span className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm">
+              <GraduationCap className="w-4 h-4 text-blue-700" />
+            </span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
@@ -520,8 +537,9 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
               Normalized grade %, scale-independent, across {activeScholarsCount} unique scholars
             </p>
           </div>
-          <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
-            <span>✨</span> Verified Academic Standing
+          <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Verified Academic Standing</span>
           </div>
         </div>
 
@@ -529,7 +547,9 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">AI Trust Score</span>
-            <span className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold text-sm">🛡️</span>
+            <span className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold text-sm">
+              <ShieldCheck className="w-4 h-4 text-purple-700" />
+            </span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
@@ -540,7 +560,11 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
             </p>
           </div>
           <div className="text-[11px] font-bold text-[#6C6C70] flex items-center gap-1">
-            <span className="text-emerald-600 font-bold">✓ Multi-AI</span> Forensic Verification
+            <span className="text-emerald-600 font-bold inline-flex items-center gap-1">
+              <Check className="w-3 h-3 text-emerald-600" />
+              <span>Multi-AI</span>
+            </span>
+            <span>Forensic Verification</span>
           </div>
         </div>
       </div>
@@ -760,7 +784,7 @@ export const ProviderReportsTab: React.FC<ProviderReportsTabProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-8 pr-3 py-1.5 text-xs rounded-xl bg-[#F9F5EF] border border-[#D9D2C5] text-[#1A3C2E] outline-none focus:border-[#1A3C2E] w-56"
               />
-              <span className="absolute left-2.5 top-2 text-xs text-[#8E8E93]">🔍</span>
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-[#8E8E93]" />
             </div>
 
             {/* View Switcher Tabs */}

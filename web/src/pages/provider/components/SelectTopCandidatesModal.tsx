@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Trophy, X, Info, GraduationCap } from 'lucide-react';
 import { normalizeGwa } from '../utils/gwaUtils';
 
 interface SelectTopCandidatesModalProps {
@@ -80,7 +81,7 @@ export const SelectTopCandidatesModal: React.FC<SelectTopCandidatesModalProps> =
         <div className="bg-[#1A3C2E] text-white p-6 flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xl">🏆</span>
+              <Trophy className="w-5 h-5 text-amber-400" />
               <h3 className="text-xl font-bold font-serif">Top Candidates Pre-Approval Selection</h3>
             </div>
             <p className="text-xs text-[#EBF5EE]/80 mt-1 font-medium">
@@ -92,9 +93,9 @@ export const SelectTopCandidatesModal: React.FC<SelectTopCandidatesModalProps> =
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="text-white/70 hover:text-white text-xl font-bold cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-colors"
+            className="text-white/70 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-colors"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -121,7 +122,7 @@ export const SelectTopCandidatesModal: React.FC<SelectTopCandidatesModalProps> =
         {/* Informational Banner */}
         <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between text-xs text-amber-900">
           <div className="flex items-center gap-2">
-            <span className="text-base">ℹ️</span>
+            <Info className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
               Out of <strong>{totalSlots}</strong> total slots, <strong>{alreadyApprovedCount}</strong> are already approved.
               Showing the top <strong>{topApplicants.length}</strong> highest-ranked pending candidate(s).
@@ -254,7 +255,8 @@ export const SelectTopCandidatesModal: React.FC<SelectTopCandidatesModalProps> =
                 </>
               ) : (
                 <>
-                  <span>🎓 Confirm & Batch Approve ({selectedIds.length})</span>
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Confirm & Batch Approve ({selectedIds.length})</span>
                 </>
               )}
             </button>

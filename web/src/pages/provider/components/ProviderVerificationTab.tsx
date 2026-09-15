@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Lock, CheckCircle2, AlertTriangle, AlertOctagon, Microscope, Loader2, ExternalLink, ChevronUp, ChevronDown } from 'lucide-react';
 import type { ProviderDetails, ProviderProfile } from '../types';
 import { supabase } from '@/services/supabaseClient';
 import { getScoreAssessment } from '@/services/aiExtractionService';
@@ -140,7 +141,8 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
           </div>
           {profile?.role === 'provider-member' && (
             <span className="px-3.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold font-sans flex items-center gap-1.5 shrink-0">
-              🔒 Read-only (Member View)
+              <Lock className="w-3.5 h-3.5" />
+              <span>Read-only (Member View)</span>
             </span>
           )}
         </div>
@@ -194,11 +196,13 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                       {isUploaded ? (
                         isDocVerifiedByAdmin ? (
                           <span className="px-2.5 py-0.5 rounded-full text-[9.5px] font-bold flex items-center gap-1 border bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30">
-                            <span>🟢 ✓ Verified by Administrator</span>
+                            <CheckCircle2 className="w-3 h-3 text-[#2D5941]" />
+                            <span>Verified by Administrator</span>
                           </span>
                         ) : isDocFlaggedByAdmin ? (
                           <span className="px-2.5 py-0.5 rounded-full text-[9.5px] font-bold flex items-center gap-1 border bg-amber-100 text-amber-900 border-amber-300">
-                            <span>🟡 ⚠️ Admin Flagged</span>
+                            <AlertTriangle className="w-3 h-3 text-amber-700" />
+                            <span>Admin Flagged</span>
                           </span>
                         ) : aiRes ? (
                           <span className={`px-2.5 py-0.5 rounded-full text-[9.5px] font-bold flex items-center gap-1 border ${
@@ -208,13 +212,22 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                               ? 'bg-red-100 text-red-800 border-red-300'
                               : 'bg-amber-100 text-amber-900 border-amber-300'
                           }`}>
-                            <span>
-                              {aiRes.verificationStatus === 'verified' && assessment?.quality === 'GOOD'
-                                ? '🟢 ✓ AI Pre-Scan Verified'
-                                : isAiRejected
-                                ? '🔴 ⚠️ AI Pre-Scan Rejected'
-                                : '🟡 ⚠️ Needs Manual Admin Review'}
-                            </span>
+                            {aiRes.verificationStatus === 'verified' && assessment?.quality === 'GOOD' ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>AI Pre-Scan Verified</span>
+                              </>
+                            ) : isAiRejected ? (
+                              <>
+                                <AlertOctagon className="w-3 h-3" />
+                                <span>AI Pre-Scan Rejected</span>
+                              </>
+                            ) : (
+                              <>
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>Needs Manual Admin Review</span>
+                              </>
+                            )}
                             {assessment && (
                               <span className="font-semibold">
                                 ({assessment.quality === 'GOOD' ? 'Good' : isAiRejected ? 'Rejected' : 'Needs Review'})
@@ -223,8 +236,8 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                           </span>
                         ) : null
                       ) : uploadingDoc === doc.name ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[9.5px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
-                          ⏳ AI Pre-Scanning File...
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                          <Loader2 className="w-3 h-3 animate-spin" /> AI Pre-Scanning File...
                         </span>
                       ) : null}
                     </div>
@@ -244,9 +257,9 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                           href={docUrl} 
                           target="_blank" 
                           rel="noreferrer"
-                          className="text-xs font-bold text-[#C97B2E] hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-[#C97B2E] hover:underline"
                         >
-                          View File ↗
+                          View File <ExternalLink className="w-3 h-3" />
                         </a>
 
                         {aiRes && (
@@ -259,7 +272,11 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                                 : 'bg-white text-[#1A3C2E] border-[#D9D2C5] hover:bg-[#F9F5EF]'
                             }`}
                           >
-                            {isExpanded ? '▲ Hide AI Report' : '▼ AI Forensic Report'}
+                            {isExpanded ? (
+                              <span className="inline-flex items-center gap-1"><ChevronUp className="w-3 h-3" /> Hide AI Report</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1"><ChevronDown className="w-3 h-3" /> AI Forensic Report</span>
+                            )}
                           </button>
                         )}
 
@@ -341,8 +358,9 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                   <div className="mt-2 p-4 bg-white rounded-2xl border border-[#D9D2C5] space-y-3 text-xs animate-fade-in">
                     <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2 flex-wrap gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
-                          🔬 AI Pre-Submission Forensic Analysis
+                        <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider flex items-center gap-1">
+                          <Microscope className="w-3.5 h-3.5 text-[#2D5941]" />
+                          <span>AI Pre-Submission Forensic Analysis</span>
                         </span>
                         <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
                           Engine: <strong>{aiRes.aiModelUsed || 'Multi-AI Vision'}</strong>
@@ -360,7 +378,13 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                         ? 'bg-[#EBF5EE]/70 border-[#2D5941]/30 text-[#1A3C2E]'
                         : 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#8C4A00]'
                     }`}>
-                      <span className="text-base shrink-0">{isAiRejected ? '🔴' : assessment.quality === 'GOOD' ? '🟢' : '🟡'}</span>
+                      {isAiRejected ? (
+                        <AlertOctagon className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      ) : assessment.quality === 'GOOD' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      )}
                       <div className="space-y-0.5">
                         <span className="font-bold block text-xs">
                           {isAiRejected ? 'Document Rejected by AI Pre-Scan' : assessment.textRemark}
@@ -374,19 +398,27 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                     {/* Security Check Chips */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
                       <div className="flex items-center gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                        <span>{aiRes.hasOfficialSealOrSignature ? '🟢' : '🟡'}</span>
+                        {aiRes.hasOfficialSealOrSignature ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        )}
                         <span className="text-[#1C1C1E]">
                           {aiRes.hasOfficialSealOrSignature ? 'Official Stamp / Dry Seal Detected' : 'Seal Unclear / Missing'}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                        <span>{aiRes.tamperingDetected ? '🔴' : '🟢'}</span>
+                        {aiRes.tamperingDetected ? (
+                          <AlertOctagon className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        )}
                         <span className="text-[#1C1C1E]">
                           {aiRes.tamperingDetected ? 'Visual Alteration Detected' : 'Zero Digital Tampering'}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                        <span>🔒</span>
+                        <Lock className="w-3.5 h-3.5 text-[#6C6C70] shrink-0" />
                         <span className="text-[#6C6C70] truncate font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
                           SHA-256: {aiRes.sha256Hash?.slice(0, 10)}...
                         </span>
@@ -396,8 +428,9 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
                     {/* Flags / Anomalies */}
                     {aiRes.flags && aiRes.flags.length > 0 && (
                       <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
-                        <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider block">
-                          ⚠️ AI Anomalies & Compliance Flags:
+                        <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-[#B34040]" />
+                          <span>AI Anomalies & Compliance Flags:</span>
                         </span>
                         <ul className="list-disc list-inside text-xs text-[#B34040] space-y-0.5 font-medium">
                           {aiRes.flags.map((flag: any, fIdx: number) => (
@@ -434,7 +467,8 @@ export const ProviderVerificationTab: React.FC<ProviderVerificationTabProps> = (
               {hasRejectedDoc && (
                 <div className="w-full bg-red-50 border border-red-300 text-red-900 p-4 rounded-2xl text-xs space-y-1 text-left">
                   <strong className="font-bold block flex items-center gap-1.5 text-sm">
-                    <span>⛔</span> Verification Submission Blocked by AI Pre-Scan
+                    <AlertOctagon className="w-4 h-4 text-red-700 shrink-0" />
+                    <span>Verification Submission Blocked by AI Pre-Scan</span>
                   </strong>
                   <p className="leading-relaxed opacity-90 font-sans">
                     One or more uploaded documents were rejected by AI Pre-Scan due to visual alteration, unverified credentials, or data mismatch. Please click <strong>"Unsubmit File"</strong> on the rejected item(s) and re-upload valid legal documents before submitting to system administration.

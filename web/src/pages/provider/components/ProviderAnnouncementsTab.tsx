@@ -1,5 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleMap, Autocomplete } from '@react-google-maps/api';
+import {
+  Eye,
+  EyeOff,
+  FileText,
+  Coins,
+  ClipboardList,
+  GraduationCap,
+  Megaphone,
+  Target,
+  Users,
+  User,
+  MapPin,
+  Map as MapIcon,
+  AlertTriangle,
+  Send,
+  Search,
+  Trash2,
+  ExternalLink,
+} from 'lucide-react';
 import type { AnnType, Program } from '../types';
 
 interface Announcement {
@@ -228,9 +247,19 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
             <button
               type="button"
               onClick={() => setShowPreview(!showPreview)}
-              className="text-[10.5px] font-bold text-[#2D5941] hover:text-[#1A3C2E] bg-[#EBF5EE] hover:bg-[#EDE8DE] px-2.5 py-1 rounded-xl transition-colors border-0 cursor-pointer flex items-center gap-1"
+              className="text-[10.5px] font-bold text-[#2D5941] hover:text-[#1A3C2E] bg-[#EBF5EE] hover:bg-[#EDE8DE] px-2.5 py-1 rounded-xl transition-colors border-0 cursor-pointer flex items-center gap-1.5"
             >
-              <span>{showPreview ? 'Hide Preview' : '👁️ Preview'}</span>
+              {showPreview ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span>Hide Preview</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Preview</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -241,30 +270,30 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
               <button
                 type="button"
                 onClick={() => applyTemplate('exam')}
-                className="px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
-                📝 Exam Screening
+                <FileText className="w-3 h-3 text-[#2D5941]" /> Exam Screening
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('fund')}
-                className="px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
-                💰 Payout Alert
+                <Coins className="w-3 h-3 text-amber-600" /> Payout Alert
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('reqs')}
-                className="px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
-                📋 Grades & COR
+                <ClipboardList className="w-3 h-3 text-purple-600" /> Grades & COR
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('orientation')}
-                className="px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10.5px] font-semibold rounded-lg bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
               >
-                🎓 Orientation
+                <GraduationCap className="w-3 h-3 text-emerald-600" /> Orientation
               </button>
             </div>
           </div>
@@ -277,24 +306,28 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
               </label>
               <div className="grid grid-cols-2 gap-1.5">
                 {[
-                  { value: 'General Notice', label: '📢 General Notice' },
-                  { value: 'Examination Schedule', label: '📝 Exam Schedule' },
-                  { value: 'Release of Funds', label: '💰 Release Funds' },
-                  { value: 'Requirements Update', label: '📋 Requirements' },
-                ].map(cat => (
-                  <button
-                    key={cat.value}
-                    type="button"
-                    onClick={() => setNewAnnType(cat.value as AnnType)}
-                    className={`py-2 px-2.5 rounded-xl text-[11px] font-bold text-left transition-all border cursor-pointer ${
-                      newAnnType === cat.value
-                        ? 'bg-[#1A3C2E] text-white shadow-sm border-[#1A3C2E]'
-                        : 'bg-[#F9F5EF]/60 text-[#1C1C1E] hover:bg-[#EDE8DE] border-[#D9D2C5]/60'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
+                  { value: 'General Notice', label: 'General Notice', icon: Megaphone },
+                  { value: 'Examination Schedule', label: 'Exam Schedule', icon: FileText },
+                  { value: 'Release of Funds', label: 'Release Funds', icon: Coins },
+                  { value: 'Requirements Update', label: 'Requirements', icon: ClipboardList },
+                ].map(cat => {
+                  const IconComp = cat.icon;
+                  return (
+                    <button
+                      key={cat.value}
+                      type="button"
+                      onClick={() => setNewAnnType(cat.value as AnnType)}
+                      className={`py-2 px-2.5 rounded-xl text-[11px] font-bold text-left transition-all border cursor-pointer inline-flex items-center gap-1.5 ${
+                        newAnnType === cat.value
+                          ? 'bg-[#1A3C2E] text-white border-[#1A3C2E] shadow-xs'
+                          : 'bg-[#F9F5EF] text-[#1C1C1E] border-[#D9D2C5]/80 hover:bg-[#EDE8DE]'
+                      }`}
+                    >
+                      <IconComp className="w-3.5 h-3.5 shrink-0" />
+                      <span>{cat.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -305,20 +338,20 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   Target Audience / Program
                 </label>
                 {newAnnType === 'Examination Schedule' ? (
-                  <span className="text-[9.5px] font-extrabold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-md">
-                    🎯 for_exam status only
+                  <span className="inline-flex items-center gap-1 text-[9.5px] font-extrabold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-md">
+                    <Target className="w-3 h-3 text-amber-600" /> for_exam status only
                   </span>
                 ) : selectedProgramId === 'single_person' ? (
-                  <span className="text-[9.5px] font-extrabold text-purple-700 bg-purple-100/80 px-1.5 py-0.5 rounded-md">
-                    👤 Specific Person Notice
+                  <span className="inline-flex items-center gap-1 text-[9.5px] font-extrabold text-purple-700 bg-purple-100/80 px-1.5 py-0.5 rounded-md">
+                    <User className="w-3 h-3 text-purple-600" /> Specific Person Notice
                   </span>
                 ) : selectedProgramId === 'all_scholars_and_applicants' ? (
-                  <span className="text-[9.5px] font-extrabold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded-md">
-                    👥 Scholars & Applicants
+                  <span className="inline-flex items-center gap-1 text-[9.5px] font-extrabold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded-md">
+                    <Users className="w-3 h-3 text-blue-600" /> Scholars & Applicants
                   </span>
                 ) : (
-                  <span className="text-[9.5px] font-extrabold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded-md">
-                    🎯 Approved Scholars Only
+                  <span className="inline-flex items-center gap-1 text-[9.5px] font-extrabold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded-md">
+                    <Target className="w-3 h-3 text-emerald-600" /> Approved Scholars Only
                   </span>
                 )}
               </div>
@@ -341,23 +374,23 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
               >
                 {newAnnType === 'Examination Schedule' ? (
                   <>
-                    <option value="all">🌟 All Programs (Candidates in "for_exam" status)</option>
-                    <option value="all_scholars_and_applicants">👥 All (Scholars & Applicants - General)</option>
-                    <option value="single_person">👤 Specific Person (Direct Individual Announcement)</option>
+                    <option value="all">All Programs (Candidates in "for_exam" status)</option>
+                    <option value="all_scholars_and_applicants">All (Scholars & Applicants - General)</option>
+                    <option value="single_person">Specific Person (Direct Individual Announcement)</option>
                     {programsList.map(prog => (
                       <option key={prog.id} value={String(prog.id)}>
-                        🎓 Program: {prog.title} (for_exam status only)
+                        Program: {prog.title} (for_exam status only)
                       </option>
                     ))}
                   </>
                 ) : (
                   <>
-                    <option value="all_scholars_and_applicants">👥 All (Scholars and Applicants)</option>
-                    <option value="all">🎓 All Approved Scholars (Across All Programs)</option>
-                    <option value="single_person">👤 Specific Person (Direct Individual Announcement)</option>
+                    <option value="all_scholars_and_applicants">All (Scholars and Applicants)</option>
+                    <option value="all">All Approved Scholars (Across All Programs)</option>
+                    <option value="single_person">Specific Person (Direct Individual Announcement)</option>
                     {programsList.map(prog => (
                       <option key={prog.id} value={String(prog.id)}>
-                        🎓 Program: {prog.title} (Approved Scholars Only)
+                        Program: {prog.title} (Approved Scholars Only)
                       </option>
                     ))}
                   </>
@@ -368,8 +401,9 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
               {selectedProgramId === 'single_person' && (
                 <div className="space-y-2 p-3.5 rounded-2xl border border-purple-300 bg-purple-50/60 animate-fade-in mt-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-[10.5px] font-extrabold text-purple-900 uppercase tracking-wide flex items-center gap-1">
-                      <span>👤 Target Specific Person</span>
+                    <span className="text-[10.5px] font-extrabold text-purple-900 uppercase tracking-wide flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-purple-700" />
+                      <span>Target Specific Person</span>
                       <span className="text-red-500 font-black">*</span>
                     </span>
                     <span className="text-[9.5px] font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full">
@@ -399,7 +433,7 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                       <option value="">-- Choose Specific Person --</option>
                       {personOptions.map(p => (
                         <option key={p.userId} value={p.userId}>
-                          {p.role === 'Scholar' ? '🎓' : '📋'} {p.name} — {p.program} ({p.role})
+                          [{p.role}] {p.name} — {p.program}
                         </option>
                       ))}
                     </select>
@@ -430,8 +464,9 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
             {newAnnType === 'Examination Schedule' && (
               <div className="space-y-2 p-3 rounded-2xl border border-amber-300 bg-amber-50/50 animate-fade-in">
                 <div className="flex justify-between items-center">
-                  <span className="text-[10.5px] font-extrabold text-[#94580E] uppercase tracking-wide flex items-center gap-1">
-                    <span>📍 Examination Venue</span>
+                  <span className="text-[10.5px] font-extrabold text-[#94580E] uppercase tracking-wide flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Examination Venue</span>
                     <span className="text-red-500 font-black">*</span>
                   </span>
                   <div className="flex items-center gap-2">
@@ -443,9 +478,10 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                     <button
                       type="button"
                       onClick={() => setIsBigMapModalOpen(true)}
-                      className="text-[10px] font-bold text-[#2D5941] hover:underline cursor-pointer bg-transparent border-0"
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-[#2D5941] hover:underline cursor-pointer bg-transparent border-0"
                     >
-                      Enlarge Map 🗺️
+                      <MapIcon className="w-3 h-3" />
+                      <span>Enlarge Map</span>
                     </button>
                   </div>
                 </div>
@@ -466,8 +502,9 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                 )}
 
                 {(!examCoords.address?.trim() && !mapSearchText?.trim()) && (
-                  <p className="text-[10.5px] font-semibold text-red-600 bg-red-50 p-1.5 rounded-xl border border-red-200 leading-tight">
-                    ⚠️ Please search or pin a specific venue on the map.
+                  <p className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold text-red-600 bg-red-50 p-1.5 rounded-xl border border-red-200 leading-tight">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Please search or pin a specific venue on the map.</span>
                   </p>
                 )}
 
@@ -516,8 +553,8 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
 
                 {/* Selected Address Display */}
                 {examCoords.address && (
-                  <div className="text-[10.5px] font-semibold text-[#1A3C2E] bg-white p-1.5 rounded-xl border border-[#D9D2C5] flex items-start gap-1">
-                    <span className="shrink-0 text-amber-600">📌</span>
+                  <div className="text-[10.5px] font-semibold text-[#1A3C2E] bg-white p-1.5 rounded-xl border border-[#D9D2C5] flex items-start gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 shrink-0 text-amber-600 mt-0.5" />
                     <span className="leading-snug break-words">{examCoords.address}</span>
                   </div>
                 )}
@@ -569,8 +606,8 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                 <h4 className="text-xs font-bold text-[#1A3C2E]">{newAnnTitle || 'Untitled Announcement'}</h4>
                 <p className="text-[11px] text-[#6C6C70] whitespace-pre-wrap">{newAnnBody || 'Message body will appear here...'}</p>
                 {newAnnType === 'Examination Schedule' && examCoords.address && (
-                  <div className="text-[9.5px] font-bold text-[#C97B2E] pt-0.5">
-                    📍 {examCoords.address}
+                  <div className="inline-flex items-center gap-1 text-[9.5px] font-bold text-[#C97B2E] pt-0.5">
+                    <MapPin className="w-3 h-3 text-[#C97B2E]" /> {examCoords.address}
                   </div>
                 )}
               </div>
@@ -594,7 +631,7 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                 </>
               ) : (
                 <>
-                  <span>🚀</span>
+                  <Send className="w-3.5 h-3.5" />
                   <span>Broadcast & Save to Scholar Inboxes</span>
                 </>
               )}
@@ -621,37 +658,41 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-8 pr-3 py-2 rounded-xl border border-[#D9D2C5] text-xs font-semibold bg-[#F9F5EF]/60 focus:bg-white focus:outline-none focus:border-[#2D5941]"
                 />
-                <span className="absolute left-2.5 top-2.5 text-xs text-[#6C6C70]">🔍</span>
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-[#6C6C70]" />
               </div>
             </div>
 
             {/* Category Filter Pills */}
             <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[#D9D2C5]/30">
               {[
-                { key: 'All', label: 'All Broadcasts', count: announcements.length },
-                { key: 'Exam', label: '📝 Exam Schedules', count: totalExams },
-                { key: 'Funds', label: '💰 Fund Releases', count: totalFunds },
-                { key: 'Reqs', label: '📋 Requirements', count: totalReqs },
-                { key: 'General', label: '📢 General Notices', count: totalGeneral },
-              ].map(tab => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setFilterType(tab.key)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center gap-1.5 ${
-                    filterType === tab.key
-                      ? 'bg-[#1A3C2E] text-white shadow-sm'
-                      : 'bg-[#F9F5EF] text-[#6C6C70] hover:bg-[#EDE8DE]'
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold ${
-                    filterType === tab.key ? 'bg-white/20 text-white' : 'bg-[#EDE8DE] text-[#1A3C2E]'
-                  }`}>
-                    {tab.count}
-                  </span>
-                </button>
-              ))}
+                { key: 'All', label: 'All Broadcasts', count: announcements.length, icon: null },
+                { key: 'Exam', label: 'Exam Schedules', count: totalExams, icon: FileText },
+                { key: 'Funds', label: 'Fund Releases', count: totalFunds, icon: Coins },
+                { key: 'Reqs', label: 'Requirements', count: totalReqs, icon: ClipboardList },
+                { key: 'General', label: 'General Notices', count: totalGeneral, icon: Megaphone },
+              ].map(tab => {
+                const IconComp = tab.icon;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setFilterType(tab.key)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center gap-1.5 ${
+                      filterType === tab.key
+                        ? 'bg-[#1A3C2E] text-white shadow-sm'
+                        : 'bg-[#F9F5EF] text-[#6C6C70] hover:bg-[#EDE8DE]'
+                    }`}
+                  >
+                    {IconComp && <IconComp className="w-3.5 h-3.5" />}
+                    <span>{tab.label}</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                      filterType === tab.key ? 'bg-white/20 text-white' : 'bg-[#EDE8DE] text-[#1A3C2E]'
+                    }`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -659,8 +700,8 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
           <div className="space-y-4">
             {filteredAnnouncements.length === 0 ? (
               <div className="bg-white rounded-3xl border border-dashed border-[#D9D2C5] p-12 text-center space-y-3">
-                <div className="w-14 h-14 bg-[#EDE8DE] rounded-2xl flex items-center justify-center mx-auto text-2xl text-[#2D5941]">
-                  📢
+                <div className="w-14 h-14 bg-[#EDE8DE] rounded-2xl flex items-center justify-center mx-auto text-[#2D5941]">
+                  <Megaphone className="w-7 h-7 text-[#2D5941]" />
                 </div>
                 <h4 className="font-bold text-[#1A3C2E] font-serif text-base">No Broadcasts Found</h4>
                 <p className="text-xs text-[#6C6C70] max-w-sm mx-auto leading-relaxed">
@@ -697,8 +738,8 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                           >
                             {ann.type}
                           </span>
-                          <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#1A3C2E]">
-                            🎯 {ann.audience}
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#1A3C2E]">
+                            <Target className="w-3 h-3 text-[#2D5941]" /> {ann.audience}
                           </span>
                           <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
                             ✓ Saved in Inboxes
@@ -721,9 +762,10 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                               onDeleteAnnouncement(ann.id);
                             }
                           }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-red-600 hover:text-red-800 font-bold px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border-0 cursor-pointer shrink-0 self-start"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-red-600 hover:text-red-800 font-bold px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border-0 cursor-pointer shrink-0 self-start inline-flex items-center gap-1"
                         >
-                          Delete 🗑️
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
                         </button>
                       )}
                     </div>
@@ -738,7 +780,7 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                       <div className="pt-2">
                         <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200/70 flex items-start justify-between gap-3">
                           <div className="flex items-start gap-2 min-w-0">
-                            <span className="text-base shrink-0">📍</span>
+                            <MapPin className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                             <div>
                               <span className="text-[10px] font-extrabold uppercase tracking-wide text-amber-900 block">
                                 Examination Venue
@@ -753,9 +795,9 @@ export const ProviderAnnouncementsTab: React.FC<ProviderAnnouncementsTabProps> =
                               href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ann.location)}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-[11px] font-bold text-[#2D5941] hover:underline bg-white px-2.5 py-1.5 rounded-xl border border-[#D9D2C5] shrink-0 self-center no-underline"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-[#2D5941] hover:underline bg-white px-2.5 py-1.5 rounded-xl border border-[#D9D2C5] shrink-0 self-center no-underline"
                             >
-                              Open in Maps ↗
+                              Open in Maps <ExternalLink className="w-3 h-3" />
                             </a>
                           )}
                         </div>

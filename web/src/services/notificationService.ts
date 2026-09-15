@@ -33,17 +33,17 @@ export const sendDecisionNotification = async (params: DecisionNotificationParam
 
   if (normalizedStatus.includes('exam') || normalizedStatus === 'for_exam') {
     emailSubject = `Congratulations! You have passed the evaluation for ${programTitle}`;
-    emailHeadline = 'Shortlisted for Qualifying Examination 🎉';
+    emailHeadline = 'Shortlisted for Qualifying Examination';
     emailBody = `Congratulations ${toName}!\n\nWe are pleased to inform you that you have passed the initial document and profile evaluation for the scholarship program "${programTitle}" offered by ${providerName}.\n\nYou have been shortlisted for the Examination / Screening stage. Please wait for further announcements and guidelines regarding your exam schedule, testing platform/venue, and required materials.\n\n${remarks ? `Provider Note: ${remarks}\n\n` : ''}Keep your notifications active in the IskoAko app for upcoming examination details.`;
     notifType = 'success';
   } else if (normalizedStatus.includes('approved')) {
     emailSubject = `Congratulations! Your application for ${programTitle} is Approved!`;
-    emailHeadline = 'Scholarship Award Approved! 🎓';
+    emailHeadline = 'Scholarship Award Approved!';
     emailBody = `Congratulations ${toName}!\n\nWe are thrilled to inform you that your application for "${programTitle}" has been officially APPROVED! You have been awarded the scholarship.\n\n${remarks ? `Remarks from Provider: ${remarks}\n\n` : ''}Please log in to your IskoAko portal to review your award details, disbursement schedules, and continuing scholar obligations. Welcome to the program!`;
     notifType = 'success';
   } else if (normalizedStatus.includes('flagged') || normalizedStatus.includes('rejected_file')) {
     emailSubject = `Action Required: Document Issue Flagged for ${programTitle}`;
-    emailHeadline = 'Document Resubmission Required ⚠️';
+    emailHeadline = 'Document Resubmission Required';
     emailBody = `Hello ${toName},\n\nThe provider reviewing your application for "${programTitle}" has flagged an issue with one or more of your submitted documents.\n\nReason / Feedback: "${remarks || 'Please review and resubmit the requested file.'}"\n\nYou can resubmit the replacement file directly through the IskoAko mobile app while the scholarship application cycle remains open.`;
     notifType = 'warning';
   } else if (normalizedStatus.includes('rejected')) {
@@ -190,7 +190,7 @@ export const sendScholarAgreementNotification = async (params: ScholarAgreementN
   } = params;
 
   const emailSubject = `Official Scholar Agreement & Guidelines: ${programTitle}`;
-  const emailHeadline = 'Scholar Agreement & Maintaining Rules 📜';
+  const emailHeadline = 'Scholar Agreement & Maintaining Rules';
   const emailBody = `Dear ${toName},\n\nYour scholarship guidelines, maintaining academic standards, and renewal terms for "${programTitle}" have been issued by ${providerName}.\n\nPlease review your complete award agreement in your IskoAko portal to stay informed about maintaining GWA requirements and submission deadlines.\n\nSummary Preview:\n${agreementContent.slice(0, 400)}...`;
 
   // 1. EmailJS send
@@ -435,7 +435,7 @@ export const sendAdminAnnouncement = async (params: AdminAnnouncementParams): Pr
           supabase.functions.invoke('send-push-notification', {
             body: {
               userIds: uniqueUserIds,
-              title: `📢 ${title}`,
+              title: title,
               body: message,
               type: 'announcement',
               data: {
@@ -725,7 +725,7 @@ export const sendProviderAnnouncement = async (params: ProviderAnnouncementParam
           supabase.functions.invoke('send-push-notification', {
             body: {
               userIds: recipientList,
-              title: `📢 ${title}`,
+              title: title,
               body: message,
               type: notifType,
               data: {
