@@ -35,9 +35,32 @@ class MobileAuditResult {
   });
 }
 
+/// Result of verifying a scholar profile's blockchain integrity anchor.
+class BlockchainProfileIntegrityResult {
+  final bool isAnchored;
+  final bool isTampered;
+  final String? currentHash;
+  final String? onChainHash;
+  final String? txHash;
+  final String? error;
+  final String? tamperReason;
+
+  BlockchainProfileIntegrityResult({
+    required this.isAnchored,
+    required this.isTampered,
+    this.currentHash,
+    this.onChainHash,
+    this.txHash,
+    this.error,
+    this.tamperReason,
+  });
+}
+
 class BlockchainService {
-  static const String rpcUrl = 'https://polygon-amoy.g.alchemy.com/v2/alch_LdmO-wF5wwCTE5pMgXUAg';
-  static const String contractAddressHex = '0x24919E55678bA8bB67891A7FbA2067aA001557Bb';
+  static const String rpcUrl =
+      'https://polygon-amoy.g.alchemy.com/v2/alch_LdmO-wF5wwCTE5pMgXUAg';
+  static const String contractAddressHex =
+      '0xafbef846a4aCf3efeFB992706bFdBb5dF7500829';
 
   static final Map<String, Map<String, dynamic>> _auditCache = {};
 
@@ -85,6 +108,16 @@ class BlockchainService {
       "inputs": [],
       "name": "getTotalReleases",
       "outputs": [{"name":"","type":"uint256"}],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "decodeAnchorProfileHelper",
+      "outputs": [
+        {"name": "scholarId", "type": "string"},
+        {"name": "profileHash", "type": "bytes32"}
+      ],
       "stateMutability": "view",
       "type": "function"
     }
@@ -146,10 +179,14 @@ class BlockchainService {
     required String dbScholarName,
   }) async {
     if (txHash.isEmpty || !txHash.startsWith('0x') || txHash.length != 66) {
-      return MobileAuditResult(isTampered: false, error: 'Invalid transaction hash format');
+      return MobileAuditResult(
+        isTampered: false,
+        error: 'Invalid transaction hash format',
+      );
     }
 
-    final cacheKey = '${txHash}_${dbAmount.round()}_${dbScholarId.toLowerCase()}_${dbScholarName.toLowerCase()}';
+    final cacheKey =
+        '${txHash}_${dbAmount.round()}_${dbScholarId.toLowerCase()}_${dbScholarName.toLowerCase()}';
     if (_auditCache.containsKey(cacheKey)) {
       final cached = _auditCache[cacheKey]!;
       return MobileAuditResult(
@@ -161,10 +198,12 @@ class BlockchainService {
     }
 
     try {
-      final txInfo = await _client.getTransactionByHash(txHash).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () => throw Exception('On-chain audit network timeout'),
-      );
+      final txInfo = await _client
+          .getTransactionByHash(txHash)
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => throw Exception('On-chain audit network timeout'),
+          );
       if (txInfo == null) {
         throw Exception('Transaction details not found on-chain');
       }
@@ -175,7 +214,7 @@ class BlockchainService {
       }
 
       final decodeHelperFn = _contract.function('decodeRecordReleaseHelper');
-      
+
       // Skip function selector (first 4 bytes)
       final paramsData = inputData.sublist(4);
       final paramsHex = bytesToHex(paramsData, include0x: true);
@@ -191,7 +230,8 @@ class BlockchainService {
       final double onChainAmount = onChainAmountCentavos.toDouble() / 100.0;
 
       final amountMismatch = dbAmount.round() != onChainAmount.round();
-      final scholarMismatch = dbScholarId.toLowerCase() != onChainScholarId.toLowerCase() &&
+      final scholarMismatch =
+          dbScholarId.toLowerCase() != onChainScholarId.toLowerCase() &&
           dbScholarName.toLowerCase() != onChainScholarId.toLowerCase();
 
       final result = MobileAuditResult(
@@ -209,11 +249,132 @@ class BlockchainService {
       return result;
     } catch (err) {
       debugPrint('Error during blockchain transaction audit check: $err');
-      return MobileAuditResult(
-        isTampered: false,
-        error: err.toString(),
+      return MobileAuditResult(isTampered: false, error: err.toString());
+    }
+  }
+
+  // ─── Scholar Profile Blockchain Integrity ────────────────────────────────
+
+  /// Computes the keccak256 profile hash from the scholar's current DB fields.
+  /// This must match the canonical format used by the anchor-scholar-profile edge function:
+  /// "scholarId|FIRST_NAME|LAST_NAME|MIDDLE_NAME|SUFFIX|BIRTH_DATE|GENDER|FACE_STATUS|VERIFIED_AT"
+  static String computeProfileHash(Map<String, dynamic> scholar) {
+    final parts = [
+      (scholar['id'] ?? '').toString(),
+      (scholar['first_name'] ?? '').toString().toUpperCase().trim(),
+      (scholar['last_name'] ?? '').toString().toUpperCase().trim(),
+      (scholar['middle_name'] ?? '').toString().toUpperCase().trim(),
+      (scholar['suffix'] ?? '').toString().toUpperCase().trim(),
+      (scholar['birth_date'] ?? '').toString().trim(),
+      (scholar['gender'] ?? '').toString().toLowerCase().trim(),
+      (scholar['face_verification_status'] ?? '').toString(),
+      (scholar['face_verified_at'] ?? '').toString().trim(),
+    ];
+    final canonicalString = parts.join('|');
+    final hash = keccakUtf8(canonicalString);
+    return bytesToHex(hash, include0x: true);
+  }
+
+  /// Verify a scholar's profile integrity by comparing the on-chain hash
+  /// (from the raw blockchain transaction) against the current database fields.
+  ///
+  /// [scholar] should contain: id, first_name, last_name, middle_name, suffix,
+  ///   birth_date, gender, face_verification_status, face_verified_at,
+  ///   profile_blockchain_tx_hash, profile_blockchain_hash, profile_blockchain_verified
+  Future<BlockchainProfileIntegrityResult> verifyProfileIntegrity({
+    required Map<String, dynamic> scholar,
+  }) async {
+    final storedTxHash =
+        scholar['profile_blockchain_tx_hash']?.toString() ?? '';
+    final storedHash = scholar['profile_blockchain_hash']?.toString() ?? '';
+    final isAnchored = scholar['profile_blockchain_verified'] == true;
+    final faceStatus = scholar['face_verification_status']?.toString();
+
+    // Check if marked verified in DB but not anchored on blockchain
+    if (faceStatus == 'verified' &&
+        (!isAnchored || storedTxHash.isEmpty || storedHash.isEmpty)) {
+      return BlockchainProfileIntegrityResult(
+        isAnchored: false,
+        isTampered: true,
+        error:
+            'Profile marked verified in database but lacks blockchain anchor.',
+        tamperReason:
+            'Face status was marked "verified" in database without a blockchain transaction anchor. Direct database alteration detected.',
       );
     }
+
+    if (!isAnchored || storedTxHash.isEmpty || storedHash.isEmpty) {
+      return BlockchainProfileIntegrityResult(
+        isAnchored: false,
+        isTampered: false,
+        error: 'Profile has not been anchored on blockchain yet.',
+      );
+    }
+
+    // Recompute hash from current DB fields
+    final currentHash = computeProfileHash(scholar);
+
+    // Quick check: compare stored hash with recomputed hash
+    if (currentHash.toLowerCase() != storedHash.toLowerCase()) {
+      return BlockchainProfileIntegrityResult(
+        isAnchored: true,
+        isTampered: true,
+        currentHash: currentHash,
+        onChainHash: storedHash,
+        txHash: storedTxHash,
+        tamperReason:
+            'Cryptographic hash mismatch: Current profile fields (name, birth date, gender, or status) do not match the on-chain anchor fingerprint.',
+      );
+    }
+
+    // Optional deep check: verify against actual on-chain transaction data
+    if (storedTxHash.startsWith('0x') && storedTxHash.length == 66) {
+      try {
+        final txInfo = await _client
+            .getTransactionByHash(storedTxHash)
+            .timeout(
+              const Duration(seconds: 5),
+              onTimeout: () => throw Exception('Blockchain network timeout'),
+            );
+        if (txInfo != null && txInfo.input.length > 4) {
+          final decodeHelperFn = _contract.function(
+            'decodeAnchorProfileHelper',
+          );
+          final paramsData = txInfo.input.sublist(4);
+          final paramsHex = bytesToHex(paramsData, include0x: true);
+          final decoded = decodeHelperFn.decodeReturnValues(paramsHex);
+
+          if (decoded.length >= 2) {
+            // decoded[1] is bytes32 profileHash
+            final List<int> onChainHashBytes = decoded[1] as List<int>;
+            final onChainHash = bytesToHex(onChainHashBytes, include0x: true);
+
+            if (currentHash.toLowerCase() != onChainHash.toLowerCase()) {
+              return BlockchainProfileIntegrityResult(
+                isAnchored: true,
+                isTampered: true,
+                currentHash: currentHash,
+                onChainHash: onChainHash,
+                txHash: storedTxHash,
+                tamperReason:
+                    'On-chain transaction hash mismatch: Database profile hash differs from the hash recorded in the Polygon block.',
+              );
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[BlockchainService] On-chain deep verify error: $e');
+        // Fall through to the stored hash comparison result below
+      }
+    }
+
+    return BlockchainProfileIntegrityResult(
+      isAnchored: true,
+      isTampered: false,
+      currentHash: currentHash,
+      onChainHash: storedHash,
+      txHash: storedTxHash,
+    );
   }
 
   void dispose() {
