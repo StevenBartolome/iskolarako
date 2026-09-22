@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ShieldCheck, AlertTriangle, Check, Copy, ExternalLink, Printer, X, Loader2 } from 'lucide-react';
 import { verifyDisbursementOnChain, type AuditResult } from '../../utils/blockchain';
 
 export interface AuditModalRecord {
@@ -93,17 +94,37 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
 
   // Determine badge header styling based on audit status
   let statusBadgeClass = "bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30";
-  let statusBadgeText = "✓ VERIFIED ON-CHAIN";
+  let statusBadgeText: React.ReactNode = (
+    <span className="inline-flex items-center gap-1">
+      <Check className="w-2.5 h-2.5" />
+      <span>VERIFIED ON-CHAIN</span>
+    </span>
+  );
 
   if (isValidating) {
     statusBadgeClass = "bg-[#FFF8EE] text-[#C97B2E] border-[#C97B2E]/30 animate-pulse";
-    statusBadgeText = "⏳ AUDITING PROOF...";
+    statusBadgeText = (
+      <span className="inline-flex items-center gap-1">
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+        <span>AUDITING PROOF...</span>
+      </span>
+    );
   } else if (auditResult?.isTampered) {
     statusBadgeClass = "bg-[#FDF2F2] text-[#B34040] border-[#B34040]/30 animate-bounce";
-    statusBadgeText = "🚨 TAMPER ALERT: MISMATCH";
+    statusBadgeText = (
+      <span className="inline-flex items-center gap-1">
+        <AlertTriangle className="w-2.5 h-2.5" />
+        <span>TAMPER ALERT: MISMATCH</span>
+      </span>
+    );
   } else if (auditResult?.error) {
     statusBadgeClass = "bg-[#F9F5EF] text-[#6C6C70] border-[#D9D2C5]";
-    statusBadgeText = "⚠️ AUDIT OFFLINE (DB VERIFIED)";
+    statusBadgeText = (
+      <span className="inline-flex items-center gap-1">
+        <AlertTriangle className="w-2.5 h-2.5" />
+        <span>AUDIT OFFLINE (DB VERIFIED)</span>
+      </span>
+    );
   }
 
   return (
@@ -112,8 +133,12 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
         {/* Header */}
         <div className="flex justify-between items-center border-b border-[#D9D2C5]/60 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#2D5941]/10 border border-[#2D5941]/30 flex items-center justify-center text-lg shrink-0">
-              {auditResult?.isTampered ? '🚨' : '🛡️'}
+            <div className="w-9 h-9 rounded-xl bg-[#2D5941]/10 border border-[#2D5941]/30 flex items-center justify-center shrink-0">
+              {auditResult?.isTampered ? (
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              ) : (
+                <ShieldCheck className="w-5 h-5 text-[#2D5941]" />
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -133,7 +158,7 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
             onClick={onClose}
             className="text-[#6C6C70] hover:text-[#1C1C1E] p-1 rounded-full text-base cursor-pointer shrink-0 print:hidden"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -141,7 +166,8 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
         {auditResult?.isTampered && (
           <div className="bg-[#FDF2F2] border border-[#FADBD8] text-[#B34040] p-3.5 rounded-xl space-y-2 animate-fade-slide-up">
             <div className="flex items-center gap-1.5 font-extrabold text-xs uppercase tracking-wide">
-              <span>⚠️ Critical Alert: Database Tampering Detected!</span>
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Critical Alert: Database Tampering Detected!</span>
             </div>
             <div className="border-t border-[#FADBD8] pt-2 text-[11px] space-y-1.5 font-mono">
               <div className="grid grid-cols-3 gap-1 text-[9px] uppercase font-bold text-[#6C6C70]">
@@ -188,9 +214,19 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
               <span className="break-all">{record.txHash}</span>
               <button
                 onClick={handleCopyHash}
-                className="px-2 py-0.5 bg-white/20 hover:bg-white/30 text-white text-[9px] font-bold rounded transition-all cursor-pointer shrink-0 print:hidden"
+                className="inline-flex items-center gap-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 text-white text-[9px] font-bold rounded transition-all cursor-pointer shrink-0 print:hidden"
               >
-                {copied ? '✓ Copied' : '📋 Copy'}
+                {copied ? (
+                  <>
+                    <Check className="w-2.5 h-2.5" />
+                    <span>Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-2.5 h-2.5" />
+                    <span>Copy</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -251,18 +287,20 @@ export const BlockchainAuditModal: React.FC<BlockchainAuditModalProps> = ({
             href={explorerUrl}
             target="_blank"
             rel="noreferrer"
-            className="px-3 py-2 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-xs font-bold transition-all inline-flex items-center gap-1 border border-[#2D5941]/20"
+            className="px-3 py-2 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] text-[#2D5941] hover:text-white text-xs font-bold transition-all inline-flex items-center gap-1.5 border border-[#2D5941]/20"
           >
-            <span>🔗 PolygonScan Proof ↗</span>
+            <span>PolygonScan Proof</span>
+            <ExternalLink className="w-3.5 h-3.5" />
           </a>
 
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handlePrint}
-              className="px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs font-bold text-[#1C1C1E] hover:bg-[#F9F5EF] cursor-pointer flex items-center gap-1"
+              className="px-3 py-2 rounded-xl border border-[#D9D2C5] text-xs font-bold text-[#1C1C1E] hover:bg-[#F9F5EF] cursor-pointer inline-flex items-center gap-1.5"
             >
-              <span>🖨️ Print</span>
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print</span>
             </button>
             <button
               type="button"

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CreditCard, Zap, Sparkles, Check, Loader2, X } from 'lucide-react';
 import { supabase } from '@/services/supabaseClient';
 import { extractBankDetailsFromImage, convertPdfDataUrlToImage, type ExtractedBankDetails } from '@/services/aiExtractionService';
 
@@ -303,9 +304,9 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-xl cursor-pointer"
+            className="text-[#8E8E93] hover:text-[#1C1C1E] p-1 rounded-full cursor-pointer"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -334,14 +335,15 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
                   alt="Bank Card Preview"
                   className="max-h-40 mx-auto rounded-xl shadow-md border border-[#D9D2C5] object-contain"
                 />
-                <p className="text-xs text-[#2D5941] font-bold">
-                  ✓ File Selected: {selectedFile?.name} (Click to change)
+                <p className="text-xs text-[#2D5941] font-bold inline-flex items-center gap-1 justify-center">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>File Selected: {selectedFile?.name} (Click to change)</span>
                 </p>
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-[#EBF5EE] text-[#2D5941] flex items-center justify-center mx-auto text-2xl group-hover:scale-110 transition-transform">
-                  💳
+                <div className="w-12 h-12 rounded-2xl bg-[#EBF5EE] text-[#2D5941] flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
+                  <CreditCard className="w-6 h-6" />
                 </div>
                 <p className="text-xs font-bold text-[#1A3C2E]">
                   Click or drag scanned Landbank / ATM card photo here
@@ -358,7 +360,7 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
         {isScanning && (
           <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-4 flex items-center gap-3 animate-pulse">
             <div className="w-8 h-8 rounded-full bg-[#2D5941] text-white flex items-center justify-center font-bold text-sm shrink-0">
-              ⚡
+              <Zap className="w-4 h-4" />
             </div>
             <div>
               <p className="text-xs font-bold text-[#2D5941]">AI Analyzing Bank Document...</p>
@@ -371,7 +373,7 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
         {extractedInfo && !isScanning && (
           <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
-              <span className="text-base">✨</span>
+              <Sparkles className="w-4 h-4 text-[#2D5941]" />
               <div>
                 <span className="font-bold text-[#2D5941]">AI Extraction Successful</span>
                 <p className="text-[10px] text-[#6C6C70]">
@@ -454,15 +456,18 @@ export const ScholarBankUploadModal: React.FC<ScholarBankUploadModalProps> = ({
             <button
               type="submit"
               disabled={isSaving || isScanning || !accountNumber.trim()}
-              className="px-5 py-2 rounded-xl bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 flex items-center gap-2"
+              className="px-5 py-2 rounded-xl bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold shadow-md cursor-pointer transition-all disabled:opacity-50 inline-flex items-center gap-2"
             >
               {isSaving ? (
                 <>
-                  <span className="animate-spin text-sm">⏳</span>
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Saving Account...</span>
                 </>
               ) : (
-                <span>✓ Confirm & Save Bank Account</span>
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Confirm & Save Bank Account</span>
+                </>
               )}
             </button>
           </div>

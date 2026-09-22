@@ -1,4 +1,34 @@
 import React, { useState, useEffect } from 'react';
+import {
+  FileText,
+  GraduationCap,
+  ClipboardList,
+  BarChart2,
+  Sparkles,
+  User,
+  Users,
+  CreditCard,
+  Coins,
+  CheckCircle2,
+  Clock,
+  MessageSquare,
+  Bot,
+  Flag,
+  Zap,
+  Eye,
+  ChevronUp,
+  Microscope,
+  Check,
+  X,
+  XCircle,
+  Lock,
+  AlertTriangle,
+  Edit3,
+  Search,
+  ExternalLink,
+  ShieldCheck,
+  ShieldAlert,
+} from 'lucide-react';
 import type { ApplicationDetail, SubmittedDocItem, ApplicantStatus } from './ReviewApplicationModal';
 import {
   verifyDocumentAuthenticity,
@@ -925,7 +955,9 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
   if (!application) {
     return (
       <div className="p-12 text-center bg-white rounded-3xl border border-[#D9D2C5]/60 shadow-sm my-6">
-        <div className="text-4xl mb-3">📄</div>
+        <div className="w-14 h-14 bg-[#EDE8DE] rounded-full flex items-center justify-center text-[#2D5941] mx-auto mb-3">
+          <FileText className="w-7 h-7" />
+        </div>
         <h3 className="text-xl font-bold text-[#1A3C2E]">No Application Selected</h3>
         <p className="text-sm text-[#6C6C70] mt-1 mb-6">Select an applicant from the cycle intake list to view details.</p>
         <button
@@ -967,7 +999,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             </span>
             {isFreshman && (
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#E6F4EA] text-[#137333] border border-[#CEEAD6] flex items-center gap-1 shadow-2xs">
-                🎓 Freshmen Intake
+                <GraduationCap className="w-3.5 h-3.5" /> Freshmen Intake
               </span>
             )}
           </div>
@@ -1005,16 +1037,16 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             <button
               onClick={() => handleSaveStatus('For Exam')}
               disabled={isSubmitting}
-              className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300 text-xs font-bold cursor-pointer transition-all shadow-2xs"
+              className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-300 text-xs font-bold cursor-pointer transition-all shadow-2xs inline-flex items-center gap-1.5"
             >
-              📝 For Exam
+              <ClipboardList className="w-3.5 h-3.5" /> For Exam
             </button>
             <button
               onClick={() => handleSaveStatus('Pending for Ranking')}
               disabled={isSubmitting}
-              className="px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-300 text-xs font-bold cursor-pointer transition-all shadow-2xs"
+              className="px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-300 text-xs font-bold cursor-pointer transition-all shadow-2xs inline-flex items-center gap-1.5"
             >
-              📊 Pending for Ranking
+              <BarChart2 className="w-3.5 h-3.5" /> Pending for Ranking
             </button>
             <button
               onClick={() => handleSaveStatus('Under Review')}
@@ -1051,8 +1083,9 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
           {isFreshman && (
             <div className="bg-gradient-to-r from-emerald-900 to-[#1A3C2E] p-5 rounded-3xl text-white shadow-md relative overflow-hidden">
               <div className="relative z-10 space-y-2">
-                <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
-                  <span>✨</span> Incoming Freshmen Applicant
+                <div className="flex items-center gap-1.5 text-amber-300 font-bold text-xs uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Incoming Freshmen Applicant</span>
                 </div>
                 <h4 className="text-lg font-extrabold font-serif">College Freshman Application</h4>
                 <p className="text-xs text-[#E2E8F0] leading-relaxed">
@@ -1065,7 +1098,9 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
           {/* Academic & School Info Card */}
           <div className="bg-white p-6 rounded-3xl border border-[#D9D2C5]/60 shadow-sm space-y-5">
             <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif flex items-center justify-between">
-              <span>🎓 Academic Dossier</span>
+              <span className="inline-flex items-center gap-1.5">
+                <GraduationCap className="w-4 h-4 text-[#1A3C2E]" /> Academic Dossier
+              </span>
               <span className="text-xs font-mono font-bold bg-[#F9F5EF] text-[#1A3C2E] px-3 py-1 rounded-full border border-[#D9D2C5]">
                 {(() => {
                   if (!application.grade) return 'Grade: N/A';
@@ -1119,7 +1154,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             {/* Applicant Personal Profile */}
             <div className="space-y-3 pt-2">
               <h4 className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider flex items-center gap-1.5">
-                <span>👤</span> Personal & Contact Information
+                <User className="w-3.5 h-3.5 text-[#6C6C70]" /> Personal & Contact Information
               </h4>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1.5 border-b border-[#EDE8DE]">
@@ -1165,7 +1200,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             {/* Family & Household Background */}
             <div className="space-y-3 pt-2 border-t border-[#EDE8DE]">
               <h4 className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider flex items-center gap-1.5">
-                <span>👨‍👩‍👧</span> Family & Household Details
+                <Users className="w-3.5 h-3.5 text-[#6C6C70]" /> Family & Household Details
               </h4>
               <div className="space-y-2 text-xs bg-[#F9F5EF]/60 p-3.5 rounded-2xl border border-[#D9D2C5]/40">
                 <div className="flex justify-between py-1 border-b border-[#EDE8DE]/60">
@@ -1227,7 +1262,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             {application.paymentAccount && (
               <div className="p-4 rounded-2xl bg-[#EDE8DE]/40 border border-[#D9D2C5]/50 space-y-2">
                 <h4 className="text-xs font-bold text-[#1A3C2E] flex items-center gap-1.5">
-                  <span>💳</span> Disbursement Account
+                  <CreditCard className="w-3.5 h-3.5 text-[#1A3C2E]" /> Disbursement Account
                 </h4>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
@@ -1247,7 +1282,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
               <div className="p-4 rounded-2xl bg-[#F9F5EF]/60 border border-[#D9D2C5]/70 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">💰</span>
+                    <Coins className="w-4 h-4 text-[#1A3C2E]" />
                     <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider">
                       Release Payout History
                     </h4>
@@ -1289,11 +1324,11 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                   </span>
                                 ) : isReleased ? (
                                   <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                    ✅ Released
+                                    <CheckCircle2 className="w-3 h-3" /> Released
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                                    ⏳ Pending
+                                    <Clock className="w-3 h-3" /> Pending
                                   </span>
                                 )}
                               </td>
@@ -1314,7 +1349,9 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
           {/* Decision Notes & Remarks */}
           <div className="bg-white p-6 rounded-3xl border border-[#D9D2C5]/60 shadow-sm space-y-4">
-            <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif">📝 Reviewer Remarks & Audit</h3>
+            <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-[#1A3C2E]" /> Reviewer Remarks & Audit
+            </h3>
             <div>
               <label className="block text-xs font-bold text-[#6C6C70] uppercase tracking-wide mb-2">
                 Internal Remarks / Feedback to Student
@@ -1348,7 +1385,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif flex items-center gap-2">
-                  <span>🤖</span> AI Document & Forgery Verification
+                  <Bot className="w-4 h-4 text-[#1A3C2E]" /> AI Document & Forgery Verification
                 </h3>
                 <p className="text-xs text-[#6C6C70] mt-0.5">
                   Automatically scans report cards, CORs, and indigency proofs for tampering or GWA mismatch.
@@ -1364,7 +1401,17 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                     : 'bg-[#1A3C2E] hover:bg-[#2D5941] text-white'
                 }`}
               >
-                {isBatchScanning ? 'Scanning Documents...' : '✨ Run AI Scan on All Docs'}
+                {isBatchScanning ? (
+                  <>
+                    <Clock className="w-3.5 h-3.5 animate-spin" />
+                    <span>Scanning Documents...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Run AI Scan on All Docs</span>
+                  </>
+                )}
               </button>
             </div>
 
@@ -1495,17 +1542,32 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               docStatus === 'Flagged' ? 'bg-red-50 text-[#B34040]' :
                               'bg-[#EDE8DE] text-[#6C6C70]'
                             }`}>
-                              📄
+                              <FileText className="w-5 h-5" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h5 className="text-xs font-bold text-[#1A3C2E]">{doc.name}</h5>
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
                                   docStatus === 'Verified' ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20' :
                                   docStatus === 'Flagged' ? 'bg-red-50 text-[#B34040] border border-[#B34040]/20' :
                                   'bg-amber-50 text-[#C97B2E] border border-[#C97B2E]/20'
                                 }`}>
-                                  {docStatus === 'Verified' ? '✓ Approved' : docStatus === 'Flagged' ? '🚩 Flagged' : '⏳ Pending'}
+                                  {docStatus === 'Verified' ? (
+                                    <>
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      <span>Approved</span>
+                                    </>
+                                  ) : docStatus === 'Flagged' ? (
+                                    <>
+                                      <Flag className="w-3 h-3" />
+                                      <span>Flagged</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Clock className="w-3 h-3" />
+                                      <span>Pending</span>
+                                    </>
+                                  )}
                                 </span>
                                 {aiRes && (() => {
                                   const assessment = getScoreAssessment(aiRes.confidenceScore);
@@ -1521,7 +1583,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                       onClick={() => toggleExpandDoc(idx)}
                                       title="Click to toggle AI breakdown"
                                     >
-                                      ⚡ {assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'}
+                                      <Zap className="w-3 h-3" /> {assessment.quality === 'GOOD' ? 'Good' : assessment.quality === 'CAUTION' ? 'Needs Review' : 'High Risk'}
                                     </span>
                                   );
                                 })()}
@@ -1552,7 +1614,10 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
                                 return reqRemarks ? (
                                   <div className="text-[11px] text-[#C97B2E] bg-amber-50/90 px-2.5 py-1 rounded-xl border border-amber-200/80 mt-1 flex items-start gap-1.5 font-medium">
-                                    <span className="font-bold shrink-0">📋 Requirement Remarks:</span>
+                                    <span className="font-bold shrink-0 flex items-center gap-1">
+                                      <ClipboardList className="w-3 h-3" />
+                                      Requirement Remarks:
+                                    </span>
                                     <span className="break-words text-[#1C1C1E]">{reqRemarks}</span>
                                   </div>
                                 ) : null;
@@ -1582,7 +1647,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                     : 'bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E]'
                                 }`}
                               >
-                                <span>👁️</span>
+                                <Eye className="w-3.5 h-3.5" />
                                 <span>Preview</span>
                               </button>
                             )}
@@ -1595,12 +1660,12 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               >
                                 {doc.isAiScanning ? (
                                   <>
-                                    <span className="animate-spin text-xs">⏳</span>
+                                    <Clock className="w-3.5 h-3.5 animate-spin" />
                                     <span>Scanning</span>
                                   </>
                                 ) : (
                                   <>
-                                    <span>⚡</span>
+                                    <Zap className="w-3.5 h-3.5" />
                                     <span>{aiRes ? 'Re-scan' : 'Scan AI'}</span>
                                   </>
                                 )}
@@ -1616,7 +1681,19 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                     : 'bg-white text-[#1A3C2E] border-[#D9D2C5] hover:bg-[#F9F5EF]'
                                 }`}
                               >
-                                <span>{isExpanded ? '▲ Hide Analysis' : '📊 AI Report'}</span>
+                                <span className="inline-flex items-center gap-1">
+                                  {isExpanded ? (
+                                    <>
+                                      <ChevronUp className="w-3 h-3" />
+                                      <span>Hide Analysis</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <BarChart2 className="w-3 h-3" />
+                                      <span>AI Report</span>
+                                    </>
+                                  )}
+                                </span>
                               </button>
                             )}
                           </div>
@@ -1633,7 +1710,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                     : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
                                 }`}
                               >
-                                <span>✓</span>
+                                <Check className="w-3.5 h-3.5" />
                                 <span>{docStatus === 'Verified' ? 'Approved' : 'Approve'}</span>
                               </button>
 
@@ -1646,7 +1723,7 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                     : 'bg-red-50 text-[#B34040] border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
                                 }`}
                               >
-                                <span>🚩</span>
+                                <Flag className="w-3.5 h-3.5" />
                                 <span>{docStatus === 'Flagged' ? 'Flagged' : 'Flag'}</span>
                               </button>
                             </div>
@@ -1661,8 +1738,8 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               {/* Header bar */}
                               <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2 flex-wrap gap-2">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
-                                    🔬 Forensic Analysis Report
+                                  <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider flex items-center gap-1.5">
+                                    <Microscope className="w-3.5 h-3.5" /> Forensic Analysis Report
                                   </span>
                                   <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
                                     Model: <strong>{aiRes.aiModelUsed || 'Gemini 2.5 Flash'}</strong> ({aiRes.provider || 'DeepMind'})
@@ -1681,8 +1758,14 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                   ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#8C4A00]'
                                   : 'bg-red-50 border-red-200 text-red-900'
                               }`}>
-                                <span className="text-sm shrink-0">
-                                  {assessment.quality === 'GOOD' ? '🟢' : assessment.quality === 'CAUTION' ? '🟡' : '🔴'}
+                                <span className="shrink-0 mt-0.5">
+                                  {assessment.quality === 'GOOD' ? (
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                  ) : assessment.quality === 'CAUTION' ? (
+                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                  ) : (
+                                    <XCircle className="w-4 h-4 text-rose-600" />
+                                  )}
                                 </span>
                                 <div className="space-y-0.5">
                                   <span className="font-bold block text-xs">
@@ -1700,8 +1783,8 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                 {/* Left: Declared Profile */}
                                 <div className="bg-[#F9F5EF]/50 p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1.5">
-                                  <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
-                                    👤 Declared Applicant Profile
+                                  <span className="text-[10px] font-bold text-[#6C6C70] uppercase flex items-center gap-1">
+                                    <User className="w-3 h-3" /> Declared Applicant Profile
                                   </span>
                                   <div className="space-y-1 text-xs">
                                     <div className="flex justify-between">
@@ -1725,8 +1808,8 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
                                 {/* Right: AI Extracted Document Data */}
                                 <div className="bg-white p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1.5">
-                                  <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
-                                    📄 AI Extracted Legal Data
+                                  <span className="text-[10px] font-bold text-[#6C6C70] uppercase flex items-center gap-1">
+                                    <FileText className="w-3 h-3" /> AI Extracted Legal Data
                                   </span>
                                   <div className="space-y-1 text-xs">
                                     <div className="flex justify-between items-center">
@@ -1734,9 +1817,9 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                       <div className="flex items-center gap-1">
                                         <strong className="text-[#1C1C1E]">{aiRes.extractedName || 'Not detected'}</strong>
                                         {aiRes.crossCheckResults?.nameMatch ? (
-                                          <span className="text-[10px] text-[#2D5941]" title="Entity matches registration">✓</span>
+                                          <span title="Entity matches registration"><Check className="w-3 h-3 text-[#2D5941]" /></span>
                                         ) : (
-                                          <span className="text-[10px] text-[#B34040]" title="Entity mismatch">⚠️</span>
+                                          <span title="Entity mismatch"><AlertTriangle className="w-3 h-3 text-[#B34040]" /></span>
                                         )}
                                       </div>
                                     </div>
@@ -1745,9 +1828,9 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                       <div className="flex items-center gap-1">
                                         <strong className="text-[#1C1C1E]">{aiRes.extractedSchool || 'Not detected'}</strong>
                                         {aiRes.crossCheckResults?.schoolMatch ? (
-                                          <span className="text-[10px] text-[#2D5941]">✓</span>
+                                          <Check className="w-3 h-3 text-[#2D5941]" />
                                         ) : (
-                                          <span className="text-[10px] text-[#B34040]">⚠️</span>
+                                          <AlertTriangle className="w-3 h-3 text-[#B34040]" />
                                         )}
                                       </div>
                                     </div>
@@ -1781,10 +1864,11 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                              }
  
                                              return (
-                                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${
                                                  isQualified ? 'bg-[#EBF5EE] text-[#2D5941]' : 'bg-red-50 text-[#B34040]'
                                                }`} title={`${scaleLabel} (equiv ${normalizedPercent.toFixed(1)}%). Min requirement: ${minGwa || 'None'}`}>
-                                                 {scaleLabel} • {isQualified ? 'Meets Min ✓' : 'Below Min ⚠️'}
+                                                 <span>{scaleLabel} • {isQualified ? 'Meets Min' : 'Below Min'}</span>
+                                                 {isQualified ? <Check className="w-2.5 h-2.5" /> : <AlertTriangle className="w-2.5 h-2.5" />}
                                                </span>
                                              );
                                            })()}
@@ -1798,9 +1882,10 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                           <button
                                             type="button"
                                             onClick={() => setEditingTuitionDocIdx(null)}
-                                            className="text-[10px] text-[#6C6C70] hover:text-[#1C1C1E] cursor-pointer"
+                                            className="text-[10px] text-[#6C6C70] hover:text-[#1C1C1E] cursor-pointer inline-flex items-center gap-1"
                                           >
-                                            ✕ Cancel
+                                            <X className="w-3 h-3" />
+                                            <span>Cancel</span>
                                           </button>
                                         </div>
                                         <div className="flex items-center gap-1.5">
@@ -1838,10 +1923,11 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                               setEditingTuitionDocIdx(idx);
                                               setEditingTuitionVal(aiRes.extractedTuitionAmount && Number(aiRes.extractedTuitionAmount) > 0 ? String(aiRes.extractedTuitionAmount) : '');
                                             }}
-                                            className="text-[10px] text-[#2D5941] hover:underline cursor-pointer font-bold px-1.5 py-0.5 bg-[#EBF5EE] rounded-md border border-[#2D5941]/20"
+                                            className="text-[10px] text-[#2D5941] hover:underline cursor-pointer font-bold px-1.5 py-0.5 bg-[#EBF5EE] rounded-md border border-[#2D5941]/20 inline-flex items-center gap-1"
                                             title="Edit or enter assessed tuition fee"
                                           >
-                                            ✏️ Edit
+                                            <Edit3 className="w-2.5 h-2.5" />
+                                            <span>Edit</span>
                                           </button>
                                         </div>
                                       </div>
@@ -1853,19 +1939,27 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               {/* Security Signals Checklist */}
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
                                 <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
-                                  <span>{aiRes.hasOfficialSealOrSignature ? '🟢' : '🟡'}</span>
+                                  {aiRes.hasOfficialSealOrSignature ? (
+                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  ) : (
+                                    <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                  )}
                                   <span className="text-[#1C1C1E]">
                                     {aiRes.hasOfficialSealOrSignature ? 'Official Seal / Signature Detected' : 'Seal / Signature Unclear'}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
-                                  <span>{aiRes.tamperingDetected ? '🔴' : '🟢'}</span>
+                                  {aiRes.tamperingDetected ? (
+                                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                  ) : (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  )}
                                   <span className="text-[#1C1C1E]">
                                     {aiRes.tamperingDetected ? 'Visual Alteration Detected' : 'No Digital Tampering'}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60 col-span-2 sm:col-span-1">
-                                  <span>🔒</span>
+                                  <Lock className="w-3.5 h-3.5 text-[#6C6C70] shrink-0" />
                                   <span className="text-[#6C6C70] truncate font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
                                     Hash: {aiRes.sha256Hash ? aiRes.sha256Hash.slice(0, 10) + '...' : 'N/A'}
                                   </span>
@@ -1875,8 +1969,8 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                               {/* Flagged Issues & Warnings */}
                               {aiRes.flags && aiRes.flags.length > 0 && (
                                 <div className="p-2.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
-                                  <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider block">
-                                    ⚠️ Compliance Anomalies & Warnings:
+                                  <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider flex items-center gap-1.5">
+                                    <AlertTriangle className="w-3.5 h-3.5" /> Compliance Anomalies & Warnings:
                                   </span>
                                   <ul className="list-disc list-inside text-xs text-[#B34040] space-y-0.5 font-medium">
                                     {aiRes.flags.map((flag: any, fIdx: number) => (
@@ -1888,8 +1982,8 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
 
                               {/* Forensic Summary */}
                               <div className="p-3 bg-white rounded-xl border border-[#D9D2C5]/70 text-xs text-[#1C1C1E] space-y-1">
-                                <span className="text-[10px] font-bold text-[#1A3C2E] uppercase block tracking-wider">
-                                  🤖 AI Forensic Summary:
+                                <span className="text-[10px] font-bold text-[#1A3C2E] uppercase flex items-center gap-1.5 tracking-wider">
+                                  <Bot className="w-3.5 h-3.5" /> AI Forensic Summary:
                                 </span>
                                 <p className="text-xs text-[#1C1C1E] font-medium leading-relaxed">
                                   {(() => {
@@ -1919,9 +2013,10 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                       toggleDocStatus(idx, 'Verified');
                                       setDocumentsList(prev => prev.map((d, i) => i === idx ? { ...d, remarks: '' } : d));
                                     }}
-                                    className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] text-xs font-bold transition-all cursor-pointer border-0"
+                                    className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] text-xs font-bold transition-all cursor-pointer border-0 inline-flex items-center gap-1.5"
                                   >
-                                    ✓ Accept as Verified
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Accept as Verified</span>
                                   </button>
                                   <button
                                     type="button"
@@ -1930,9 +2025,10 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
                                       const flagReason = aiRes.flags && aiRes.flags.length > 0 ? getFlagString(aiRes.flags[0]) : aiRes.summary;
                                       setDocumentsList(prev => prev.map((d, i) => i === idx ? { ...d, remarks: `AI Flag: ${flagReason}` } : d));
                                     }}
-                                    className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-[#B34040] hover:text-white text-[#B34040] text-xs font-bold transition-all cursor-pointer border-0"
+                                    className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-[#B34040] hover:text-white text-[#B34040] text-xs font-bold transition-all cursor-pointer border-0 inline-flex items-center gap-1.5"
                                   >
-                                    🚩 Flag Issue with AI Reason
+                                    <Flag className="w-3.5 h-3.5" />
+                                    <span>Flag Issue with AI Reason</span>
                                   </button>
                                 </div>
                               )}
@@ -1951,15 +2047,16 @@ export const ProviderViewApplicationTab: React.FC<ProviderViewApplicationTabProp
               <div className="pt-4 border-t border-[#D9D2C5]/60 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-[#1A3C2E] flex items-center gap-2">
-                    <span>🔍</span> Document Preview: <span className="font-mono">{activePreviewDoc.name}</span>
+                    <Search className="w-3.5 h-3.5" /> Document Preview: <span className="font-mono">{activePreviewDoc.name}</span>
                   </h4>
                   <a
                     href={activePreviewDoc.url || activePreviewDoc.document_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-xs font-bold text-[#1A3C2E] hover:underline"
+                    className="text-xs font-bold text-[#1A3C2E] hover:underline inline-flex items-center gap-1"
                   >
-                    Open in New Window ↗
+                    <span>Open in New Window</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
                 <div className="w-full h-[480px] bg-slate-100 rounded-2xl border border-[#D9D2C5] overflow-hidden flex items-center justify-center relative">

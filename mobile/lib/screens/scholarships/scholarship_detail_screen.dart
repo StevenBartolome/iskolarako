@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:iskoako/services/duplicate_check_service.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
@@ -875,10 +875,12 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
 
   Widget _buildReadinessCard(BuildContext context, Map<String, dynamic>? scholar) {
     final isFaceVerified = scholar?['face_verification_status']?.toString() == 'verified';
+    final isBlockchainAnchored = scholar?['profile_blockchain_verified'] == true;
     final missingFields = EligibilityHelper.getMissingFields(scholar);
-    final isProfileInfoDone = missingFields.where((f) => !f.toLowerCase().contains('identity') && !f.toLowerCase().contains('face')).isEmpty;
+    final isProfileInfoDone = missingFields.where((f) => !f.toLowerCase().contains('identity') && !f.toLowerCase().contains('face') && !f.toLowerCase().contains('integrity')).isEmpty;
     final integrityCheck = DuplicateCheckService.checkProfileIntegrity(scholar: scholar);
-    final isReady = isFaceVerified && isProfileInfoDone && !integrityCheck.isTampered;
+    final hasTamperMismatch = missingFields.any((f) => f.toLowerCase().contains('tampered') || f.toLowerCase().contains('invalidated'));
+    final isReady = isFaceVerified && isBlockchainAnchored && isProfileInfoDone && !integrityCheck.isTampered && !hasTamperMismatch;
 
     return Container(
       width: double.infinity,
@@ -932,13 +934,19 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
                     Text(
                       isReady
                           ? 'You are fully verified and eligible to apply'
-                          : (integrityCheck.isTampered
-                              ? 'Profile name differs from verified ID'
-                              : 'Action required before you can apply'),
+                          : (hasTamperMismatch || (isFaceVerified && !isBlockchainAnchored)
+                              ? 'Security Alert: Altered identity or missing blockchain anchor'
+                              : (integrityCheck.isTampered
+                                  ? 'Profile name differs from verified ID'
+                                  : 'Action required before you can apply')),
                       style: GoogleFonts.inter(
                         fontSize: 11.5,
-                        color: integrityCheck.isTampered ? const Color(0xFFDC2626) : const Color(0xFF6B7280),
-                        fontWeight: integrityCheck.isTampered ? FontWeight.w600 : FontWeight.w400,
+                        color: (integrityCheck.isTampered || hasTamperMismatch || (isFaceVerified && !isBlockchainAnchored))
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFF6B7280),
+                        fontWeight: (integrityCheck.isTampered || hasTamperMismatch || (isFaceVerified && !isBlockchainAnchored))
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                       ),
                     ),
                   ],
@@ -948,18 +956,22 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Item 1: Face Verification
+          // Item 1: Face Verification & Blockchain Security
           _buildReadinessItem(
-            title: 'Identity Verification (Face Check)',
-            subtitle: isFaceVerified
-                ? (integrityCheck.isTampered
+            title: 'Identity Verification (Face & Blockchain)',
+            subtitle: (isFaceVerified && isBlockchainAnchored && !hasTamperMismatch && !integrityCheck.isTampered)
+                ? 'Secured on Blockchain with verified face & matching ID'
+                : (integrityCheck.isTampered
                     ? 'Mismatch: Name changed from verified ID (${integrityCheck.verifiedIdName})'
-                    : 'Face verified with matching valid ID')
-                : 'Face check required to prevent duplication',
-            isComplete: isFaceVerified && !integrityCheck.isTampered,
-            actionLabel: isFaceVerified
-                ? (integrityCheck.isTampered ? 'Re-verify ID' : null)
-                : 'Verify Face',
+                    : (hasTamperMismatch
+                        ? 'Tamper Alert: Identity attributes altered after blockchain anchor'
+                        : (isFaceVerified && !isBlockchainAnchored
+                            ? 'Unsecured: Blockchain anchor missing or invalidated'
+                            : 'Face check required to prevent duplication'))),
+            isComplete: isFaceVerified && isBlockchainAnchored && !integrityCheck.isTampered && !hasTamperMismatch,
+            actionLabel: (isFaceVerified && isBlockchainAnchored && !integrityCheck.isTampered && !hasTamperMismatch)
+                ? null
+                : ((hasTamperMismatch || (isFaceVerified && !isBlockchainAnchored)) ? 'Re-verify' : 'Verify Face'),
             onAction: () => Navigator.pushNamed(context, AppRouter.faceVerification),
           ),
           const Divider(height: 16, color: Color(0xFFF3F4F6)),
@@ -1042,14 +1054,20 @@ class _ScholarshipDetailScreenState extends State<ScholarshipDetailScreen> {
 
   Widget _buildBottomWarningBanner(BuildContext context, Map<String, dynamic>? scholar) {
     final isFaceVerified = scholar?['face_verification_status']?.toString() == 'verified';
+    final isBlockchainAnchored = scholar?['profile_blockchain_verified'] == true;
     final missingFields = EligibilityHelper.getMissingFields(scholar);
-    final isProfileInfoDone = missingFields.where((f) => !f.toLowerCase().contains('identity') && !f.toLowerCase().contains('face')).isEmpty;
+    final hasTamperMismatch = missingFields.any((f) => f.toLowerCase().contains('tampered') || f.toLowerCase().contains('invalidated'));
+    final isProfileInfoDone = missingFields.where((f) => !f.toLowerCase().contains('identity') && !f.toLowerCase().contains('face') && !f.toLowerCase().contains('integrity')).isEmpty;
 
     String msg;
     String actionText;
     VoidCallback onAction;
 
-    if (!isFaceVerified && !isProfileInfoDone) {
+    if (isFaceVerified && (!isBlockchainAnchored || hasTamperMismatch)) {
+      msg = 'Security Alert: Profile data or face verification was altered directly in database. Re-verification required.';
+      actionText = 'Re-verify';
+      onAction = () => Navigator.pushNamed(context, AppRouter.faceVerification);
+    } else if (!isFaceVerified && !isProfileInfoDone) {
       msg = 'Identity check & profile completion required before applying.';
       actionText = 'Verify Face';
       onAction = () => Navigator.pushNamed(context, AppRouter.faceVerification);

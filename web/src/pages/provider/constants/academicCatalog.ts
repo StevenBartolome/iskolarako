@@ -126,7 +126,7 @@ export interface CourseCategory {
 export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   {
     category: 'Information Technology & Computing',
-    icon: '💻',
+    icon: 'laptop',
     courses: [
       'BS Computer Science',
       'BS Information Technology',
@@ -140,7 +140,7 @@ export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   },
   {
     category: 'Engineering & Architecture',
-    icon: '🏗️',
+    icon: 'building',
     courses: [
       'BS Civil Engineering',
       'BS Mechanical Engineering',
@@ -156,7 +156,7 @@ export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   },
   {
     category: 'Health & Medical Sciences',
-    icon: '🩺',
+    icon: 'stethoscope',
     courses: [
       'BS Nursing',
       'BS Medical Technology / Medical Laboratory Science',
@@ -172,7 +172,7 @@ export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   },
   {
     category: 'Business, Accountancy & Management',
-    icon: '📊',
+    icon: 'bar-chart',
     courses: [
       'BS Accountancy',
       'BS Management Accounting',
@@ -188,7 +188,7 @@ export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   },
   {
     category: 'Sciences & Mathematics',
-    icon: '🔬',
+    icon: 'microscope',
     courses: [
       'BS Biology',
       'BS Chemistry',
@@ -203,7 +203,7 @@ export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   },
   {
     category: 'Teacher Education',
-    icon: '📚',
+    icon: 'book-open',
     courses: [
       'Bachelor of Elementary Education (BEEd)',
       'Bachelor of Secondary Education - Major in English',
@@ -219,7 +219,7 @@ export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   },
   {
     category: 'Social Sciences, Humanities & Law',
-    icon: '⚖️',
+    icon: 'scale',
     courses: [
       'BA Communication / Mass Communication',
       'BA / BS Psychology',
@@ -236,7 +236,7 @@ export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   },
   {
     category: 'Agriculture, Forestry & Fisheries',
-    icon: '🌾',
+    icon: 'sprout',
     courses: [
       'BS Agriculture',
       'BS Forestry',
@@ -248,7 +248,7 @@ export const CHED_COLLEGE_COURSES: CourseCategory[] = [
   },
   {
     category: 'Maritime & Aviation',
-    icon: '⚓',
+    icon: 'anchor',
     courses: [
       'BS Marine Transportation',
       'BS Marine Engineering',

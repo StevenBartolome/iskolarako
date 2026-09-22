@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ExternalLink, RefreshCw, Check, FileText } from 'lucide-react';
 import { supabase } from '@/services/supabaseClient';
 
 interface BlockchainEventRecord {
@@ -131,15 +132,17 @@ export const AdminFundsTab: React.FC = () => {
             href={`https://amoy.polygonscan.com/address/${smartContractAddress}`}
             target="_blank"
             rel="noreferrer"
-            className="bg-[#C97B2E] hover:bg-[#A86220] text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition-all flex items-center gap-1.5"
+            className="bg-[#C97B2E] hover:bg-[#A86220] text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition-all inline-flex items-center gap-1.5"
           >
-            <span>View Smart Contract on Polygonscan ↗</span>
+            <span>View Smart Contract on Polygonscan</span>
+            <ExternalLink className="w-3.5 h-3.5" />
           </a>
           <button
             onClick={fetchBlockchainEvents}
-            className="bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+            className="bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-1.5"
           >
-            🔄 Refresh
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -151,7 +154,10 @@ export const AdminFundsTab: React.FC = () => {
           <h4 className="text-2xl font-bold text-[#1A3C2E] font-serif mt-1">
             {blockchainEvents.length} Records
           </h4>
-          <span className="text-[10px] text-[#2D5941] font-semibold mt-1 block">✓ Immutably Stored</span>
+          <span className="text-[10px] text-[#2D5941] font-semibold mt-1 inline-flex items-center gap-1">
+            <Check className="w-3 h-3" />
+            <span>Immutably Stored</span>
+          </span>
         </div>
 
         <div className="bg-white border border-[#D9D2C5] rounded-2xl p-5 shadow-xs">
@@ -221,11 +227,11 @@ export const AdminFundsTab: React.FC = () => {
                           href={`https://amoy.polygonscan.com/tx/${event.txHash}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="hover:underline flex items-center gap-1 text-[#2D5941]"
+                          className="hover:underline inline-flex items-center gap-1 text-[#2D5941]"
                           title="View proof on Polygonscan"
                         >
                           <span>{`${event.txHash.substring(0, 12)}...${event.txHash.substring(event.txHash.length - 6)}`}</span>
-                          <span className="text-[10px]">↗</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
                         </a>
                       ) : (
                         <span>{event.txHash}</span>
@@ -251,10 +257,11 @@ export const AdminFundsTab: React.FC = () => {
                             href={event.documentProofUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-[10px] text-[#2D5941] font-bold hover:underline ml-1"
+                            className="text-[10px] text-[#2D5941] font-bold hover:underline ml-1 inline-flex items-center gap-0.5"
                             title="View Verified Bank Card Scan"
                           >
-                            📄 Scan
+                            <FileText className="w-3 h-3" />
+                            <span>Scan</span>
                           </a>
                         )}
                       </div>
@@ -265,7 +272,8 @@ export const AdminFundsTab: React.FC = () => {
                     </td>
                     <td className="py-3 px-4">
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20 inline-flex items-center gap-1">
-                        <span>✓</span> VERIFIED
+                        <Check className="w-2.5 h-2.5" />
+                        <span>VERIFIED</span>
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right text-[11px] text-[#8E8E93]">

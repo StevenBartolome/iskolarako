@@ -1,4 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Scale,
+  Clock,
+  Check,
+  X,
+  FolderOpen,
+  Bot,
+  Tag,
+  MessageSquare,
+  Paperclip,
+} from 'lucide-react';
 import { supabase } from '@/services/supabaseClient';
 import { createAuditLog } from '@/services/auditLogService';
 import { sendDecisionNotification } from '@/services/notificationService';
@@ -391,7 +402,7 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl border border-[#EDE8DE] shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xl">⚖️</span>
+            <Scale className="w-5 h-5 text-[#1A3C2E]" />
             <h1 className="text-xl font-extrabold text-[#1A3C2E]">Appeals & Decision Disputes</h1>
           </div>
           <p className="text-xs text-[#6C6C70] mt-1">
@@ -431,28 +442,36 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
       {/* Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-[#EDE8DE] shadow-2xs flex items-center gap-3">
-          <div className="p-3 bg-[#F9F5EF] rounded-xl text-lg">⚖️</div>
+          <div className="p-3 bg-[#F9F5EF] rounded-xl flex items-center justify-center">
+            <Scale className="w-5 h-5 text-[#1A3C2E]" />
+          </div>
           <div>
             <div className="text-xl font-extrabold text-[#1A3C2E]">{appeals.length}</div>
             <div className="text-2xs font-bold text-[#8E8E93] uppercase">Total Appeals Filed</div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-[#F5EAD6] shadow-2xs flex items-center gap-3">
-          <div className="p-3 bg-[#FFF8EE] rounded-xl text-lg">⏳</div>
+          <div className="p-3 bg-[#FFF8EE] rounded-xl flex items-center justify-center">
+            <Clock className="w-5 h-5 text-[#C97B2E]" />
+          </div>
           <div>
             <div className="text-xl font-extrabold text-[#C97B2E]">{pendingCount}</div>
             <div className="text-2xs font-bold text-[#8E8E93] uppercase">Pending Review</div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-[#E1EFE6] shadow-2xs flex items-center gap-3">
-          <div className="p-3 bg-[#EBF5EE] rounded-xl text-lg">✓</div>
+          <div className="p-3 bg-[#EBF5EE] rounded-xl flex items-center justify-center">
+            <Check className="w-5 h-5 text-[#1A3C2E]" />
+          </div>
           <div>
             <div className="text-xl font-extrabold text-[#1A3C2E]">{approvedCount}</div>
             <div className="text-2xs font-bold text-[#8E8E93] uppercase">Appeals Accepted</div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-[#FADBD8] shadow-2xs flex items-center gap-3">
-          <div className="p-3 bg-[#FDF2F2] rounded-xl text-lg">✕</div>
+          <div className="p-3 bg-[#FDF2F2] rounded-xl flex items-center justify-center">
+            <X className="w-5 h-5 text-[#B34040]" />
+          </div>
           <div>
             <div className="text-xl font-extrabold text-[#B34040]">{rejectedCount}</div>
             <div className="text-2xs font-bold text-[#8E8E93] uppercase">Rejections Upheld</div>
@@ -467,7 +486,9 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
         </div>
       ) : filteredAppeals.length === 0 ? (
         <div className="bg-white p-12 rounded-2xl border border-[#EDE8DE] text-center space-y-3">
-          <div className="text-3xl">📂</div>
+          <div className="flex justify-center">
+            <FolderOpen className="w-10 h-10 text-[#8E8E93]" />
+          </div>
           <div className="text-sm font-bold text-[#1A3C2E]">No appeals found</div>
           <div className="text-xs text-[#6C6C70]">
             There are currently no student application disputes matching the selected filter.
@@ -500,11 +521,22 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
                         : 'bg-[#FDF2F2] text-[#B34040] border border-[#FADBD8]'
                     }`}
                   >
-                    {appeal.status === 'pending'
-                      ? '⏳ Pending Review'
-                      : appeal.status === 'approved'
-                      ? '✓ Appeal Accepted'
-                      : '✕ Rejection Upheld'}
+                    {appeal.status === 'pending' ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>Pending Review</span>
+                      </span>
+                    ) : appeal.status === 'approved' ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>Appeal Accepted</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        <X className="w-3 h-3" />
+                        <span>Rejection Upheld</span>
+                      </span>
+                    )}
                   </span>
                   <span className="text-3xs text-[#8E8E93]">
                     Filed {new Date(appeal.created_at).toLocaleDateString()}
@@ -516,7 +548,7 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
               {appeal.ai_rejection_reasons && appeal.ai_rejection_reasons.length > 0 && (
                 <div className="bg-amber-50/90 p-3.5 rounded-xl border border-amber-200/80 space-y-1.5 shadow-2xs">
                   <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900">
-                    <span className="text-base">🤖</span>
+                    <Bot className="w-4 h-4 text-amber-700 shrink-0" />
                     <span>AI Document Scan & Rejection Remarks:</span>
                   </div>
                   <div className="space-y-1 text-xs text-amber-900 font-medium pl-1">
@@ -533,7 +565,10 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
               {/* Category & Reason Banner */}
               <div className="bg-[#F9F5EF] p-3.5 rounded-xl border border-[#EDE8DE] space-y-1.5">
                 <div className="flex items-center gap-2 text-xs font-bold text-[#1A3C2E]">
-                  <span>📌 Category:</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Tag className="w-3.5 h-3.5 text-[#C97B2E]" />
+                    <span>Category:</span>
+                  </span>
                   <span className="text-[#C97B2E]">{appeal.reason_category}</span>
                 </div>
                 <div className="text-xs text-[#2D5941] leading-relaxed">
@@ -543,7 +578,7 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
 
               {/* Original Rejection Remarks */}
               <div className="text-xs text-[#6C6C70] bg-white p-3 rounded-xl border border-[#F0EBE1] flex items-start gap-2">
-                <span className="text-sm">💬</span>
+                <MessageSquare className="w-4 h-4 text-[#6C6C70] shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold text-[#4A4A4A]">Original Provider Rejection Note:</span>{' '}
                   {appeal.original_rejection_remarks}
@@ -565,7 +600,8 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
                         rel="noreferrer"
                         className="px-3 py-1.5 rounded-lg bg-[#EBF5EE] hover:bg-[#D4E8DC] text-[#1A3C2E] text-xs font-bold border border-[#D4E8DC] flex items-center gap-1.5 transition-all text-decoration-none"
                       >
-                        <span>📎</span> {doc.filename || doc.name || 'View Proof PDF'}
+                        <Paperclip className="w-3.5 h-3.5" />
+                        <span>{doc.filename || doc.name || 'View Proof PDF'}</span>
                       </a>
                     ))}
                   </div>
@@ -589,16 +625,18 @@ export const ProviderAppealsTab: React.FC<ProviderAppealsTabProps> = ({
                     <button
                       onClick={() => handleResolveAppeal(appeal, 'rejected')}
                       disabled={isSubmitting}
-                      className="px-4 py-2 rounded-xl bg-[#FDF2F2] hover:bg-[#FADBD8] text-[#B34040] text-xs font-bold border border-[#FADBD8] cursor-pointer transition-all disabled:opacity-50"
+                      className="px-4 py-2 rounded-xl bg-[#FDF2F2] hover:bg-[#FADBD8] text-[#B34040] text-xs font-bold border border-[#FADBD8] cursor-pointer transition-all disabled:opacity-50 flex items-center gap-1.5"
                     >
-                      ✕ Uphold Rejection
+                      <X className="w-3.5 h-3.5" />
+                      <span>Uphold Rejection</span>
                     </button>
                     <button
                       onClick={() => handleResolveAppeal(appeal, 'approved')}
                       disabled={isSubmitting}
-                      className="px-4 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-sm disabled:opacity-50"
+                      className="px-4 py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5"
                     >
-                      ✓ Accept Appeal
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Accept Appeal</span>
                     </button>
                   </div>
                 </div>

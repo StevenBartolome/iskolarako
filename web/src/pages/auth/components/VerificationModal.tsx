@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { Mail } from 'lucide-react';
 
 interface VerificationModalProps {
   isOpen: boolean;
@@ -69,8 +70,8 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 animate-fade-in">
       <div className="bg-white rounded-[32px] border border-[#EDE8DE] shadow-2xl p-8 max-w-md w-full space-y-6 relative text-center">
-        <div className="w-12 h-12 rounded-2xl bg-[#EBF5EE] text-[#2D5941] mx-auto flex items-center justify-center text-xl shadow-xs">
-          ✉️
+        <div className="w-12 h-12 rounded-2xl bg-[#EBF5EE] text-[#2D5941] mx-auto flex items-center justify-center shadow-xs">
+          <Mail className="w-6 h-6" />
         </div>
 
         <div>

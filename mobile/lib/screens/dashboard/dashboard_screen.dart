@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/utils/eligibility_helper.dart';
@@ -307,7 +307,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                   _buildHeroBanner(context),
                   const SizedBox(height: 24),
 
-                  // 📢 Top-priority Semestral Renewal Alerts if present
+                  // Top-priority Semestral Renewal Alerts if present
                   if (_openRenewalAlerts.isNotEmpty) ...[
                     for (final alert in _openRenewalAlerts) ...[
                       _buildRenewalHomeBanner(context, alert),
@@ -1122,7 +1122,7 @@ class DashboardScreenState extends State<DashboardScreen> {
         Color txtCol = const Color(0xFFB45309);
 
         if (dbStatus == 'approved') {
-          statusTitle = 'Application Approved! 🎓';
+          statusTitle = 'Application Approved!';
           statusLabel = 'Approved';
           bgCol = const Color(0xFFDCFCE7);
           txtCol = const Color(0xFF15803D);
@@ -1132,7 +1132,7 @@ class DashboardScreenState extends State<DashboardScreen> {
           bgCol = const Color(0xFFE0F2FE);
           txtCol = const Color(0xFF0369A1);
         } else if (dbStatus == 'deferred') {
-          statusTitle = 'Disbursement Deferred ⚠️';
+          statusTitle = 'Disbursement Deferred';
           statusLabel = 'Deferred';
           bgCol = const Color(0xFFFEF3C7);
           txtCol = const Color(0xFFD97706);

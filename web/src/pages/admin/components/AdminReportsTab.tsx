@@ -1,4 +1,16 @@
 import React, { useState, useMemo } from 'react';
+import {
+  ShieldCheck,
+  Download,
+  Scale,
+  GraduationCap,
+  Users,
+  FileText,
+  Check,
+  CheckCircle2,
+  Search,
+  Flag,
+} from 'lucide-react';
 import type { AdminReport, ProviderOrg, ScholarshipAdminView, StudentAdminView, AuditLogEntry } from '../types';
 import { downloadCsv, dateStampedFilename } from '@/utils/csvExport';
 
@@ -169,7 +181,9 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
       <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-2xl bg-[#EBF5EE] text-[#2D5941] text-lg font-bold">🛡️</span>
+            <span className="p-2.5 rounded-2xl bg-[#EBF5EE] text-[#2D5941] flex items-center justify-center">
+              <ShieldCheck className="w-6 h-6" />
+            </span>
             <div>
               <h2 className="text-2xl font-extrabold text-[#1A3C2E] font-serif tracking-tight">
                 System Reports, Compliance & Escalations
@@ -188,7 +202,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
             onClick={exportMasterAuditCsv}
             className="px-4 py-2 rounded-2xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold shadow-xs cursor-pointer border-0 transition-all flex items-center gap-1.5"
           >
-            <span>📥</span>
+            <Download className="w-4 h-4" />
             <span>Export Master Audit</span>
           </button>
           <button
@@ -196,7 +210,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
             onClick={exportEscalationsCsv}
             className="px-4 py-2 rounded-2xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-xs font-bold cursor-pointer border-0 transition-all flex items-center gap-1.5"
           >
-            <span>⚖️</span>
+            <Scale className="w-4 h-4" />
             <span>Export Complaints Log</span>
           </button>
         </div>
@@ -208,7 +222,9 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Total Scholarships</span>
-            <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm">🎓</span>
+            <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-sm">
+              <GraduationCap className="w-4 h-4" />
+            </span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
@@ -219,7 +235,8 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
             </p>
           </div>
           <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
-            <span>✓</span> Platform-wide Program Tracking
+            <Check className="w-3.5 h-3.5" />
+            <span>Platform-wide Program Tracking</span>
           </div>
         </div>
 
@@ -227,7 +244,9 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Active Scholars</span>
-            <span className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm">👥</span>
+            <span className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm">
+              <Users className="w-4 h-4" />
+            </span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
@@ -246,7 +265,9 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Compliance Rate</span>
-            <span className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-sm">📜</span>
+            <span className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-sm">
+              <FileText className="w-4 h-4" />
+            </span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
@@ -265,7 +286,9 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
         <div className="bg-white rounded-3xl border border-[#D9D2C5]/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold text-[#6C6C70] uppercase tracking-wider">Open Disputes</span>
-            <span className="w-8 h-8 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center font-bold text-sm">⚖️</span>
+            <span className="w-8 h-8 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center font-bold text-sm">
+              <Scale className="w-4 h-4" />
+            </span>
           </div>
           <div className="my-3">
             <div className="text-2xl font-extrabold text-[#1A3C2E] font-serif">
@@ -276,7 +299,8 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
             </p>
           </div>
           <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
-            <span>🛡️</span> Zero unaddressed critical flags
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Zero unaddressed critical flags</span>
           </div>
         </div>
       </div>
@@ -323,6 +347,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
             <div className="flex items-center gap-3 flex-wrap">
               {/* Search */}
               <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8E8E93]" />
                 <input
                   type="text"
                   placeholder="Search complaints..."
@@ -330,7 +355,6 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-8 pr-3 py-1.5 text-xs rounded-xl bg-[#FFFFFF] border border-[#D9D2C5] text-[#1A3C2E] outline-none focus:border-[#1A3C2E] w-48"
                 />
-                <span className="absolute left-2.5 top-2 text-xs text-[#8E8E93]">🔍</span>
               </div>
 
               {/* Status Filter Buttons */}
@@ -354,7 +378,7 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
           <div className="space-y-4">
             {filteredReports.length === 0 ? (
               <div className="text-center py-12 bg-[#FFFFFF]/50 rounded-2xl border border-dashed border-[#D9D2C5]">
-                <span className="text-3xl block mb-2">🎉</span>
+                <CheckCircle2 className="w-8 h-8 text-[#2D5941] mx-auto mb-2" />
                 <h4 className="text-sm font-bold text-[#1A3C2E]">No Reports in this Queue</h4>
                 <p className="text-xs text-[#8E8E93] mt-1">All complaints have been resolved or no matching records found.</p>
               </div>
@@ -386,9 +410,10 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleReportAction(rep.id, 'Resolved')}
-                        className="bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold px-3.5 py-2 rounded-xl cursor-pointer border-0 shadow-xs transition-all"
+                        className="bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold px-3.5 py-2 rounded-xl cursor-pointer border-0 shadow-xs transition-all inline-flex items-center gap-1.5"
                       >
-                        ✓ Mark Resolved
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Mark Resolved</span>
                       </button>
                       <button
                         type="button"
@@ -396,9 +421,10 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
                           showToast(`Suspended associated entity for Report #${rep.id}`);
                           handleReportAction(rep.id, 'Resolved');
                         }}
-                        className="bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold px-3.5 py-2 rounded-xl cursor-pointer border-0 shadow-xs transition-all"
+                        className="bg-[#B34040] hover:bg-[#8E2F2F] text-white text-xs font-bold px-3.5 py-2 rounded-xl cursor-pointer border-0 shadow-xs transition-all inline-flex items-center gap-1.5"
                       >
-                        🚩 Suspend Entity
+                        <Flag className="w-3.5 h-3.5" />
+                        <span>Suspend Entity</span>
                       </button>
                     </div>
                   )}

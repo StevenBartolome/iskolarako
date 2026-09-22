@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Bell, X, Inbox, Building2, FileText, Coins, Megaphone, MapPin, RefreshCw } from 'lucide-react';
 import { supabase } from '@/services/supabaseClient';
 import {
   fetchUserNotifications,
@@ -139,8 +140,8 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
         {/* Drawer Header */}
         <div className="p-5 border-b border-[#D9D2C5]/50 bg-gradient-to-r from-[#1A3C2E] to-[#2D5941] text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-lg border border-white/20">
-              🔔
+            <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20">
+              <Bell className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -171,7 +172,7 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
               onClick={onClose}
               className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold text-sm border-0 cursor-pointer transition-colors"
             >
-              ✕
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -217,8 +218,8 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
             </div>
           ) : filteredNotifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center p-6 space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-[#EDE8DE] flex items-center justify-center text-2xl text-[#2D5941]">
-                📭
+              <div className="w-14 h-14 rounded-2xl bg-[#EDE8DE] flex items-center justify-center text-[#2D5941]">
+                <Inbox className="w-7 h-7 text-[#2D5941]" />
               </div>
               <h4 className="text-sm font-bold text-[#1A3C2E] font-serif">Inbox is completely clear</h4>
               <p className="text-xs text-[#6C6C70] max-w-xs">
@@ -253,7 +254,7 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
                   <div className="flex items-start gap-3">
                     {/* Icon */}
                     <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0 border ${
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
                         isAdmin
                           ? 'bg-purple-50 text-purple-700 border-purple-200'
                           : isExam
@@ -263,7 +264,15 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
                           : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/20'
                       }`}
                     >
-                      {isAdmin ? '🏛️' : isExam ? '📝' : isFund ? '💰' : '📢'}
+                      {isAdmin ? (
+                        <Building2 className="w-4 h-4" />
+                      ) : isExam ? (
+                        <FileText className="w-4 h-4" />
+                      ) : isFund ? (
+                        <Coins className="w-4 h-4" />
+                      ) : (
+                        <Megaphone className="w-4 h-4" />
+                      )}
                     </div>
 
                     {/* Content */}
@@ -297,8 +306,9 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
                       </p>
 
                       {meta.location && (
-                        <div className="mt-2 text-[10px] font-bold text-[#C97B2E] bg-amber-50/80 px-2 py-1 rounded-lg flex items-center gap-1 border border-amber-200/50">
-                          <span>📍 Venue:</span>
+                        <div className="mt-2 text-[10px] font-bold text-[#C97B2E] bg-amber-50/80 px-2 py-1 rounded-lg flex items-center gap-1.5 border border-amber-200/50">
+                          <MapPin className="w-3 h-3 text-[#C97B2E] shrink-0" />
+                          <span className="shrink-0">Venue:</span>
                           <span className="break-words">{meta.location}</span>
                         </div>
                       )}
@@ -330,9 +340,10 @@ export const ProviderNotificationDrawer: React.FC<ProviderNotificationDrawerProp
           <button
             type="button"
             onClick={loadNotifications}
-            className="text-[11px] font-bold text-[#2D5941] hover:underline cursor-pointer bg-transparent border-0"
+            className="text-[11px] font-bold text-[#2D5941] hover:underline cursor-pointer bg-transparent border-0 flex items-center gap-1"
           >
-            ↻ Refresh
+            <RefreshCw className="w-3 h-3" />
+            <span>Refresh</span>
           </button>
         </div>
       </div>

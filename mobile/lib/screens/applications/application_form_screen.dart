@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/custom_button.dart';
 import 'package:iskoako/widgets/custom_text_field.dart';
@@ -225,19 +225,19 @@ class _ApplicationFormScreenState extends State<ApplicationFormScreen> {
               items: const [
                 DropdownMenuItem(
                   value: '1st Year / Incoming Freshmen',
-                  child: Text('🎓 1st Year / Incoming Freshmen'),
+                  child: Text('1st Year / Incoming Freshmen'),
                 ),
                 DropdownMenuItem(
                   value: '2nd Year College',
-                  child: Text('🏛️ 2nd Year College'),
+                  child: Text('2nd Year College'),
                 ),
                 DropdownMenuItem(
                   value: '3rd Year College',
-                  child: Text('🏛️ 3rd Year College'),
+                  child: Text('3rd Year College'),
                 ),
                 DropdownMenuItem(
                   value: '4th Year / Graduating',
-                  child: Text('🏛️ 4th Year / Graduating'),
+                  child: Text('4th Year / Graduating'),
                 ),
               ],
               onChanged: (val) {

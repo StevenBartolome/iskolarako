@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/widgets/app_components.dart';
@@ -162,13 +162,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
               String? senderBadge;
 
               if (senderType == 'admin' || type == 'announcement') {
-                senderBadge = '🏛️ System Admin';
+                senderBadge = 'System Admin';
                 category = 'Announcements';
                 icon = LucideIcons.megaphone;
                 iconVar = IconVariant.amber;
                 statusType = StatusType.pending;
               } else if (senderType == 'provider') {
-                senderBadge = '🏢 ${senderName ?? "Provider"}';
+                senderBadge = senderName ?? "Provider";
                 category = 'Announcements';
                 if (type == 'exam' || annType?.toLowerCase().contains('exam') == true) {
                   icon = LucideIcons.fileCheck;
@@ -280,7 +280,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       id: itemId,
                       icon: LucideIcons.alertTriangle,
                       iconVariant: IconVariant.amber,
-                      title: 'Action Required: Document Issue Flagged ⚠️',
+                      title: 'Action Required: Document Issue Flagged',
                       message: 'An issue was noted in your submitted requirement for $progTitle. Tap to view provider instructions and resubmit.',
                       time: timeStr,
                       isUnread: !_readItemIds.contains(itemId),
@@ -300,7 +300,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       id: itemId,
                       icon: LucideIcons.fileCheck,
                       iconVariant: IconVariant.green,
-                      title: 'Examination Shortlist 🎉',
+                      title: 'Examination Shortlist',
                       message: 'Congratulations! You passed the initial evaluation for $progTitle. You are now shortlisted for the Examination stage.',
                       time: timeStr,
                       isUnread: !_readItemIds.contains(itemId),
@@ -318,7 +318,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       id: itemId,
                       icon: LucideIcons.checkCircle2,
                       iconVariant: IconVariant.green,
-                      title: 'Application Approved! 🎓',
+                      title: 'Application Approved!',
                       message: 'Congratulations! Your scholarship application for $progTitle has been officially approved. Welcome to the scholarship program!',
                       time: timeStr,
                       isUnread: !_readItemIds.contains(itemId),
@@ -361,7 +361,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             id: 'mock-1',
             icon: LucideIcons.sparkles,
             iconVariant: IconVariant.green,
-            title: 'Welcome to IskoAko! 🎉',
+            title: 'Welcome to IskoAko!',
             message: 'Your scholar account is active. Explore verified scholarships, track milestones, and receive instant announcements here.',
             time: 'Recently',
             isUnread: false,

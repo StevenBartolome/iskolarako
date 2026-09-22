@@ -1,3 +1,5 @@
+import 'package:iskoako/services/blockchain_service.dart';
+
 class EligibilityHelper {
   static bool isProfileComplete(Map<String, dynamic>? scholar) {
     if (scholar == null) return false;
@@ -21,8 +23,20 @@ class EligibilityHelper {
         return false;
       }
     }
-    // Face verification is required to be considered a fully verified scholar
+    // Face verification and blockchain security anchor are required
     if (scholar['face_verification_status']?.toString() != 'verified') {
+      return false;
+    }
+    if (scholar['profile_blockchain_verified'] != true) {
+      return false;
+    }
+    // Cryptographic profile hash integrity check
+    final storedHash = scholar['profile_blockchain_hash']?.toString();
+    if (storedHash == null || storedHash.isEmpty) {
+      return false;
+    }
+    final currentHash = BlockchainService.computeProfileHash(scholar);
+    if (currentHash.toLowerCase() != storedHash.toLowerCase()) {
       return false;
     }
     return true;
@@ -68,9 +82,21 @@ class EligibilityHelper {
         missing.add(label);
       }
     });
-    // Check face verification separately with a human-readable label
+    // Check face verification and blockchain anchor status
     if (scholar['face_verification_status']?.toString() != 'verified') {
       missing.add('Identity Verification (face check required)');
+    } else if (scholar['profile_blockchain_verified'] != true) {
+      missing.add('Identity Verification (blockchain security anchor missing or invalidated)');
+    } else {
+      final storedHash = scholar['profile_blockchain_hash']?.toString();
+      if (storedHash == null || storedHash.isEmpty) {
+        missing.add('Identity Verification (blockchain hash missing)');
+      } else {
+        final currentHash = BlockchainService.computeProfileHash(scholar);
+        if (currentHash.toLowerCase() != storedHash.toLowerCase()) {
+          missing.add('Identity Integrity (tampered profile data detected - re-verification required)');
+        }
+      }
     }
     return missing;
   }

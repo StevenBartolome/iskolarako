@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
@@ -115,6 +115,8 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   double _matchConfidence = 0.0;
   String _resultReason = '';
   String _modelUsed = '';
+  String _analyzingTitle = 'Analyzing Your Identity';
+  String _analyzingSubtitle = 'Our AI is comparing your ID photo with your selfie.\nThis may take a few seconds.';
 
   // Animation
   late AnimationController _pulseController;
@@ -488,8 +490,8 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
     setState(() {
       _livenessStatus = _LivenessStatus.actionPassed;
       _liveActionHint = action == LivenessAction.blink
-          ? 'Blink detected! ✓'
-          : 'Action Passed 100%! ✓';
+          ? 'Blink detected!'
+          : 'Action Passed 100%!';
       if (action == LivenessAction.blink) _blinkDone = true;
       if (action == LivenessAction.turnLeft) _turnLeftDone = true;
       if (action == LivenessAction.turnRight) _turnRightDone = true;
@@ -689,70 +691,189 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
           debugPrint('[FaceVerification] Error updating scholar table: $e');
         }
 
-        // 4. Save Verified ID document to scholar_documents table
-        if (idUrl != null) {
-          try {
-            final scholarRow = await Supabase.instance.client
-                .from('scholar')
-                .select('id')
-                .eq('user_id', user.id)
-                .maybeSingle();
+        if (!result.isMatch) {
+          // AI match failed: record failure and show failure result
+          final scholarPayloadFail = <String, dynamic>{
+            'face_verification_status': 'failed',
+            'face_verified_at': null,
+            'face_verification_reason': result.reason,
+          };
 
-            if (scholarRow != null) {
-              final scholarId = scholarRow['id'];
+          try {
+            await Supabase.instance.client.from('scholar').update(scholarPayloadFail).eq('user_id', user.id);
+          } catch (e) {
+            debugPrint('[FaceVerification] Error updating scholar table: $e');
+          }
+
+          AuditLogService.createAuditLog(
+            action: 'FACE VERIFICATION FAILED',
+            target: result.reason,
+          );
+
+          if (mounted) {
+            setState(() {
+              _verificationSuccess = false;
+              _matchConfidence = result.confidence;
+              _resultReason = result.reason;
+              _modelUsed = result.modelUsed;
+              _step = _VerificationStep.result;
+            });
+          }
+          return;
+        }
+
+        // ── STEP A: Face match succeeded! Keep user on analyzing screen while anchoring ──
+        if (mounted) {
+          setState(() {
+            _analyzingTitle = 'Anchoring to Blockchain';
+            _analyzingSubtitle = 'Writing immutable identity proof to Polygon Amoy...\nPlease do not close the app.';
+          });
+        }
+
+        // 4. Fetch scholar ID for document logging and blockchain anchoring
+        String? anchorScholarId;
+        try {
+          final scholarRow = await Supabase.instance.client
+              .from('scholar')
+              .select('id')
+              .eq('user_id', user.id)
+              .maybeSingle();
+          anchorScholarId = scholarRow?['id']?.toString();
+        } catch (e) {
+          debugPrint('[FaceVerification] Error fetching scholar ID: $e');
+        }
+
+        // 5. Save Verified ID document to scholar_documents table
+        if (idUrl != null && anchorScholarId != null) {
+          try {
               await Supabase.instance.client.from('scholar_documents').upsert({
-                'scholar_id': scholarId,
+                'scholar_id': anchorScholarId,
                 'document_name': 'Verified Government / Student ID',
                 'document_url': idUrl,
-                'verification_status': result.isMatch ? 'verified' : 'rejected',
+                'verification_status': 'verified',
                 'document_type': 'id_verification',
                 'remarks': 'Face & ID Verification ($resolvedIdType) - Holder: $verifiedIdFullName',
-                'ai_verification_status': result.isMatch ? 'verified' : 'rejected',
+                'ai_verification_status': 'verified',
                 'ai_confidence_score': result.confidence,
                 'ai_model_used': result.modelUsed,
               });
-            }
           } catch (docErr) {
             debugPrint('[FaceVerification] Error logging ID to scholar_documents: $docErr');
           }
         }
 
-        // 5. Store verified ID data in auth metadata for duplicate/integrity checks
+        // 6. Store verified ID data in auth metadata for duplicate/integrity checks
         try {
           await Supabase.instance.client.auth.updateUser(
             UserAttributes(data: {'verified_id_data': verifiedIdData}),
           );
         } catch (_) {}
-      }
-      
-      if (result.isMatch) {
+
+        // 7. Strictly Anchor scholar profile on blockchain
+        String? anchorError;
+        if (anchorScholarId != null) {
+          anchorError = await _anchorProfileOnBlockchain(anchorScholarId);
+        } else {
+          anchorError = 'Scholar profile ID not found in database.';
+        }
+
+        if (anchorError != null) {
+          // Blockchain anchoring failed! Do NOT show success or return to home button!
+          AuditLogService.createAuditLog(
+            action: 'FACE VERIFICATION BLOCKCHAIN FAILED',
+            target: anchorError,
+          );
+          if (mounted) {
+            setState(() {
+              _verificationSuccess = false;
+              _matchConfidence = result.confidence;
+              _resultReason = 'Blockchain anchoring failed: $anchorError\nYour identity could not be verified on the ledger. Please try again.';
+              _step = _VerificationStep.result;
+            });
+          }
+          return;
+        }
+
+        // 8. Confirm that database shows face_verification_status == 'verified' AND profile_blockchain_verified == true
+        bool isFullyVerified = false;
+        try {
+          final verifiedCheck = await Supabase.instance.client
+              .from('scholar')
+              .select('face_verification_status, profile_blockchain_verified')
+              .eq('user_id', user.id)
+              .maybeSingle();
+          isFullyVerified = verifiedCheck?['face_verification_status'] == 'verified' &&
+              verifiedCheck?['profile_blockchain_verified'] == true;
+        } catch (e) {
+          debugPrint('[FaceVerification] Error verifying DB status: $e');
+        }
+
+        if (!isFullyVerified) {
+          if (mounted) {
+            setState(() {
+              _verificationSuccess = false;
+              _matchConfidence = result.confidence;
+              _resultReason = 'Identity verification status could not be confirmed in the database. Please try again.';
+              _step = _VerificationStep.result;
+            });
+          }
+          return;
+        }
+
+        // ONLY reach here if BOTH AI matched AND Blockchain anchor + DB status succeeded!
+        try {
+          final anchoredScholar = await Supabase.instance.client
+              .from('scholar')
+              .select()
+              .eq('user_id', user.id)
+              .maybeSingle();
+
+          if (anchoredScholar != null) {
+            await Supabase.instance.client.auth.updateUser(
+              UserAttributes(data: {
+                'verified_id_data': verifiedIdData,
+                'verified_profile_snapshot': {
+                  'first_name': anchoredScholar['first_name'] ?? _regFirstName,
+                  'middle_name': anchoredScholar['middle_name'] ?? '',
+                  'last_name': anchoredScholar['last_name'] ?? _regLastName,
+                  'suffix': anchoredScholar['suffix'] ?? '',
+                  'birth_date': anchoredScholar['birth_date'] ?? _regBirthDate,
+                  'gender': anchoredScholar['gender'] ?? '',
+                  'face_verification_status': 'verified',
+                  'face_verified_at': anchoredScholar['face_verified_at'],
+                  'profile_blockchain_hash': anchoredScholar['profile_blockchain_hash'],
+                  'profile_blockchain_tx_hash': anchoredScholar['profile_blockchain_tx_hash'],
+                  'verified_at': DateTime.now().toIso8601String(),
+                },
+              }),
+            );
+          }
+        } catch (snapErr) {
+          debugPrint('[FaceVerification] Snapshot save error: $snapErr');
+        }
+
         AuditLogService.createAuditLog(
           action: 'FACE VERIFICATION SUCCESS',
-          target: 'Confidence: ${(result.confidence * 100).toStringAsFixed(1)}%',
+          target: 'Confidence: ${(result.confidence * 100).toStringAsFixed(1)}% | Anchored on Polygon',
         );
-      } else {
-        AuditLogService.createAuditLog(
-          action: 'FACE VERIFICATION FAILED',
-          target: result.reason,
-        );
-      }
 
-      if (mounted) {
-        setState(() {
-          _verificationSuccess = result.isMatch;
-          _matchConfidence = result.confidence;
-          _resultReason = result.reason;
-          _modelUsed = result.modelUsed;
-          _step = _VerificationStep.result;
-        });
-        if (result.isMatch) _checkController.forward();
+        if (mounted) {
+          setState(() {
+            _verificationSuccess = true;
+            _matchConfidence = result.confidence;
+            _resultReason = result.reason;
+            _modelUsed = result.modelUsed;
+            _step = _VerificationStep.result;
+          });
+          _checkController.forward();
+        }
       }
     } catch (e) {
       debugPrint('[FaceVerification] Analysis error: $e');
       if (mounted) {
         setState(() {
           _verificationSuccess = false;
-          _resultReason = 'An error occurred during analysis. Please try again.';
+          _resultReason = 'An error occurred during analysis: $e. Please try again.';
           _step = _VerificationStep.result;
         });
       }
@@ -760,8 +881,48 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // BLOCKCHAIN PROFILE ANCHORING (strict await)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Calls the anchor-scholar-profile edge function to write the scholar's
+  /// verified identity hash to the Polygon blockchain.
+  /// Returns null on success, or an error string on failure.
+  Future<String?> _anchorProfileOnBlockchain(String scholarId) async {
+    try {
+      debugPrint('[FaceVerification] Anchoring profile on blockchain for scholar: $scholarId');
+      final response = await Supabase.instance.client.functions.invoke(
+        'anchor-scholar-profile',
+        body: {
+          'scholarId': scholarId,
+          'reason': _idExtractResult?.reason,
+        },
+      ).timeout(const Duration(seconds: 45));
+
+      if (response.status == 200) {
+        final data = response.data;
+        if (data is Map && data['success'] == true) {
+          debugPrint('[FaceVerification] Blockchain anchor success: txHash=${data['txHash']}, hash=${data['profileHash']}');
+          return null;
+        } else {
+          final err = data?['error']?.toString() ?? 'Blockchain edge function did not return success.';
+          debugPrint('[FaceVerification] Blockchain anchor error: $err');
+          return err;
+        }
+      } else {
+        final err = 'Edge function HTTP ${response.status}: ${response.data}';
+        debugPrint('[FaceVerification] $err');
+        return err;
+      }
+    } catch (e) {
+      debugPrint('[FaceVerification] Blockchain anchor error: $e');
+      return e.toString();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // NAVIGATION
   // ─────────────────────────────────────────────────────────────────────────
+
 
   void _goToStep(_VerificationStep step) async {
     _livenessTimer?.cancel();
@@ -1746,7 +1907,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
                     children: [
                       Text(
                         isVerified
-                            ? '1 Face Detected — Alone Verified ✓'
+                            ? '1 Face Detected — Alone Verified'
                             : 'Focusing on Face (${remainingSeconds}s)...',
                         style: GoogleFonts.inter(
                           color: const Color(0xFF1E40AF),
@@ -2512,7 +2673,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             ),
             const SizedBox(height: 28),
             Text(
-              'Analyzing Your Identity',
+              _analyzingTitle,
               style: GoogleFonts.inter(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
@@ -2522,7 +2683,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
             ),
             const SizedBox(height: 10),
             Text(
-              'Our AI is comparing your ID photo with your selfie.\nThis may take a few seconds.',
+              _analyzingSubtitle,
               style: GoogleFonts.inter(
                 fontSize: 14,
                 color: AppColors.textSecondary,
@@ -2818,7 +2979,7 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
       final displayIdType = _selectedIdType == 'Other / Custom ID' ? (_customIdName ?? 'ID') : (_selectedIdType ?? 'ID');
 
       // Classify the ID side & verify document type matching before accepting
-      final side = await FaceVerificationService.classifyIdSide(
+      final classifyResult = await FaceVerificationService.classifyIdSide(
         imageBytes: bytes,
         selectedIdType: displayIdType,
         isFront: isFront,
@@ -2828,14 +2989,16 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
 
       final expectedSide = isFront ? 'front' : 'back';
 
-      if (side == 'invalid' || side == 'unknown') {
+      if (classifyResult.side == 'invalid' || !classifyResult.isIdTypeMatch || !classifyResult.isValidId) {
         final errorMsg = isFront
-            ? 'ID Type Mismatch! You selected "$displayIdType". Please capture the front of your physical $displayIdType.'
+            ? (classifyResult.reason != null && classifyResult.reason!.isNotEmpty && !classifyResult.isIdTypeMatch
+                ? 'ID Type Mismatch! ${classifyResult.reason}'
+                : 'ID Type Mismatch! You selected "$displayIdType". Please capture the front of your physical $displayIdType.')
             : 'Could not detect back of ID. Please ensure the reverse side of your $displayIdType is clearly in frame.';
         setState(() {
           _tempCapturedBytes = null;
           _isClassifyingPhoto = false;
-          _cameraScanError = '❌ $errorMsg';
+          _cameraScanError = errorMsg;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2851,14 +3014,14 @@ class _FaceVerificationScreenState extends State<FaceVerificationScreen>
         return;
       }
 
-      if (side != expectedSide) {
+      if (classifyResult.side != expectedSide) {
         // Wrong side — reject and show feedback
         final wrongLabel = isFront ? 'back' : 'front';
         final expectedLabel = isFront ? 'front' : 'back';
         setState(() {
           _tempCapturedBytes = null;
           _isClassifyingPhoto = false;
-          _cameraScanError = '❌ Wrong side detected! Found $wrongLabel side. Please align $expectedLabel side.';
+          _cameraScanError = 'Wrong side detected! Found $wrongLabel side. Please align $expectedLabel side.';
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

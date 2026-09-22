@@ -31,7 +31,7 @@ export const Footer: React.FC = () => {
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-6 mt-12 pt-6 border-t border-[#3D7A58]/50 text-center text-xs text-[#9BA89F]">
-        © {new Date().getFullYear()} IskoAko. All rights reserved.
+        &copy; {new Date().getFullYear()} IskoAko. All rights reserved.
       </div>
     </footer>
   );

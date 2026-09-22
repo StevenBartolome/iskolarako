@@ -249,7 +249,7 @@ CRITICAL MATCHING RULES:
           progress: progress,
           isCompleted: isCompleted,
           hint: isCompleted
-              ? 'Blink detected! ✓'
+              ? 'Blink detected!'
               : (!eyesOpenObserved
                   ? 'Keep eyes open, looking at camera'
                   : 'Blink both eyes naturally now'),
@@ -282,7 +282,7 @@ CRITICAL MATCHING RULES:
           progress: progress,
           isCompleted: isCompleted,
           hint: isCompleted
-              ? 'Turn Left completed 100%! ✓'
+              ? 'Turn Left completed 100%!'
               : progress > 0.05
                   ? 'Turning Left: ${(progress * 100).toInt()}% (Turn more to reach 100%)'
                   : 'Slowly turn your head to the LEFT',
@@ -315,7 +315,7 @@ CRITICAL MATCHING RULES:
           progress: progress,
           isCompleted: isCompleted,
           hint: isCompleted
-              ? 'Turn Right completed 100%! ✓'
+              ? 'Turn Right completed 100%!'
               : progress > 0.05
                   ? 'Turning Right: ${(progress * 100).toInt()}% (Turn more to reach 100%)'
                   : 'Slowly turn your head to the RIGHT',
@@ -1095,32 +1095,52 @@ Rules:
   }) async {
     final prompt = '''
 You are an expert identity verification AI.
-You are given two images of a student or government ID of type "$idType":
-- Image 1 is the FRONT of the ID (already verified during the camera scan step).
-- Image 2 is the BACK of the ID (already verified during the camera scan step).
-
-IMPORTANT: The front and back sides have already been confirmed valid during the camera capture step. Do NOT reject based on image side classification. Focus solely on extracting and comparing the owner's identity details.
+You are given two images of a document that is claimed to be a "$idType":
+- Image 1 is the FRONT of the ID.
+- Image 2 is the BACK of the ID.
 
 Your tasks are:
-1. Extract the owner's details from the FRONT of the ID (Image 1):
+1. Verify the ID Document Type:
+   - Check if the card shown in Image 1 and Image 2 actually matches the claimed ID type "$idType".
+   - ID Type Distinctions:
+     * "Student ID / School ID": Issued by a school, college, or university (e.g., student name, school logo, student ID number, academic year).
+     * "Driver's License": Issued by Land Transportation Office (LTO) or driving authority. Labeled "DRIVER'S LICENSE", has DL codes, blood type, restriction codes.
+     * "PhilSys National ID": Philippine Identification Card / PhilSys. Titled "Philippine Identification Card" or "Republika ng Pilipinas" with eagle emblem.
+     * "Philippine Passport": Passport booklet with "PASAPORTE" / "PASSPORT", Republic of the Philippines.
+     * "UMID / SSS ID": Unified Multi-Purpose ID or Social Security System ID.
+     * "Postal ID": Philippine Postal Corporation card.
+     * "PRC ID": Professional Regulation Commission card.
+     * "Voter's ID": Commission on Elections (COMELEC).
+     * "Other / Custom ID": Matches the specified custom card title ($idType).
+   - CRITICAL REQUIREMENT: If the claimed type is "$idType" but the image shows a completely different type of ID (for example: user claimed "Driver's License" but the image shows a "Student ID" or "School ID", or user claimed "Student ID" but image shows a "Driver's License" or "National ID"), you MUST reject it:
+     Set "is_id_type_match": false
+     Set "is_match": false
+     Set "detected_id_type": "<the actual ID type detected on the card>"
+     Include "id_type" in "mismatched_fields"
+     Set "reason": "ID type mismatch: selected $idType but the uploaded card is a <actual ID type>"
+2. Extract the owner's details from the FRONT of the ID (Image 1):
    - First Name (Given Names / Mga Pangalan)
    - Middle Name (Gitnang Apelyido) - CRITICAL: If the person has NO middle name, or if the field under 'Gitnang Apelyido' is blank/empty/dash on the ID card, return an empty string "" for extracted_middle_name. DO NOT return the header or field label itself (e.g., do NOT return "Gitnang Apelyido", "Middle Name", "Apelyido", "None", "N/A").
    - Last Name (Surname / Apelyido)
    - ID Number / Document Number / Student Number
-2. Compare the extracted details against the applicant's registered details in our system:
+3. Compare the extracted details against the applicant's registered details in our system:
    - Registered First Name: "$regFirstName"
    - Registered Last Name: "$regLastName"
-3. Set is_match to true ONLY IF the extracted First Name and Last Name match the registered values.
-   Rules for matching:
+4. Set is_match to true ONLY IF:
+   - is_id_type_match is true (the ID is truly a $idType), AND
+   - The extracted First Name and Last Name match the registered values.
+   Rules for name matching:
    - Ignore casing and minor whitespace differences.
    - Ignore middle names or suffix variations if not present on the ID (e.g. "Jr" or "Junior").
    - Accept common abbreviations (e.g. "Ma." vs "Maria").
-4. If there is a mismatch on first name or last name, list the mismatched fields in "mismatched_fields" (e.g., ["first_name"]).
-5. Set confidence from 0.0 to 1.0.
+5. If there is a mismatch on ID type, first name, or last name, list the mismatched fields in "mismatched_fields" (e.g., ["id_type"], ["first_name"]).
+6. Set confidence from 0.0 to 1.0.
 
 Return ONLY raw JSON (no markdown, no backticks):
 {
   "is_match": true or false,
+  "is_id_type_match": true or false,
+  "detected_id_type": "...",
   "confidence": 0.0 to 1.0,
   "extracted_first_name": "...",
   "extracted_middle_name": "...",
@@ -1188,6 +1208,7 @@ Return ONLY raw JSON (no markdown, no backticks):
     if (rawResult != null) {
       return _validateExtractedDetailsStrictly(
         rawResult: rawResult,
+        idType: idType,
         regFirstName: regFirstName,
         regLastName: regLastName,
         regBirthDate: regBirthDate,
@@ -1315,7 +1336,7 @@ Return ONLY raw JSON (no markdown, no backticks):
     return null;
   }
 
-  static Future<String> classifyIdSide({
+  static Future<ClassifyIdResult> classifyIdSide({
     required Uint8List imageBytes,
     required String selectedIdType,
     required bool isFront,
@@ -1333,19 +1354,40 @@ Selected Expected ID Type: "$selectedIdType"
 
 Rules:
 1. First, is this image a non-ID object?
-   - If the image shows a desk, wall, computer screen, face without an ID card, blank paper, shoe, room, scenery, furniture, food, or a phone screen, return is_valid_id: false.
+   - If the image shows a desk, wall, computer screen, face without an ID card, blank paper, shoe, room, scenery, furniture, food, or a phone screen, return is_valid_id: false, is_id_type_match: false, detected_side: "none", reason: "Not an ID card".
 2. Is this the FRONT of a physical ID card?
    - A valid ID front typically has: a portrait photo of a person, a printed name, and an ID number or card number.
-   - If the image shows the BACK of an ID (barcodes, QR codes, signature strips, no portrait photo), return detected_side: "back" and is_valid_id: true.
-3. ID Type Matching (ONLY reject if clearly a different card category):
-   - If the selected type is "$selectedIdType" and the image CLEARLY shows a completely different category of card (e.g., selected "Driver's License" but image shows a Passport booklet, OR selected "School ID" but image shows a national government ID), return is_valid_id: false with reason "ID type mismatch".
-   - Do NOT reject Philippine government or student ID cards just because you cannot read the specific design — if it has a portrait photo, printed name, and an ID number, treat it as a valid match.
-4. If it is a valid ID front (portrait photo + name + number visible), set detected_side to "front" and is_valid_id to true.
+   - If the image shows the BACK of an ID (barcodes, QR codes, signature strips, no portrait photo), return detected_side: "back", is_valid_id: true, is_id_type_match: true.
+3. ID Type Matching (STRICT):
+   - You MUST determine whether the document shown matches "$selectedIdType".
+   - ID Type Distinctions:
+     * "Student ID / School ID": Issued by a school, college, or university. Features school name, school logo/seal, student number, or academic term.
+     * "Driver's License": Issued by Land Transportation Office (LTO). Clearly labeled "DRIVER'S LICENSE" or "REPUBLIKA NG PILIPINAS LAND TRANSPORTATION OFFICE", has DL codes, blood type, restriction codes.
+     * "PhilSys National ID": Philippine Identification Card / PhilSys. Titled "Philippine Identification Card" or "Republika ng Pilipinas" with Philippine eagle emblem and PhilSys Card Number (PCN).
+     * "Philippine Passport": Passport book page titled "PASAPORTE" / "PASSPORT", Republic of the Philippines, with MRZ (machine readable zone) at bottom.
+     * "UMID / SSS ID": Unified Multi-Purpose ID or Social Security System ID.
+     * "Postal ID": Issued by PhilPost / Philippine Postal Corporation, titled "POSTAL IDENTITY CARD".
+     * "PRC ID": Professional Regulation Commission card, titled "PROFESSIONAL REGULATION COMMISSION".
+     * "Voter's ID": Issued by COMELEC / Commission on Elections.
+     * "Other / Custom ID": Document title matches $selectedIdType.
+   - CRITICAL REQUIREMENT: If the selected type is "$selectedIdType" but the image shows a DIFFERENT category of ID (for example: user selected "Driver's License" but the image shows a "Student ID" or "School ID", or user selected "Student ID" but image shows a "Driver's License" or "National ID"), you MUST reject it:
+     Set "is_id_type_match": false
+     Set "is_valid_id": false
+     Set "detected_side": "invalid"
+     Set "detected_id_type": "<the actual ID type detected on the card>"
+     Set "reason": "Selected $selectedIdType but captured <actual ID type>"
+4. Only if it is a valid ID front AND it matches the selected type "$selectedIdType":
+   Set "is_valid_id": true
+   Set "is_id_type_match": true
+   Set "detected_side": "front"
+   Set "detected_id_type": "$selectedIdType"
 
 Return ONLY raw JSON (no markdown, no backticks):
 {
   "is_valid_id": true or false,
-  "detected_side": "front" or "back" or "none",
+  "is_id_type_match": true or false,
+  "detected_side": "front" or "back" or "none" or "invalid",
+  "detected_id_type": "detected ID type",
   "reason": "Short explanation"
 }
 '''
@@ -1366,39 +1408,67 @@ Rules:
 Return ONLY raw JSON (no markdown, no backticks):
 {
   "is_valid_id": true,
+  "is_id_type_match": true,
   "detected_side": "back",
+  "detected_id_type": "$selectedIdType",
   "reason": "Short explanation"
 }
 ''';
 
     if (_openRouterKey.isNotEmpty) {
-      final result = await _openRouterClassifyIdSide(base64Image: base64Image, prompt: prompt, isFront: isFront);
+      final result = await _openRouterClassifyIdSide(
+        base64Image: base64Image,
+        prompt: prompt,
+        isFront: isFront,
+        selectedIdType: selectedIdType,
+      );
       if (result != null) return result;
     }
 
     if (_geminiKey.isNotEmpty) {
-      final result = await _geminiClassifyIdSide(base64Image: base64Image, prompt: prompt, isFront: isFront);
+      final result = await _geminiClassifyIdSide(
+        base64Image: base64Image,
+        prompt: prompt,
+        isFront: isFront,
+        selectedIdType: selectedIdType,
+      );
       if (result != null) return result;
     }
 
     if (_groqKey.isNotEmpty) {
-      final result = await _groqClassifyIdSide(base64Image: base64Image, prompt: prompt, isFront: isFront);
+      final result = await _groqClassifyIdSide(
+        base64Image: base64Image,
+        prompt: prompt,
+        isFront: isFront,
+        selectedIdType: selectedIdType,
+      );
       if (result != null) return result;
     }
 
     if (_mistralKey.isNotEmpty) {
-      final result = await _mistralClassifyIdSide(base64Image: base64Image, prompt: prompt, isFront: isFront);
+      final result = await _mistralClassifyIdSide(
+        base64Image: base64Image,
+        prompt: prompt,
+        isFront: isFront,
+        selectedIdType: selectedIdType,
+      );
       if (result != null) return result;
     }
 
     // Fallback: If network or API keys fail, allow back-side capture to proceed
-    return isFront ? 'front' : 'back';
+    return ClassifyIdResult(
+      side: isFront ? 'front' : 'back',
+      isValidId: true,
+      isIdTypeMatch: true,
+      detectedIdType: selectedIdType,
+    );
   }
 
-  static Future<String?> _geminiClassifyIdSide({
+  static Future<ClassifyIdResult?> _geminiClassifyIdSide({
     required String base64Image,
     required String prompt,
     required bool isFront,
+    required String selectedIdType,
   }) async {
     const models = ['gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash'];
     for (final model in models) {
@@ -1413,7 +1483,7 @@ Return ONLY raw JSON (no markdown, no backticks):
               ]
             }
           ],
-          'generationConfig': {'temperature': 0.0, 'maxOutputTokens': 120},
+          'generationConfig': {'temperature': 0.0, 'maxOutputTokens': 220},
           'safetySettings': _safetySettings,
         });
         final response = await http
@@ -1425,7 +1495,7 @@ Return ONLY raw JSON (no markdown, no backticks):
           final text = data['candidates']?[0]?['content']?['parts']?[0]?['text']
                   ?.toString() ??
               '';
-          return _parseClassifyResult(text, isFront: isFront);
+          return _parseClassifyResult(text, isFront: isFront, selectedIdType: selectedIdType);
         } else {
           debugPrint('[FaceVerification] Gemini $model classify HTTP ${response.statusCode}: ${response.body}');
         }
@@ -1436,10 +1506,11 @@ Return ONLY raw JSON (no markdown, no backticks):
     return null;
   }
 
-  static Future<String?> _openRouterClassifyIdSide({
+  static Future<ClassifyIdResult?> _openRouterClassifyIdSide({
     required String base64Image,
     required String prompt,
     required bool isFront,
+    required String selectedIdType,
   }) async {
     const models = [
       'google/gemini-2.5-flash:free',
@@ -1467,7 +1538,7 @@ Return ONLY raw JSON (no markdown, no backticks):
               ],
             }
           ],
-          'max_tokens': 120,
+          'max_tokens': 220,
           'temperature': 0.0,
         });
         final response = await http
@@ -1486,7 +1557,7 @@ Return ONLY raw JSON (no markdown, no backticks):
           final content = decoded['choices']?[0]?['message']?['content']
                   ?.toString() ??
               '';
-          return _parseClassifyResult(content, isFront: isFront);
+          return _parseClassifyResult(content, isFront: isFront, selectedIdType: selectedIdType);
         } else {
           debugPrint('[FaceVerification] OpenRouter $model classify HTTP ${response.statusCode}: ${response.body}');
         }
@@ -1614,10 +1685,11 @@ Return ONLY raw JSON (no markdown, no backticks):
     return null;
   }
 
-  static Future<String?> _groqClassifyIdSide({
+  static Future<ClassifyIdResult?> _groqClassifyIdSide({
     required String base64Image,
     required String prompt,
     required bool isFront,
+    required String selectedIdType,
   }) async {
     const models = ['llama-3.2-11b-vision-instruct'];
     for (final model in models) {
@@ -1636,7 +1708,7 @@ Return ONLY raw JSON (no markdown, no backticks):
               ],
             }
           ],
-          'max_tokens': 120,
+          'max_tokens': 220,
           'temperature': 0.0,
         });
         final response = await http
@@ -1653,7 +1725,7 @@ Return ONLY raw JSON (no markdown, no backticks):
           final content = decoded['choices']?[0]?['message']?['content']
                   ?.toString() ??
               '';
-          return _parseClassifyResult(content, isFront: isFront);
+          return _parseClassifyResult(content, isFront: isFront, selectedIdType: selectedIdType);
         } else {
           debugPrint('[FaceVerification] Groq $model classify HTTP ${response.statusCode}: ${response.body}');
         }
@@ -1664,10 +1736,11 @@ Return ONLY raw JSON (no markdown, no backticks):
     return null;
   }
 
-  static Future<String?> _mistralClassifyIdSide({
+  static Future<ClassifyIdResult?> _mistralClassifyIdSide({
     required String base64Image,
     required String prompt,
     required bool isFront,
+    required String selectedIdType,
   }) async {
     const models = ['pixtral-12b-2409'];
     for (final model in models) {
@@ -1686,7 +1759,7 @@ Return ONLY raw JSON (no markdown, no backticks):
               ],
             }
           ],
-          'max_tokens': 120,
+          'max_tokens': 220,
           'temperature': 0.0,
         });
         final response = await http
@@ -1703,7 +1776,7 @@ Return ONLY raw JSON (no markdown, no backticks):
           final content = decoded['choices']?[0]?['message']?['content']
                   ?.toString() ??
               '';
-          return _parseClassifyResult(content, isFront: isFront);
+          return _parseClassifyResult(content, isFront: isFront, selectedIdType: selectedIdType);
         } else {
           debugPrint('[FaceVerification] Mistral $model classify HTTP ${response.statusCode}: ${response.body}');
         }
@@ -1769,7 +1842,11 @@ Return ONLY raw JSON (no markdown, no backticks):
     return null;
   }
 
-  static String _parseClassifyResult(String text, {required bool isFront}) {
+  static ClassifyIdResult _parseClassifyResult(
+    String text, {
+    required bool isFront,
+    required String selectedIdType,
+  }) {
     try {
       final start = text.indexOf('{');
       final end = text.lastIndexOf('}');
@@ -1778,21 +1855,69 @@ Return ONLY raw JSON (no markdown, no backticks):
         final Map<String, dynamic> parsed = Map<String, dynamic>.from(jsonDecode(jsonStr));
         final side = parsed['detected_side']?.toString().toLowerCase().trim() ?? 'none';
         final bool isValid = parsed['is_valid_id'] == true || parsed['is_valid_id'] == 'true' || parsed['is_valid_id'] == 1;
+        final bool isTypeMatch = parsed['is_id_type_match'] != false && parsed['is_id_type_match'] != 'false';
+        final String? detectedType = parsed['detected_id_type']?.toString();
+        final String reason = parsed['reason']?.toString() ?? '';
 
         if (isFront) {
-          if (!isValid && side != 'front') return 'invalid';
-          if (side == 'front') return 'front';
-          if (side == 'back') return 'back';
-          if (isValid) return 'front';
+          // If ID type does not match or card is invalid
+          if (!isValid || !isTypeMatch || side == 'invalid') {
+            return ClassifyIdResult(
+              side: 'invalid',
+              isValidId: isValid,
+              isIdTypeMatch: isTypeMatch,
+              detectedIdType: detectedType,
+              reason: reason.isNotEmpty
+                  ? reason
+                  : 'Document does not match selected "$selectedIdType". Detected: ${detectedType ?? "different ID"}.',
+            );
+          }
+          if (side == 'back') {
+            return ClassifyIdResult(
+              side: 'back',
+              isValidId: isValid,
+              isIdTypeMatch: isTypeMatch,
+              detectedIdType: detectedType,
+              reason: reason,
+            );
+          }
+          // Valid front side matching the selected ID type
+          return ClassifyIdResult(
+            side: 'front',
+            isValidId: true,
+            isIdTypeMatch: true,
+            detectedIdType: detectedType ?? selectedIdType,
+            reason: reason,
+          );
         } else {
           // For BACK side step:
-          if (side == 'front') return 'front';
-          final reason = (parsed['reason'] ?? '').toString().toLowerCase();
-          // Reject if explicitly identified as a non-ID object (desk, wall, shoe, room, screen, scenery)
-          if (!isValid && (side == 'none' || side == 'invalid' || reason.contains('non-id') || reason.contains('not an id') || reason.contains('desk') || reason.contains('wall') || reason.contains('screen') || reason.contains('shoe') || reason.contains('furniture') || reason.contains('scenery'))) {
-            return 'invalid';
+          if (side == 'front') {
+            return ClassifyIdResult(
+              side: 'front',
+              isValidId: isValid,
+              isIdTypeMatch: isTypeMatch,
+              detectedIdType: detectedType,
+              reason: reason,
+            );
           }
-          return 'back';
+          final lowerReason = reason.toLowerCase();
+          // Reject if explicitly identified as a non-ID object (desk, wall, shoe, room, screen, scenery)
+          if (!isValid && (side == 'none' || side == 'invalid' || lowerReason.contains('non-id') || lowerReason.contains('not an id') || lowerReason.contains('desk') || lowerReason.contains('wall') || lowerReason.contains('screen') || lowerReason.contains('shoe') || lowerReason.contains('furniture') || lowerReason.contains('scenery'))) {
+            return ClassifyIdResult(
+              side: 'invalid',
+              isValidId: false,
+              isIdTypeMatch: false,
+              detectedIdType: detectedType,
+              reason: reason,
+            );
+          }
+          return ClassifyIdResult(
+            side: 'back',
+            isValidId: true,
+            isIdTypeMatch: true,
+            detectedIdType: detectedType,
+            reason: reason,
+          );
         }
       }
     } catch (e) {
@@ -1802,25 +1927,35 @@ Return ONLY raw JSON (no markdown, no backticks):
     final lower = text.toLowerCase();
     if (!isFront) {
       if (lower.contains('"detected_side": "front"') || lower.contains('"detected_side":"front"')) {
-        return 'front';
+        return const ClassifyIdResult(side: 'front');
       }
       if (lower.contains('is_valid_id": false') && (lower.contains('non-id') || lower.contains('desk') || lower.contains('wall') || lower.contains('screen') || lower.contains('furniture'))) {
-        return 'invalid';
+        return const ClassifyIdResult(side: 'invalid', isValidId: false);
       }
-      return 'back';
+      return const ClassifyIdResult(side: 'back');
     } else {
-      if (lower.contains('is_valid_id": false') || lower.contains('is_valid_id":false')) {
-        return 'invalid';
-      }
-      if (lower.contains('"detected_side": "front"') || lower.contains('"detected_side":"front"')) {
-        return 'front';
+      if (lower.contains('is_id_type_match": false') || lower.contains('is_id_type_match":false') ||
+          lower.contains('is_valid_id": false') || lower.contains('is_valid_id":false')) {
+        return ClassifyIdResult(
+          side: 'invalid',
+          isValidId: false,
+          isIdTypeMatch: false,
+          reason: 'ID type mismatch or invalid ID card detected. Expected "$selectedIdType".',
+        );
       }
       if (lower.contains('"detected_side": "back"') || lower.contains('"detected_side":"back"')) {
-        return 'back';
+        return const ClassifyIdResult(side: 'back');
+      }
+      if (lower.contains('"detected_side": "front"') || lower.contains('"detected_side":"front"')) {
+        return ClassifyIdResult(side: 'front', detectedIdType: selectedIdType);
       }
     }
 
-    return isFront ? 'invalid' : 'back';
+    return ClassifyIdResult(
+      side: isFront ? 'invalid' : 'back',
+      isValidId: !isFront,
+      isIdTypeMatch: !isFront,
+    );
   }
 
   static IdExtractResult? _parseIdVerifyResult(String body, String model) {
@@ -1916,6 +2051,8 @@ Return ONLY raw JSON (no markdown, no backticks):
         }
       }
       final parsed = jsonDecode(cleanText);
+      final isIdTypeMatch = parsed['is_id_type_match'] != false && parsed['is_id_type_match'] != 'false';
+      final detectedIdType = parsed['detected_id_type']?.toString();
       final isMatch = parsed['is_match'] == true;
       final confidence = double.tryParse(parsed['confidence']?.toString() ?? '0') ?? 0.0;
       final extFirst = cleanExtractedName(parsed['extracted_first_name']?.toString());
@@ -1929,7 +2066,9 @@ Return ONLY raw JSON (no markdown, no backticks):
       final reason = parsed['reason']?.toString() ?? '';
 
       return IdExtractResult(
-        isMatch: isMatch,
+        isMatch: isMatch && isIdTypeMatch,
+        isIdTypeMatch: isIdTypeMatch,
+        detectedIdType: detectedIdType,
         confidence: confidence,
         extractedFirstName: extFirst,
         extractedMiddleName: extMiddle,
@@ -1949,6 +2088,7 @@ Return ONLY raw JSON (no markdown, no backticks):
   /// Programmatically verifies AI-extracted ID text against profile registration details in Dart.
   static IdExtractResult _validateExtractedDetailsStrictly({
     required IdExtractResult rawResult,
+    required String idType,
     required String regFirstName,
     required String regLastName,
     required String regBirthDate,
@@ -1956,6 +2096,16 @@ Return ONLY raw JSON (no markdown, no backticks):
     final List<String> mismatches = [];
     final List<String> matchReasons = [];
     final List<String> mismatchReasons = [];
+
+    // 0. Strict ID Type Verification
+    if (!rawResult.isIdTypeMatch) {
+      mismatches.add('id_type');
+      mismatchReasons.add(
+        'ID Type mismatch: Expected "$idType" but detected "${rawResult.detectedIdType ?? 'a different ID card'}".',
+      );
+    } else {
+      matchReasons.add('ID Type verified ($idType).');
+    }
 
     final String extFirst = cleanExtractedName(rawResult.extractedFirstName);
     final String extMiddle = cleanExtractedName(rawResult.extractedMiddleName);
@@ -1988,6 +2138,8 @@ Return ONLY raw JSON (no markdown, no backticks):
 
     return IdExtractResult(
       isMatch: isFinalMatch,
+      isIdTypeMatch: rawResult.isIdTypeMatch && !mismatches.contains('id_type'),
+      detectedIdType: rawResult.detectedIdType,
       confidence: mismatches.isEmpty ? rawResult.confidence : 0.0,
       extractedFirstName: extFirst,
       extractedMiddleName: extMiddle,
@@ -2054,6 +2206,8 @@ Return ONLY raw JSON (no markdown, no backticks):
 
 class IdExtractResult {
   final bool isMatch;
+  final bool isIdTypeMatch;
+  final String? detectedIdType;
   final double confidence;
   final String extractedFirstName;
   final String extractedMiddleName;
@@ -2066,6 +2220,8 @@ class IdExtractResult {
 
   const IdExtractResult({
     required this.isMatch,
+    this.isIdTypeMatch = true,
+    this.detectedIdType,
     required this.confidence,
     required this.extractedFirstName,
     this.extractedMiddleName = '',
@@ -2075,5 +2231,21 @@ class IdExtractResult {
     required this.mismatchedFields,
     required this.reason,
     required this.modelUsed,
+  });
+}
+
+class ClassifyIdResult {
+  final String side; // 'front', 'back', 'invalid'
+  final bool isValidId;
+  final bool isIdTypeMatch;
+  final String? detectedIdType;
+  final String? reason;
+
+  const ClassifyIdResult({
+    required this.side,
+    this.isValidId = true,
+    this.isIdTypeMatch = true,
+    this.detectedIdType,
+    this.reason,
   });
 }

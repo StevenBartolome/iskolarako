@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AlertTriangle, Loader2, X, RefreshCw, Zap } from 'lucide-react';
 import { supabase } from '@/services/supabaseClient';
 
 export type DisbursementActionType = 'flag_failed' | 'process_refund' | 'reissue';
@@ -118,7 +119,7 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
         if (disbursement.scholarId) {
           await supabase.from('notifications').insert({
             user_id: disbursement.scholarId,
-            title: '⚠️ Action Required: Bank Payout Bounced',
+            title: 'Action Required: Bank Payout Bounced',
             message: `Your disbursement of ${disbursement.amount} for "${disbursement.program}" bounced (${failureReasonText}). Please check your profile bank details and upload a clear scan of your bank card.`,
             type: 'warning',
             read: false,
@@ -162,7 +163,7 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
         if (disbursement.scholarId) {
           await supabase.from('notifications').insert({
             user_id: disbursement.scholarId,
-            title: 'ℹ️ Disbursement Refund Processed',
+            title: 'Disbursement Refund Processed',
             message: `A refund of ${disbursement.amount} for "${disbursement.program}" has been recorded (Ref: ${refundRef.trim()}).`,
             type: 'info',
             read: false,
@@ -248,7 +249,7 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
         if (disbursement.scholarId) {
           await supabase.from('notifications').insert({
             user_id: disbursement.scholarId,
-            title: '⚡ Fund Re-Issued Successfully',
+            title: 'Fund Re-Issued Successfully',
             message: `Your payout of ${disbursement.amount} for "${disbursement.program}" has been re-issued with a new transfer. Please allow 1-3 business days for processing.`,
             type: 'fund_released',
             is_read: false,
@@ -279,9 +280,9 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
           </div>
           <button
             onClick={onClose}
-            className="text-[#6C6C70] hover:text-[#1C1C1E] p-1 rounded-full text-lg cursor-pointer"
+            className="text-[#6C6C70] hover:text-[#1C1C1E] p-1 rounded-full cursor-pointer"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -314,8 +315,9 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
         </div>
 
         {errorMsg && (
-          <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl text-xs font-semibold text-[#B34040]">
-            ⚠️ {errorMsg}
+          <div className="p-3 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl text-xs font-semibold text-[#B34040] flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
@@ -393,16 +395,27 @@ export const DisbursementRefundModal: React.FC<DisbursementRefundModalProps> = (
             >
               {isSubmitting ? (
                 <>
-                  <span className="animate-spin">⏳</span>
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Processing...</span>
                 </>
               ) : (
-                <span>
-                  {actionType === 'flag_failed'
-                    ? '⚠️ Confirm Flag as Failed'
-                    : actionType === 'process_refund'
-                    ? '🔄 Confirm Refund Record'
-                    : '⚡ Confirm Re-issue'}
+                <span className="flex items-center gap-2">
+                  {actionType === 'flag_failed' ? (
+                    <>
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Confirm Flag as Failed</span>
+                    </>
+                  ) : actionType === 'process_refund' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Confirm Refund Record</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4" />
+                      <span>Confirm Re-issue</span>
+                    </>
+                  )}
                 </span>
               )}
             </button>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { X, Check, Megaphone, RefreshCw, Pencil, Trash2, Calendar } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import LogoGoldSvg from '@/assets/logo/iskolarakologo-notext-gold.svg';
 import { supabase } from '@/services/supabaseClient';
@@ -2635,7 +2636,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             if (userIdsToSend.length > 0) {
               const notifInserts = userIdsToSend.map((uId: string) => ({
                 user_id: uId,
-                title: `📢 ${renewSemester} Renewal Open — ${selectedProgramForRenewal.title}`,
+                title: `${renewSemester} Renewal Open — ${selectedProgramForRenewal.title}`,
                 message: `Notice for Continuing Scholars: The renewal for ${selectedProgramForRenewal.title} (${renewSemester}) is now open until ${renewEndDate}.\n\nRequired Documents to Submit:\n${renewRequirements.map((r, i) => `${i + 1}. ${r.name}${r.description ? ` — ${r.description}` : ''}`).join('\n')}\n\nPlease upload them in your IskoAko app to maintain your grant.`,
                 type: 'info',
                 is_read: false,
@@ -2940,7 +2941,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
 
       setHasModifiedDocs(true);
       if (aiResult?.verificationStatus === 'rejected' || aiResult?.tamperingDetected) {
-        showToast(`⚠️ AI Warning: ${fieldName} was flagged/rejected for authenticity mismatch.`);
+        showToast(`AI Warning: ${fieldName} was flagged/rejected for authenticity mismatch.`);
       } else {
         showToast(`Successfully uploaded and AI scanned ${fieldName}!`);
       }
@@ -3095,7 +3096,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
       {isPayoutModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="bg-white rounded-3xl border border-[#D9D2C5] shadow-2xl p-8 max-w-md w-full space-y-6 relative animate-fade-in">
-            <button onClick={() => setIsPayoutModalOpen(false)} className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer">✕</button>
+            <button onClick={() => setIsPayoutModalOpen(false)} className="absolute top-6 right-6 text-[#8E8E93] hover:text-[#1C1C1E] font-bold p-1 cursor-pointer">
+              <X className="w-5 h-5" />
+            </button>
 
             <h3 className="text-2xl font-bold font-serif text-[#1A3C2E]">Release Program Payouts</h3>
             <p className="text-xs text-[#6C6C70]">Select the target program whose pending fund releases should be processed first.</p>
@@ -3151,9 +3154,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
             <button 
               type="button"
               onClick={() => setIsBigMapModalOpen(false)} 
-              className="absolute top-4 right-4 text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-base cursor-pointer bg-transparent border-0"
+              className="absolute top-4 right-4 text-[#8E8E93] hover:text-[#1C1C1E] font-bold cursor-pointer bg-transparent border-0 p-1"
             >
-              ✕
+              <X className="w-5 h-5" />
             </button>
             <div>
               <h3 className="text-lg font-bold font-serif text-[#1A3C2E]">Select Exam Center Venue</h3>
@@ -3391,7 +3394,14 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   ? 'bg-[#FFF8EE] text-[#C97B2E] border border-amber-200'
                   : 'bg-slate-100 text-[#6C6C70]'
               }`}>
-                {providerDetails.verificationStatus === 'verified' ? '✓ Verified Partner' : providerDetails.verificationStatus.replace('_', ' ')}
+                {providerDetails.verificationStatus === 'verified' ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>Verified Partner</span>
+                  </span>
+                ) : (
+                  providerDetails.verificationStatus.replace('_', ' ')
+                )}
               </span>
             )}
           </div>
@@ -3424,7 +3434,7 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   : 'bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E]'
               }`}
             >
-              <span>📢</span>
+              <Megaphone className="w-3.5 h-3.5" />
               <span>Announcements</span>
             </button>
           </div>
@@ -3947,9 +3957,10 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider">Application Cycles</h4>
                   <button
                     onClick={() => { setIsViewModalOpen(false); handleOpenRenewModal(selectedProgram); }}
-                    className="px-2.5 py-1 rounded-lg bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[10px] font-bold border-0 cursor-pointer transition-all"
+                    className="px-2.5 py-1 rounded-lg bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[10px] font-bold border-0 cursor-pointer transition-all flex items-center gap-1"
                   >
-                    🔄 Renew / Add Cycle
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Renew / Add Cycle</span>
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -3975,14 +3986,16 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                           className="px-2 py-1 bg-white hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5] rounded-lg cursor-pointer transition-all text-[10.5px] font-bold flex items-center gap-1 shadow-2xs"
                           title="Edit this cycle"
                         >
-                          <span>✏️</span> Edit
+                          <Pencil className="w-3 h-3" />
+                          <span>Edit</span>
                         </button>
                         <button
                           onClick={() => handleDeleteCycle(cyc.id.toString(), cyc.name)}
                           className="px-2 py-1 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg cursor-pointer transition-all text-[10.5px] font-bold flex items-center gap-1 shadow-2xs"
                           title="Delete this cycle"
                         >
-                          <span>🗑️</span> Delete
+                          <Trash2 className="w-3 h-3" />
+                          <span>Delete</span>
                         </button>
                       </div>
                     </div>
@@ -4021,7 +4034,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                   setProgramForCycleSelect(null);
                 }}
                 className="w-8 h-8 rounded-full bg-[#EDE8DE] hover:bg-[#D9D2C5] flex items-center justify-center text-[#1A3C2E] font-bold border-0 cursor-pointer text-sm"
-              >×</button>
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <p className="text-xs text-[#6C6C70]">
@@ -4051,8 +4066,9 @@ export const ProviderPortal: React.FC<ProviderPortalProps> = ({ onLogout, showWe
                         OPEN
                       </span>
                     </div>
-                    <div className="text-[11px] text-[#6C6C70] mt-1.5 flex items-center gap-2">
-                      <span>📅 {cyc.startDate || cyc.application_start_date || 'Open'} → {cyc.endDate || cyc.application_end_date || 'Ongoing'}</span>
+                    <div className="text-[11px] text-[#6C6C70] mt-1.5 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-[#6C6C70]" />
+                      <span>{cyc.startDate || cyc.application_start_date || 'Open'} → {cyc.endDate || cyc.application_end_date || 'Ongoing'}</span>
                     </div>
                   </button>
                 ))}

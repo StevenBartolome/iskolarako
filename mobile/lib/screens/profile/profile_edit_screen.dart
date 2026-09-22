@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:iskoako/services/audit_log_service.dart';
@@ -1307,7 +1307,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        isComplete ? '✓ Verified Scholar' : '● Incomplete Profile',
+                        isComplete ? 'Verified Scholar' : 'Incomplete Profile',
                         style: GoogleFonts.inter(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w700,
@@ -2941,13 +2941,19 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           if (_isScaleLocked)
             Padding(
               padding: const EdgeInsets.only(top: 6, bottom: 12, left: 2),
-              child: Text(
-                '🔒 Grading system verified for this school and locked.',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: const Color(0xFF6B7280),
-                  fontWeight: FontWeight.w500,
-                ),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.lock, size: 12, color: Color(0xFF6B7280)),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Grading system verified for this school and locked.',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: const Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
           const SizedBox(height: 12),

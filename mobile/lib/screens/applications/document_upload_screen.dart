@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:iskoako/services/audit_log_service.dart';
 import 'package:iskoako/services/ai_extraction_service.dart';
@@ -959,9 +959,9 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
             const SizedBox(height: 12),
             Text(
               attemptCount >= 3
-                  ? '⚠️ Maximum 3 attempts reached. You may now submit an Appeal / Dispute to the scholarship provider.'
+                  ? 'Maximum 3 attempts reached. You may now submit an Appeal / Dispute to the scholarship provider.'
                   : (attemptCount == 2
-                      ? '⚠️ Attempt $attemptCount of 3 used. Next attempt will trigger a 15-minute cooldown if rejected.'
+                      ? 'Attempt $attemptCount of 3 used. Next attempt will trigger a 15-minute cooldown if rejected.'
                       : 'Attempt $attemptCount of 3 used. Please upload a valid copy of $docName.'),
               style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF6B7280)),
             ),
@@ -2228,9 +2228,16 @@ class _DocumentUploadScreenState extends State<DocumentUploadScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: const Color(0xFFDCFCE7)),
                 ),
-                child: Text(
-                  '✓ $b',
-                  style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: const Color(0xFF15803D)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(LucideIcons.check, size: 11, color: Color(0xFF15803D)),
+                    const SizedBox(width: 4),
+                    Text(
+                      b,
+                      style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: const Color(0xFF15803D)),
+                    ),
+                  ],
                 ),
               )).toList(),
             ),

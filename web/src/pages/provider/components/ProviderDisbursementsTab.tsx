@@ -1,4 +1,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Banknote,
+  CreditCard,
+  CheckCircle2,
+  AlertTriangle,
+  RotateCw,
+  Clock,
+  Plus,
+  FileText,
+  Zap,
+  Rocket,
+  ExternalLink,
+  Search,
+  User,
+  Coins,
+  BarChart2,
+  School,
+  Utensils,
+  BookOpen,
+  Wrench,
+  Upload,
+  Bell,
+  X,
+} from 'lucide-react';
 import type { DisbursementTx } from '../types';
 import { supabase } from '@/services/supabaseClient';
 import { createAuditLog } from '@/services/auditLogService';
@@ -441,10 +465,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           const last4 = accNum ? String(accNum).slice(-4) : '';
 
           const bankInfo = isCash
-            ? '💵 Over-the-Counter Cash'
+            ? 'Over-the-Counter Cash'
             : bankName
-              ? `💳 ${String(bankName).replace('of the Philippines', '')}${last4 ? ` (•••• ${last4})` : ''}`
-              : '💳 Online Direct Payout';
+              ? `${String(bankName).replace('of the Philippines', '')}${last4 ? ` (•••• ${last4})` : ''}`
+              : 'Online Direct Payout';
 
 
           let mappedStatus = 'Completed';
@@ -1016,7 +1040,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         // Trigger Realtime Notification for Scholar
         await supabase.from('notifications').insert({
           user_id: selected.scholarId,
-          title: '💵 Cash Fund Released Successfully',
+          title: 'Cash Fund Released Successfully',
           message: `Your Over-the-Counter Cash payout of ₱${numAmount.toLocaleString()} for ${selected.programTitle} has been released successfully. Please claim your payout on-site.`,
           type: 'fund_released',
           is_read: false,
@@ -1098,7 +1122,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
       // Trigger Realtime Notification for Scholar
       await supabase.from('notifications').insert({
         user_id: selected.scholarId,
-        title: '💳 Scholarship Fund Released',
+        title: 'Scholarship Fund Released',
         message: `Your scholarship payout of ₱${numAmount.toLocaleString()} for ${selected.programTitle} has been released and processed.`,
         type: 'fund_released',
         is_read: false,
@@ -1165,13 +1189,15 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
             }}
             className="bg-[#C97B2E] hover:bg-[#A86220] text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md cursor-pointer transition-all flex items-center gap-2"
           >
-            <span>⚡ Single Payout (PayMongo + Blockchain)</span>
+            <Zap className="w-4 h-4 text-amber-300" />
+            <span>Single Payout (PayMongo + Blockchain)</span>
           </button>
           <button
             onClick={() => setIsBatchModalOpen(true)}
             className="bg-[#2D5941] hover:bg-[#1A3C2E] text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md cursor-pointer transition-all flex items-center gap-2"
           >
-            <span>🚀 Batch Release (Entire Cycle)</span>
+            <Rocket className="w-4 h-4 text-emerald-300" />
+            <span>Batch Release (Entire Cycle)</span>
           </button>
         </div>
       </div>
@@ -1216,7 +1242,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-extrabold text-[#1A3C2E] font-serif flex items-center gap-2">
-              <span>💳</span> Program Budget Allocations & Remaining Balances
+              <CreditCard className="w-4 h-4 text-[#1A3C2E]" /> Program Budget Allocations & Remaining Balances
             </h3>
             <p className="text-xs text-[#6C6C70] mt-0.5 font-medium">
               Track net remaining funds per scholarship program and top up depleted budgets directly
@@ -1277,7 +1303,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                   onClick={() => setTopUpProgram(program)}
                   className="w-full py-2 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-2xs"
                 >
-                  <span>➕</span> Top-Up Budget
+                  <Plus className="w-3.5 h-3.5" /> Top-Up Budget
                 </button>
               </div>
             ))
@@ -1386,16 +1412,21 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                     <td className="px-6 py-4 text-[#6C6C70]">{tx.program}</td>
                     <td className="px-6 py-4 text-[#1C1C1E]">
                       <div className="flex items-center gap-1.5">
+                        {tx.method?.toLowerCase().includes('cash') ? (
+                          <Banknote className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        ) : (
+                          <CreditCard className="w-3.5 h-3.5 text-[#2D5941] shrink-0" />
+                        )}
                         <span>{tx.method}</span>
                         {tx.docProof && (
                           <a
                             href={tx.docProof}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-[10px] text-[#2D5941] font-bold hover:underline"
+                            className="inline-flex items-center gap-0.5 text-[10px] text-[#2D5941] font-bold hover:underline"
                             title="View Verified Bank Card Scan"
                           >
-                            📄 Scan
+                            <FileText className="w-3 h-3" /> Scan
                           </a>
                         )}
                       </div>
@@ -1404,7 +1435,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                     <td className="px-6 py-4">
                       {tx.status === 'Completed' && (
                         <span className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/20">
-                          <span>✓</span> Completed
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#2D5941]" /> Completed
                         </span>
                       )}
                       {tx.status === 'Failed' && (
@@ -1412,7 +1443,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                           className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/30"
                           title={tx.failureReason || 'Bank Transfer Bounced / Failed'}
                         >
-                          <span>⚠️</span> Failed / Bounced
+                          <AlertTriangle className="w-3.5 h-3.5 text-[#B34040]" /> Failed / Bounced
                         </span>
                       )}
                       {tx.status === 'Refunded' && (
@@ -1420,12 +1451,12 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                           className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#FFF8EE] text-[#C97B2E] border border-[#C97B2E]/30"
                           title={`Refund Ref: ${tx.refundRef || 'N/A'}`}
                         >
-                          <span>🔄</span> Refunded
+                          <RotateCw className="w-3.5 h-3.5 text-[#C97B2E]" /> Refunded
                         </span>
                       )}
                       {tx.status === 'Processing' && (
                         <span className="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 bg-[#F0F4F8] text-[#2B547E] border border-[#2B547E]/20">
-                          <span>⏳</span> Processing
+                          <Clock className="w-3.5 h-3.5 text-[#2B547E]" /> Processing
                         </span>
                       )}
                     </td>
@@ -1473,14 +1504,14 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
           <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-[#D9D2C5] shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#EDE8DE] pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-xl">➕</span>
+                <Plus className="w-5 h-5 text-[#1A3C2E]" />
                 <h3 className="text-lg font-bold text-[#1A3C2E]">Top-Up Program Budget</h3>
               </div>
               <button
                 onClick={() => setTopUpProgram(null)}
-                className="text-gray-400 hover:text-gray-600 text-lg cursor-pointer bg-transparent border-0"
+                className="text-gray-400 hover:text-gray-600 text-lg cursor-pointer bg-transparent border-0 flex items-center justify-center"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -1558,9 +1589,9 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
               </div>
               <button
                 onClick={() => setIsReleaseModalOpen(false)}
-                className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-lg cursor-pointer border-0 bg-transparent"
+                className="text-[#8E8E93] hover:text-[#1C1C1E] cursor-pointer border-0 bg-transparent flex items-center justify-center"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -1589,9 +1620,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                       href={`https://amoy.polygonscan.com/tx/${successResult.txHash}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-[#2D5941] font-bold hover:underline break-all block mt-0.5"
+                      className="text-[#2D5941] font-bold hover:underline break-all inline-flex items-center gap-1 mt-0.5"
                     >
-                      {successResult.txHash} ↗
+                      <span>{successResult.txHash}</span>
+                      <ExternalLink className="w-3 h-3" />
                     </a>
                   </div>
                   <div className="pt-2 border-t border-[#D9D2C5]/40 flex justify-between">
@@ -1633,7 +1665,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                     <div className="space-y-4">
                       <div className="bg-[#F9F5EF]/40 p-4 rounded-2xl border border-[#D9D2C5]/80 space-y-3">
                         <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider border-b border-[#D9D2C5]/50 pb-2 flex items-center gap-1.5">
-                          <span>👤</span> Recipient Selection
+                          <User className="w-3.5 h-3.5 text-[#1A3C2E]" />
+                          <span>Recipient Selection</span>
                         </h4>
                         
                         {/* Program Selection Dropdown */}
@@ -1649,7 +1682,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                             <option value="">All Programs ({eligibleApplicants.length} scholars)</option>
                             {uniqueProgramsList.map((prog) => (
                               <option key={prog.id} value={prog.id}>
-                                {prog.isCash ? '💵 ' : '🎓 '}{prog.title}
+                                {prog.isCash ? '[Cash] ' : ''}{prog.title}
                               </option>
                             ))}
                           </select>
@@ -1661,7 +1694,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                             2. Search Scholar Name
                           </label>
                           <div className="relative">
-                            <span className="absolute left-3 top-2 text-xs text-[#8E8E93]">🔍</span>
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#8E8E93]" />
                             <input
                               type="text"
                               placeholder="Type scholar name to search..."
@@ -1686,7 +1719,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                             >
                               {filteredApplicants.map((app) => (
                                 <option key={app.applicationId} value={app.applicationId}>
-                                  👤 {app.scholarName} — 🎓 {app.programTitle}
+                                  {app.scholarName} — {app.programTitle}
                                 </option>
                               ))}
                             </select>
@@ -1701,7 +1734,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                       {/* Fund Type & Amount */}
                       <div className="bg-[#F9F5EF]/40 p-4 rounded-2xl border border-[#D9D2C5]/80 space-y-3">
                         <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider border-b border-[#D9D2C5]/50 pb-2 flex items-center gap-1.5">
-                          <span>💰</span> Payout Details
+                          <Coins className="w-3.5 h-3.5 text-[#1A3C2E]" />
+                          <span>Payout Details</span>
                         </h4>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
@@ -1741,8 +1775,9 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                       {currentSelectedApplicant?.benefitSummary && (
                         <div className="bg-[#EBF5EE] p-4 rounded-2xl border border-[#2D5941]/30 space-y-2">
                           <div className="flex justify-between items-center">
-                            <span className="text-[10px] uppercase font-bold text-[#1A3C2E]">
-                              📊 Program Benefit Breakdown
+                            <span className="text-[10px] uppercase font-bold text-[#1A3C2E] flex items-center gap-1">
+                              <BarChart2 className="w-3.5 h-3.5 text-[#1A3C2E]" />
+                              <span>Program Benefit Breakdown</span>
                             </span>
                             <span className="text-xs font-mono font-bold text-[#2D5941] bg-white px-2.5 py-0.5 rounded-lg border border-[#2D5941]/30">
                               ₱{effectiveTotalPayout.toLocaleString()}
@@ -1752,7 +1787,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                           <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                             <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60 flex flex-col justify-between">
                               <div>
-                                <span className="text-[9px] text-[#6C6C70] font-bold block uppercase">🏫 Tuition Subsidy</span>
+                                <span className="text-[9px] text-[#6C6C70] font-bold uppercase flex items-center gap-1">
+                                  <School className="w-3 h-3 text-[#6C6C70]" />
+                                  <span>Tuition Subsidy</span>
+                                </span>
                                 {currentSelectedApplicant.benefitSummary.isTuitionDirectToSchool ? (
                                   <span className="text-[9px] font-bold text-[#C97B2E] block mt-0.5">Paid Off-System</span>
                                 ) : (
@@ -1762,7 +1800,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                                     </span>
                                     {currentSelectedApplicant.benefitSummary.tuitionSource === 'extracted' && (
                                       <span className="text-[8px] font-semibold text-[#2D5941] block mt-0.5">
-                                        ✔ From matriculation
+                                        ✓ From matriculation
                                       </span>
                                     )}
                                     {currentSelectedApplicant.benefitSummary.tuitionSource === 'cap' && (
@@ -1795,7 +1833,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
                             <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60 flex flex-col justify-between">
                               <div>
-                                <span className="text-[9px] text-[#6C6C70] font-bold block uppercase">🍱 Stipend</span>
+                                <span className="text-[9px] text-[#6C6C70] font-bold uppercase flex items-center gap-1">
+                                  <Utensils className="w-3 h-3 text-[#6C6C70]" />
+                                  <span>Stipend</span>
+                                </span>
                                 <span className="font-bold text-[#1A3C2E] block mt-0.5">
                                   ₱{currentSelectedApplicant.benefitSummary.stipendAmt.toLocaleString()}
                                 </span>
@@ -1804,7 +1845,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
                             <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60 flex flex-col justify-between">
                               <div>
-                                <span className="text-[9px] text-[#6C6C70] font-bold block uppercase">📚 Book / Device</span>
+                                <span className="text-[9px] text-[#6C6C70] font-bold uppercase flex items-center gap-1">
+                                  <BookOpen className="w-3 h-3 text-[#6C6C70]" />
+                                  <span>Book / Device</span>
+                                </span>
                                 <span className="font-bold text-[#1A3C2E] block mt-0.5">
                                   ₱{currentSelectedApplicant.benefitSummary.allowanceAmt.toLocaleString()}
                                 </span>
@@ -1813,7 +1857,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
 
                             <div className="bg-white p-2 rounded-xl border border-[#D9D2C5]/60 flex flex-col justify-between">
                               <div>
-                                <span className="text-[9px] text-[#6C6C70] font-bold block uppercase">🛠️ Custom Allowances</span>
+                                <span className="text-[9px] text-[#6C6C70] font-bold uppercase flex items-center gap-1">
+                                  <Wrench className="w-3 h-3 text-[#6C6C70]" />
+                                  <span>Custom Allowances</span>
+                                </span>
                                 <span className="font-bold text-[#1A3C2E] block mt-0.5">
                                   ₱{currentSelectedApplicant.benefitSummary.customBenefitsTotal.toLocaleString()}
                                 </span>
@@ -1827,8 +1874,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                       {currentSelectedApplicant && (
                         (currentSelectedApplicant.disbursementMode === 'in_person_cash' || String(currentSelectedApplicant.disbursementMode).includes('cash')) ? (
                           <div className="bg-[#FFF8EE] p-4 rounded-2xl border border-[#C97B2E]/40 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2 text-xs text-[#1A3C2E]">
-                              <span className="text-lg">💵</span>
+                            <div className="flex items-center gap-2.5 text-xs text-[#1A3C2E]">
+                              <Banknote className="w-5 h-5 text-[#C97B2E] shrink-0" />
                               <div>
                                 <span className="block font-bold text-[#C97B2E]">OTC Cash Disbursement</span>
                                 <span className="text-[10px] text-[#6C6C70] font-medium block mt-0.5">
@@ -1851,8 +1898,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                                   ✓ Ready
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/20">
-                                  ⚠️ Missing Info
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#FDF2F2] text-[#B34040] border border-[#B34040]/20">
+                                  <AlertTriangle className="w-2.5 h-2.5" /> Missing Info
                                 </span>
                               )}
                             </div>
@@ -1883,18 +1930,20 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                                       href={currentSelectedApplicant.paymentAccount.documentProofUrl}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="text-[10px] font-bold text-[#2D5941] hover:underline inline-flex items-center gap-0.5"
+                                      className="text-[10px] font-bold text-[#2D5941] hover:underline inline-flex items-center gap-1"
                                     >
-                                      <span>📄 View Bank Scan</span>
-                                      <span>↗</span>
+                                      <FileText className="w-3 h-3" />
+                                      <span>View Bank Scan</span>
+                                      <ExternalLink className="w-2.5 h-2.5" />
                                     </a>
                                   </div>
                                 )}
                               </div>
                             ) : (
                               <div className="space-y-2 pt-1">
-                                <p className="text-[10px] text-[#B34040]">
-                                  ⚠️ Scholar has not uploaded their bank details yet.
+                                <p className="inline-flex items-center gap-1 text-[10px] text-[#B34040]">
+                                  <AlertTriangle className="w-3 h-3 shrink-0" />
+                                  <span>Scholar has not uploaded their bank details yet.</span>
                                 </p>
                                 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1908,7 +1957,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                                     }
                                     className="w-full py-1.5 bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] rounded-xl text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 border-0"
                                   >
-                                    <span>📤 OCR Upload</span>
+                                    <Upload className="w-3 h-3" />
+                                    <span>OCR Upload</span>
                                   </button>
                                   
                                   <button
@@ -1918,7 +1968,7 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                                         if (currentSelectedApplicant.userId) {
                                           await supabase.from('notifications').insert({
                                             user_id: currentSelectedApplicant.userId,
-                                            title: '⚠️ Urgent: Complete Bank Details',
+                                            title: 'Urgent: Complete Bank Details',
                                             message: `Your disbursement for ${currentSelectedApplicant.programTitle} is pending because you haven't uploaded your bank account details. Please upload your card scan immediately to receive your funds.`,
                                             type: 'warning',
                                             is_read: false,
@@ -1934,7 +1984,8 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                                     }}
                                     className="w-full py-1.5 bg-[#FFF8EE] hover:bg-[#C97B2E] hover:text-white text-[#C97B2E] rounded-xl text-[10px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 border-0"
                                   >
-                                    <span>🔔 Remind</span>
+                                    <Bell className="w-3 h-3" />
+                                    <span>Remind</span>
                                   </button>
                                 </div>
                               </div>
@@ -2033,15 +2084,16 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                     <button
                       onClick={handleCancelGatewayAuth}
                       disabled={isAuthorizingPayment}
-                      className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-xl cursor-pointer disabled:opacity-50"
+                      className="text-[#8E8E93] hover:text-[#1C1C1E] cursor-pointer disabled:opacity-50 flex items-center justify-center"
                     >
-                      ✕
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
 
                   {gatewayAuthError && (
-                    <div className="p-3.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-2xl text-xs text-[#B34040] font-semibold">
-                      ⚠️ {gatewayAuthError}
+                    <div className="p-3.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-2xl text-xs text-[#B34040] font-semibold flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-[#B34040]" />
+                      <span>{gatewayAuthError}</span>
                     </div>
                   )}
 
@@ -2058,8 +2110,9 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[#6C6C70]">Disbursement Method:</span>
-                      <span className="font-bold text-[#2D5941] flex items-center gap-1">
-                        <span>💵</span> Over-the-Counter Cash (On-Site)
+                      <span className="font-bold text-[#2D5941] flex items-center gap-1.5">
+                        <Banknote className="w-4 h-4 text-[#2D5941]" />
+                        <span>Over-the-Counter Cash (On-Site)</span>
                       </span>
                     </div>
                   </div>
@@ -2102,7 +2155,10 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                           <span>Recording Cash Payout...</span>
                         </>
                       ) : (
-                        <span>💵 Confirm & Record Cash Payout</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Banknote className="w-4 h-4" />
+                          <span>Confirm & Record Cash Payout</span>
+                        </span>
                       )}
                     </button>
                   </div>
@@ -2132,15 +2188,16 @@ export const ProviderDisbursementsTab: React.FC<ProviderDisbursementsTabProps> =
                   <button
                     onClick={handleCancelGatewayAuth}
                     disabled={isAuthorizingPayment}
-                    className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-xl cursor-pointer disabled:opacity-50"
+                    className="text-[#8E8E93] hover:text-[#1C1C1E] cursor-pointer disabled:opacity-50 flex items-center justify-center"
                   >
-                    ✕
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
 
                 {gatewayAuthError && (
-                  <div className="p-3.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-2xl text-xs text-[#B34040] font-semibold">
-                    ⚠️ {gatewayAuthError}
+                  <div className="p-3.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-2xl text-xs text-[#B34040] font-semibold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-[#B34040]" />
+                    <span>{gatewayAuthError}</span>
                   </div>
                 )}
 

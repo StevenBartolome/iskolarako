@@ -1,0 +1,52 @@
+workflows:
+  ios-sideload:
+    name: iOS Sideload Build (Free Apple ID)
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      groups:
+        - iskoako-env
+
+    scripts:
+      - name: Recreate env file from Codemagic secrets
+        script: |
+          cat > mobile/env << EOF
+          EMAILJS_SERVICE_ID=$EMAILJS_SERVICE_ID
+          EMAILJS_TEMPLATE_ID=$EMAILJS_TEMPLATE_ID
+          EMAILJS_PUBLIC_KEY=$EMAILJS_PUBLIC_KEY
+          GROQ_API_KEY=$GROQ_API_KEY
+          OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+          MISTRAL_API_KEY=$MISTRAL_API_KEY
+          HUGGINGFACE_API_KEY=$HUGGINGFACE_API_KEY
+          GEMINI_API_KEY=$GEMINI_API_KEY
+          GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY
+          EOF
+
+      - name: Install Flutter dependencies
+        script: flutter pub get
+        working_directory: mobile
+
+      - name: Build iOS (no code signing — Sideloadly will sign it)
+        script: |
+          set -e
+          flutter build ios --release --no-codesign
+        working_directory: mobile
+
+      - name: Package .app into .ipa
+        script: |
+          set -e
+          if [ ! -f "build/ios/iphoneos/Runner.app/Runner" ]; then
+            echo "ERROR: Runner binary not found! The iOS build was not completed."
+            exit 1
+          fi
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -r IskoAko.ipa Payload
+          rm -rf Payload
+          ls -lh IskoAko.ipa
+        working_directory: mobile
+
+    artifacts:
+      - mobile/IskoAko.ipa
+

@@ -1,4 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import {
+  AlertTriangle,
+  Calendar,
+  Coins,
+  Info,
+  Landmark,
+  School,
+  Sparkles,
+  Globe,
+  Search,
+  Wrench,
+  MapPin,
+  Map,
+  Building2,
+  Home,
+  Briefcase,
+  Edit3,
+  Lock,
+  FileText,
+  BookOpen,
+  GraduationCap,
+  Gift,
+  Banknote,
+  Save,
+  Send,
+  Loader2,
+} from 'lucide-react';
 import type { Program, EducationLevel, GradingSystem, ProgramRequirement } from '../types';
 import {
   YEAR_LEVELS_BY_EDUCATION_LEVEL,
@@ -282,52 +309,52 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   const validateStep = (stepNum: number): { valid: boolean; error: string } => {
     if (stepNum === 1) {
       if (!title.trim()) {
-        return { valid: false, error: '⚠️ Step 1 Required: Program Title cannot be empty.' };
+        return { valid: false, error: 'Step 1 Required: Program Title cannot be empty.' };
       }
       if (!description.trim()) {
-        return { valid: false, error: '⚠️ Step 1 Required: Program Description & Overview cannot be empty.' };
+        return { valid: false, error: 'Step 1 Required: Program Description & Overview cannot be empty.' };
       }
       if (!applicationStartDate) {
-        return { valid: false, error: '⚠️ Step 1 Required: Application Intake Start Date is required.' };
+        return { valid: false, error: 'Step 1 Required: Application Intake Start Date is required.' };
       }
       if (!applicationEndDate) {
-        return { valid: false, error: '⚠️ Step 1 Required: Application Closing Deadline is required.' };
+        return { valid: false, error: 'Step 1 Required: Application Closing Deadline is required.' };
       }
       if (new Date(applicationEndDate) < new Date(applicationStartDate)) {
-        return { valid: false, error: '⚠️ Step 1 Error: Application Closing Deadline cannot be earlier than Start Date.' };
+        return { valid: false, error: 'Step 1 Error: Application Closing Deadline cannot be earlier than Start Date.' };
       }
     }
 
     if (stepNum === 2) {
       if (!amount.trim() || isNaN(Number(amount)) || Number(amount) <= 0) {
-        return { valid: false, error: '⚠️ Step 2 Required: Please enter a valid Grant Budget Allocation Amount (must be greater than ₱0).' };
+        return { valid: false, error: 'Step 2 Required: Please enter a valid Grant Budget Allocation Amount (must be greater than ₱0).' };
       }
       if (coversTuition && tuitionCoverageType === 'fixed_cap' && (!tuitionMaxAmount.trim() || isNaN(Number(tuitionMaxAmount)) || Number(tuitionMaxAmount) <= 0)) {
-        return { valid: false, error: '⚠️ Step 2 Required: Please specify the Maximum Tuition Subsidy Cap Amount.' };
+        return { valid: false, error: 'Step 2 Required: Please specify the Maximum Tuition Subsidy Cap Amount.' };
       }
       if (coversStipend && (!stipendAmount.toString().trim() || isNaN(Number(stipendAmount)) || Number(stipendAmount) <= 0)) {
-        return { valid: false, error: '⚠️ Step 2 Required: Please specify the Stipend / Allowance Amount.' };
+        return { valid: false, error: 'Step 2 Required: Please specify the Stipend / Allowance Amount.' };
       }
       if (coversAllowance && (!allowanceAmount.toString().trim() || isNaN(Number(allowanceAmount)) || Number(allowanceAmount) <= 0)) {
-        return { valid: false, error: '⚠️ Step 2 Required: Please specify the Book/Device Allowance Amount.' };
+        return { valid: false, error: 'Step 2 Required: Please specify the Book/Device Allowance Amount.' };
       }
     }
 
     if (stepNum === 3) {
       if (!gpaRequirement.toString().trim()) {
-        return { valid: false, error: '⚠️ Step 3 Required: Please enter the Minimum GWA / GPA Requirement (e.g. 85, 2.0, or N/A).' };
+        return { valid: false, error: 'Step 3 Required: Please enter the Minimum GWA / GPA Requirement (e.g. 85, 2.0, or N/A).' };
       }
       if (selectedYearLevels.length === 0) {
-        return { valid: false, error: '⚠️ Step 3 Required: Please select at least one eligible year level for applicants.' };
+        return { valid: false, error: 'Step 3 Required: Please select at least one eligible year level for applicants.' };
       }
       if (!isOpenToAllCourses && selectedCourses.length === 0 && (targetLevel === 'college' || targetLevel === 'incoming_college' || targetLevel === 'senior_high' || targetLevel === 'vocational' || targetLevel === 'graduate')) {
-        return { valid: false, error: '⚠️ Step 3 Required: Please select at least one target course/strand or toggle to "Open to All Degree Programs".' };
+        return { valid: false, error: 'Step 3 Required: Please select at least one target course/strand or toggle to "Open to All Degree Programs".' };
       }
     }
 
     if (stepNum === 4) {
       if (requirementsList.length === 0) {
-        return { valid: false, error: '⚠️ Step 4 Required: Please include at least one document requirement for applicant submission.' };
+        return { valid: false, error: 'Step 4 Required: Please include at least one document requirement for applicant submission.' };
       }
       if (isNeedBasedCategory(category)) {
         const hasMandatoryIncomeProof = requirementsList.some(
@@ -336,7 +363,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         if (!hasMandatoryIncomeProof) {
           return {
             valid: false,
-            error: '⚠️ Step 4 Required: For Need-Based scholarships, Proof of Income / Certificate of Indigency is mandatory and must be marked as required in the document requirements checklist.',
+            error: 'Step 4 Required: For Need-Based scholarships, Proof of Income / Certificate of Indigency is mandatory and must be marked as required in the document requirements checklist.',
           };
         }
       }
@@ -769,7 +796,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
   const handleRemoveRequirement = (idx: number) => {
     const req = requirementsList[idx];
     if (isNeedBasedCategory(category) && isIncomeProofRequirement(req)) {
-      setStepValidationError('⚠️ Proof of Income / Certificate of Indigency is mandatory for Need-Based scholarships and cannot be removed.');
+      setStepValidationError('Proof of Income / Certificate of Indigency is mandatory for Need-Based scholarships and cannot be removed.');
       return;
     }
     setRequirementsList(prev => prev.filter((_, i) => i !== idx));
@@ -808,7 +835,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         r => isIncomeProofRequirement(r) && (typeof r === 'string' || r.required !== false)
       );
       if (!hasMandatoryIncomeProof) {
-        setStepValidationError('⚠️ Step 4 Required: For Need-Based scholarships, Proof of Income / Certificate of Indigency is mandatory and must be included in the document requirements.');
+        setStepValidationError('Step 4 Required: For Need-Based scholarships, Proof of Income / Certificate of Indigency is mandatory and must be included in the document requirements.');
         setCurrentStep(4);
         return;
       }
@@ -975,7 +1002,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
         {stepValidationError && (
           <div className="p-3.5 rounded-2xl bg-red-50 border border-red-300 text-red-900 text-xs font-bold flex items-center justify-between gap-2 animate-fade-in">
             <div className="flex items-center gap-2">
-              <span className="text-base shrink-0">⚠️</span>
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
               <span>{stepValidationError}</span>
             </div>
             <button
@@ -1039,13 +1066,13 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   onChange={(e) => handleEducationLevelChange(e.target.value as EducationLevel)}
                   className="w-full px-4 py-3 rounded-2xl border border-[#D9D2C5] focus:outline-none focus:border-[#1A3C2E] text-sm bg-white cursor-pointer font-semibold text-[#1A3C2E]"
                 >
-                  <option value="incoming_college">🎓 Incoming College Freshmen (Upcoming 1st Year)</option>
-                  <option value="college">🏛️ College / University Undergraduate</option>
-                  <option value="senior_high">🏫 Senior High School (SHS - Grade 11 & 12)</option>
-                  <option value="high_school">🏫 Junior High School (Grade 7 - 10)</option>
-                  <option value="elementary">🎒 Elementary School (Grade 1 - 6)</option>
-                  <option value="graduate">🎓 Graduate / Master's / Doctorate</option>
-                  <option value="vocational">🛠️ Vocational / Technical (TVET / TESDA)</option>
+                  <option value="incoming_college">Incoming College Freshmen (Upcoming 1st Year)</option>
+                  <option value="college">College / University Undergraduate</option>
+                  <option value="senior_high">Senior High School (SHS - Grade 11 & 12)</option>
+                  <option value="high_school">Junior High School (Grade 7 - 10)</option>
+                  <option value="elementary">Elementary School (Grade 1 - 6)</option>
+                  <option value="graduate">Graduate / Master's / Doctorate</option>
+                  <option value="vocational">Vocational / Technical (TVET / TESDA)</option>
                 </select>
               </div>
 
@@ -1067,7 +1094,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
             <div className="p-5 rounded-3xl bg-[#F9F5EF] border border-[#D9D2C5] space-y-4">
               <div>
                 <h4 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-2">
-                  <span>📅</span> Application Intake Schedule (Opening & Closing Dates)
+                  <Calendar className="w-4 h-4 text-[#1A3C2E]" />
+                  <span>Application Intake Schedule (Opening & Closing Dates)</span>
                 </h4>
                 <p className="text-[11px] text-[#6C6C70] mt-0.5 font-medium">
                   Set when student applications open and the closing deadline. The scholarship will automatically close when the deadline passes.
@@ -1266,7 +1294,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
             {/* Disbursement Release Method & Payout Channel */}
             <div className="p-5 rounded-3xl bg-[#F4F6F4] border border-[#D9D2C5]/80 space-y-4">
               <h4 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-2">
-                <span>💸</span> Disbursement & Payout Release Method
+                <Coins className="w-4 h-4 text-[#1A3C2E]" />
+                <span>Disbursement & Payout Release Method</span>
               </h4>
               <p className="text-[11.5px] text-[#6C6C70]">
                 Specify how scholars will receive their stipends, allowances, and monetary grants for this program.
@@ -1283,8 +1312,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                     onChange={(e: any) => setDisbursementMode(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
                   >
-                    <option value="online_transfer">🌐 Online Bank / Digital E-Wallet Transfer</option>
-                    <option value="in_person_cash">💵 Over-the-Counter Cash (On-Site Release)</option>
+                    <option value="online_transfer">Online Bank / Digital E-Wallet Transfer</option>
+                    <option value="in_person_cash">Over-the-Counter Cash (On-Site Release)</option>
                   </select>
                 </div>
 
@@ -1299,8 +1328,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                       onChange={(e: any) => setOnlineBankType(e.target.value)}
                       className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
                     >
-                      <option value="personal_bank">📱 Scholar's Personal Bank Account / E-Wallet (GCash, Maya, BDO, BPI, etc.)</option>
-                      <option value="provider_issued_card">💳 Provider-Issued ATM Card (New Partner Bank Card)</option>
+                      <option value="personal_bank">Scholar's Personal Bank Account / E-Wallet (GCash, Maya, BDO, BPI, etc.)</option>
+                      <option value="provider_issued_card">Provider-Issued ATM Card (New Partner Bank Card)</option>
                     </select>
                   </div>
                 ) : (
@@ -1318,7 +1347,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               {/* Explanatory Info Box */}
               {disbursementMode === 'online_transfer' ? (
                 <div className="p-3 bg-[#EBF5EE] border border-[#2D5941]/20 rounded-xl text-[11px] text-[#1A3C2E] flex items-start gap-2">
-                  <span className="text-base">ℹ️</span>
+                  <Info className="w-4 h-4 text-[#1A3C2E] shrink-0 mt-0.5" />
                   <div>
                     {onlineBankType === 'personal_bank' ? (
                       <p>
@@ -1333,7 +1362,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 </div>
               ) : (
                 <div className="p-3 bg-[#FFFBEB] border border-[#F59E0B]/30 rounded-xl text-[11px] text-[#92400E] flex items-start gap-2">
-                  <span className="text-base">🏛️</span>
+                  <Landmark className="w-4 h-4 text-[#92400E] shrink-0 mt-0.5" />
                   <p>
                     <strong>Over-the-Counter Cash Mode:</strong> Scholars will collect funds in cash at designated campus offices or provider payout venues. Bank account details are not required.
                   </p>
@@ -1345,7 +1374,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
             {coversTuition && (
               <div className="p-5 rounded-3xl bg-[#EBF5EE] border border-[#2D5941]/30 space-y-4">
                 <h4 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-2">
-                  <span>🏛️</span> Tuition Subsidy Settings & Disbursement Mode
+                  <Landmark className="w-4 h-4 text-[#1A3C2E]" />
+                  <span>Tuition Subsidy Settings & Disbursement Mode</span>
                 </h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1359,15 +1389,16 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                       onChange={(e: any) => setTuitionPayoutMode(e.target.value)}
                       className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
                     >
-                      <option value="direct_to_student">📱 Direct to Scholar E-Wallet / Bank (In System Scope)</option>
+                      <option value="direct_to_student">Direct to Scholar E-Wallet / Bank (In System Scope)</option>
                       {/* Hidden as requested, preserved in codebase for backward compatibility */}
                       {tuitionPayoutMode === 'direct_to_school_off_system' && (
-                        <option value="direct_to_school_off_system" hidden>🏛️ Direct to University Treasury (Institutional Voucher / Off-System)</option>
+                        <option value="direct_to_school_off_system" hidden>Direct to University Treasury (Institutional Voucher / Off-System)</option>
                       )}
                     </select>
                     {tuitionPayoutMode === 'direct_to_school_off_system' && (
-                      <p className="text-[10px] text-[#C97B2E] font-medium mt-1">
-                        ℹ️ Note: Institutional B2B university wire transfers are processed off-system via university billing invoices.
+                      <p className="text-[10px] text-[#C97B2E] font-medium mt-1 flex items-center gap-1">
+                        <Info className="w-3 h-3 shrink-0" />
+                        <span>Note: Institutional B2B university wire transfers are processed off-system via university billing invoices.</span>
                       </p>
                     )}
                   </div>
@@ -1382,8 +1413,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                       onChange={(e: any) => setTuitionCoverageType(e.target.value)}
                       className="w-full px-4 py-2.5 rounded-2xl border border-[#D9D2C5] text-xs font-bold text-[#1A3C2E] bg-white cursor-pointer"
                     >
-                      <option value="fixed_cap">💵 Fixed Cap Amount per Semester</option>
-                      <option value="actual_matriculation">📑 Actual Matriculation Fee (Extracted from Assessment Bill)</option>
+                      <option value="fixed_cap">Fixed Cap Amount per Semester</option>
+                      <option value="actual_matriculation">Actual Matriculation Fee (Extracted from Assessment Bill)</option>
                     </select>
                   </div>
                 </div>
@@ -1563,7 +1594,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 <div className="p-3.5 rounded-2xl bg-red-50 border border-red-300 text-red-900 text-xs font-bold space-y-2 mt-2">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-base shrink-0">⚠️</span>
+                      <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
                       <span>Selection Required: You must select at least one eligible year level to proceed to the next page.</span>
                     </div>
                     <button
@@ -1583,7 +1614,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
             {/* CASE A: Junior High School or Elementary -> DO NOT SHOW COURSE INPUT */}
             {(targetLevel === 'high_school' || targetLevel === 'elementary') && (
               <div className="p-5 rounded-3xl bg-[#F9F5EF] border border-[#D9D2C5] flex items-start gap-3.5">
-                <span className="text-2xl mt-0.5">🏫</span>
+                <School className="w-6 h-6 text-[#1A3C2E] shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-sm font-bold text-[#1A3C2E]">
                     {targetLevel === 'elementary' ? 'Elementary Grade School' : 'Junior High School'} General Education
@@ -1616,13 +1647,14 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                         setIsOpenToAllCourses(true);
                         setSelectedCourses([]);
                       }}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer ${
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center gap-1.5 ${
                         isOpenToAllCourses
                           ? 'bg-[#1A3C2E] text-white shadow-sm'
                           : 'text-[#1C1C1E] bg-transparent hover:text-[#1A3C2E]'
                       }`}
                     >
-                      🌟 Open to All Strands
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Open to All Strands</span>
                     </button>
                     <button
                       type="button"
@@ -1635,7 +1667,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                           : 'text-[#1C1C1E] bg-transparent hover:text-[#1A3C2E]'
                       }`}
                     >
-                      🎯 Select Specific Strands {selectedCourses.length > 0 ? `(${selectedCourses.length})` : ''}
+                      Select Specific Strands {selectedCourses.length > 0 ? `(${selectedCourses.length})` : ''}
                     </button>
                   </div>
                 </div>
@@ -1643,7 +1675,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 {isOpenToAllCourses ? (
                   <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5]/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2.5">
-                      <span className="text-lg">🌟</span>
+                      <Sparkles className="w-5 h-5 text-amber-500 shrink-0" />
                       <div>
                         <span className="font-bold text-[#1A3C2E] block">Open to All Senior High School Strands</span>
                         <span className="text-[#6C6C70]">Applicants from any Academic or TVL strand can apply for this scholarship.</span>
@@ -1778,13 +1810,14 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                         setIsOpenToAllCourses(true);
                         setSelectedCourses([]);
                       }}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer ${
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center gap-1.5 ${
                         isOpenToAllCourses
                           ? 'bg-[#1A3C2E] text-white shadow-sm'
                           : 'text-[#1C1C1E] bg-transparent hover:text-[#1A3C2E]'
                       }`}
                     >
-                      🌐 Open to All Degree Programs
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>Open to All Degree Programs</span>
                     </button>
                     <button
                       type="button"
@@ -1797,7 +1830,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                           : 'text-[#1C1C1E] bg-transparent hover:text-[#1A3C2E]'
                       }`}
                     >
-                      🎯 Select Specific Courses {selectedCourses.length > 0 ? `(${selectedCourses.length})` : ''}
+                      Select Specific Courses {selectedCourses.length > 0 ? `(${selectedCourses.length})` : ''}
                     </button>
                   </div>
                 </div>
@@ -1805,7 +1838,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 {isOpenToAllCourses ? (
                   <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5]/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2.5">
-                      <span className="text-lg">🌐</span>
+                      <Globe className="w-5 h-5 text-emerald-600 shrink-0" />
                       <div>
                         <span className="font-bold text-[#1A3C2E] block">Open to All College Degree Programs</span>
                         <span className="text-[#6C6C70]">Applicants from any college major or degree course can apply for this scholarship.</span>
@@ -1825,7 +1858,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                     <div className="space-y-3 pt-1 border-t border-[#D9D2C5]/60 pt-3">
                       <div className="flex gap-2">
                         <div className="relative flex-1">
-                          <span className="absolute left-3.5 top-2.5 text-xs text-[#6C6C70]">🔍</span>
+                          <Search className="w-3.5 h-3.5 text-[#6C6C70] absolute left-3.5 top-3" />
                           <input
                             type="text"
                             placeholder="Search degree course (e.g., Nursing, Computer Science, Accountancy, Civil Eng)..."
@@ -1990,13 +2023,14 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                         setIsOpenToAllCourses(true);
                         setSelectedCourses([]);
                       }}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer ${
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer flex items-center gap-1.5 ${
                         isOpenToAllCourses
                           ? 'bg-[#1A3C2E] text-white shadow-sm'
                           : 'text-[#1C1C1E] bg-transparent hover:text-[#1A3C2E]'
                       }`}
                     >
-                      🛠️ Open to All TVET Qualifications
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Open to All TVET Qualifications</span>
                     </button>
                     <button
                       type="button"
@@ -2009,7 +2043,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                           : 'text-[#1C1C1E] bg-transparent hover:text-[#1A3C2E]'
                       }`}
                     >
-                      🎯 Select Specific Qualifications {selectedCourses.length > 0 ? `(${selectedCourses.length})` : ''}
+                      Select Specific Qualifications {selectedCourses.length > 0 ? `(${selectedCourses.length})` : ''}
                     </button>
                   </div>
                 </div>
@@ -2017,7 +2051,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 {isOpenToAllCourses ? (
                   <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5]/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2.5">
-                      <span className="text-lg">🛠️</span>
+                      <Wrench className="w-5 h-5 text-[#2D5941] shrink-0" />
                       <div>
                         <span className="font-bold text-[#1A3C2E] block">Open to All TVET Qualifications</span>
                         <span className="text-[#6C6C70]">Applicants from any TESDA national certificate or TVET course can apply.</span>
@@ -2062,7 +2096,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
             <div className="p-6 rounded-3xl bg-[#F9F5EF] border border-[#D9D2C5] space-y-5">
               <div>
                 <h4 className="text-sm font-extrabold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-2">
-                  <span>📍</span>
+                  <MapPin className="w-4 h-4 text-[#1A3C2E]" />
                   <span>Target Geographic Location & Scope</span>
                 </h4>
                 <p className="text-xs text-[#6C6C70] mt-1">
@@ -2073,14 +2107,15 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               {/* Scope Selection Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                 {[
-                  { id: 'nationwide', label: 'Nationwide', icon: '🌐', desc: 'Open to all PH applicants' },
-                  { id: 'regional', label: 'Regional', icon: '🗺️', desc: 'Specific Regions' },
-                  { id: 'provincial', label: 'Provincial', icon: '🏙️', desc: 'Specific Provinces' },
-                  { id: 'municipality', label: 'City / Municipality', icon: '🏛️', desc: 'Specific Cities/Towns' },
-                  { id: 'barangay', label: 'Barangay', icon: '🏘️', desc: 'Specific Barangays' },
-                  { id: 'specific_schools', label: 'Specific Schools', icon: '🏫', desc: 'Targeted Institutions' },
+                  { id: 'nationwide', label: 'Nationwide', icon: Globe, desc: 'Open to all PH applicants' },
+                  { id: 'regional', label: 'Regional', icon: Map, desc: 'Specific Regions' },
+                  { id: 'provincial', label: 'Provincial', icon: Building2, desc: 'Specific Provinces' },
+                  { id: 'municipality', label: 'City / Municipality', icon: Landmark, desc: 'Specific Cities/Towns' },
+                  { id: 'barangay', label: 'Barangay', icon: Home, desc: 'Specific Barangays' },
+                  { id: 'specific_schools', label: 'Specific Schools', icon: School, desc: 'Targeted Institutions' },
                 ].map((scopeItem) => {
                   const isSelected = availabilityScope === scopeItem.id;
+                  const IconComp = scopeItem.icon;
                   return (
                     <button
                       key={scopeItem.id}
@@ -2092,7 +2127,9 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                           : 'bg-white text-[#1C1C1E] border-[#D9D2C5] hover:bg-[#EDE8DE]/60'
                       }`}
                     >
-                      <div className="text-lg">{scopeItem.icon}</div>
+                      <div className="text-lg">
+                        <IconComp className={`w-5 h-5 ${isSelected ? 'text-white' : 'text-[#1A3C2E]'}`} />
+                      </div>
                       <div className="text-xs font-bold mt-1.5">{scopeItem.label}</div>
                       <div className={`text-[10px] mt-0.5 ${isSelected ? 'text-emerald-200' : 'text-[#6C6C70]'}`}>
                         {scopeItem.desc}
@@ -2107,7 +2144,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
               {/* 1. NATIONWIDE */}
               {availabilityScope === 'nationwide' && (
                 <div className="p-4 rounded-2xl bg-white border border-[#D9D2C5] flex items-center gap-3">
-                  <span className="text-xl">🌐</span>
+                  <Globe className="w-5 h-5 text-emerald-600 shrink-0" />
                   <p className="text-xs font-medium text-[#1A3C2E]">
                     This scholarship program will be open to eligible student applicants from all 17 administrative regions across the Philippines.
                   </p>
@@ -2122,9 +2159,18 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                       <span className="text-xs font-bold text-[#1A3C2E] uppercase block">
                         Select Eligible Regions ({availableRegions.length} selected):
                       </span>
-                      <span className="text-[10px] text-[#2D5941] font-semibold flex items-center gap-1 mt-0.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        {loadingPsgc ? '⏳ Fetching PSGC API Location Data...' : 'PSGC API Live Location Service'}
+                      <span className="text-[10px] text-[#2D5941] font-semibold flex items-center gap-1.5 mt-0.5">
+                        {loadingPsgc ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+                            <span>Fetching PSGC API Location Data...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>PSGC API Live Location Service</span>
+                          </>
+                        )}
                       </span>
                     </div>
                     {availableRegions.length > 0 && (
@@ -2428,7 +2474,7 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
 
             {isNeedBasedCategory(category) && (
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-3 text-xs">
-                <span className="text-xl leading-none">💼</span>
+                <Briefcase className="w-5 h-5 text-amber-800 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold block text-sm text-amber-950 mb-0.5">Need-Based Scholarship Requirement</span>
                   <span className="text-amber-800 leading-relaxed">
@@ -2492,7 +2538,10 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                     return (
                       <div key={idx} className="p-4 rounded-2xl bg-white border-2 border-[#1A3C2E] shadow-sm space-y-3 text-xs">
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-[#1A3C2E] text-xs uppercase tracking-wider">✏️ Edit Requirement #{idx + 1}</span>
+                          <span className="font-bold text-[#1A3C2E] text-xs uppercase tracking-wider flex items-center gap-1">
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Edit Requirement #{idx + 1}</span>
+                          </span>
                           <span className="text-[10px] text-[#6C6C70]">Editing Document Rules</span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2529,8 +2578,9 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                             <span>
                               Mandatory (Required for submission)
                               {isLockedNeedBased && (
-                                <span className="ml-2 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
-                                  🔒 Locked: Mandatory for Need-Based Programs
+                                <span className="ml-2 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                                  <Lock className="w-2.5 h-2.5" />
+                                  <span>Locked: Mandatory for Need-Based Programs</span>
                                 </span>
                               )}
                             </span>
@@ -2559,13 +2609,14 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   return (
                     <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-[#F9F5EF] border border-[#D9D2C5]/60 text-xs hover:border-[#1A3C2E]/30 transition-all">
                       <div className="flex items-start gap-3">
-                        <span className="text-base leading-none mt-0.5">📄</span>
+                        <FileText className="w-4 h-4 text-[#2D5941] shrink-0 mt-0.5" />
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-[#1A3C2E] text-sm">{reqName}</span>
                             {isLockedNeedBased ? (
-                              <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300">
-                                🔒 MANDATORY (NEED-BASED)
+                              <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1">
+                                <Lock className="w-2.5 h-2.5" />
+                                <span>MANDATORY (NEED-BASED)</span>
                               </span>
                             ) : (
                               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${isRequired ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-slate-100 text-slate-500'}`}>
@@ -2584,7 +2635,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                           onClick={() => handleStartEditRequirement(idx)}
                           className="text-[#1A3C2E] font-extrabold hover:underline border-0 bg-transparent cursor-pointer text-xs flex items-center gap-1"
                         >
-                          ✏️ Edit
+                          <Edit3 className="w-3 h-3" />
+                          <span>Edit</span>
                         </button>
                         <span className="text-[#D9D2C5]">|</span>
                         <button
@@ -2633,7 +2685,10 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   <span className="text-sm font-bold text-[#1A3C2E]">{totalSlots || 'Unlimited'} Available Slots</span>
                 </div>
                 <div className="col-span-2 p-3 bg-white rounded-2xl border border-[#D9D2C5]">
-                  <span className="text-[#6C6C70] block uppercase font-bold text-[10px]">📅 Application Intake Period</span>
+                  <span className="text-[#6C6C70] flex items-center gap-1 uppercase font-bold text-[10px]">
+                    <Calendar className="w-3 h-3 text-[#6C6C70]" />
+                    <span>Application Intake Period</span>
+                  </span>
                   <span className="text-xs font-bold text-[#1A3C2E] block mt-0.5">
                     {cycleName || 'Active Intake Cycle'}: {applicationStartDate} → {applicationEndDate}
                   </span>
@@ -2659,17 +2714,20 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {targetLevel === 'high_school' || targetLevel === 'elementary' ? (
-                    <span className="px-2.5 py-1 rounded-lg bg-white border border-[#D9D2C5] text-[11px] font-bold text-[#1A3C2E]">
-                      📘 General Basic Education Curriculum
+                    <span className="px-2.5 py-1 rounded-lg bg-white border border-[#D9D2C5] text-[11px] font-bold text-[#1A3C2E] inline-flex items-center gap-1">
+                      <BookOpen className="w-3 h-3 text-[#1A3C2E]" />
+                      <span>General Basic Education Curriculum</span>
                     </span>
                   ) : isOpenToAllCourses || selectedCourses.length === 0 ? (
-                    <span className="px-2.5 py-1 rounded-lg bg-white border border-[#D9D2C5] text-[11px] font-bold text-[#1A3C2E]">
-                      🌐 {targetLevel === 'senior_high' ? 'Open to All Senior High Strands' : targetLevel === 'vocational' ? 'Open to All TVET Qualifications' : 'Open to All Degree Programs'}
+                    <span className="px-2.5 py-1 rounded-lg bg-white border border-[#D9D2C5] text-[11px] font-bold text-[#1A3C2E] inline-flex items-center gap-1">
+                      <Globe className="w-3 h-3 text-[#1A3C2E]" />
+                      <span>{targetLevel === 'senior_high' ? 'Open to All Senior High Strands' : targetLevel === 'vocational' ? 'Open to All TVET Qualifications' : 'Open to All Degree Programs'}</span>
                     </span>
                   ) : (
                     selectedCourses.map((c, i) => (
-                      <span key={i} className="px-2.5 py-1 rounded-lg bg-white border border-[#D9D2C5] text-[11px] font-bold text-[#1A3C2E]">
-                        🎓 {c}
+                      <span key={i} className="px-2.5 py-1 rounded-lg bg-white border border-[#D9D2C5] text-[11px] font-bold text-[#1A3C2E] inline-flex items-center gap-1">
+                        <GraduationCap className="w-3 h-3 text-[#1A3C2E]" />
+                        <span>{c}</span>
                       </span>
                     ))
                   )}
@@ -2681,23 +2739,27 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 <span className="text-[#6C6C70] block uppercase font-bold text-[10px] mb-1.5">Included Benefits & Coverage</span>
                 <div className="flex flex-wrap gap-1.5">
                   {coversTuition && (
-                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333]">
-                      🏛️ {tuitionCoverageType === 'fixed_cap' && Number(tuitionMaxAmount) > 0 ? `Tuition Subsidy Cap ₱${Number(tuitionMaxAmount).toLocaleString()}` : 'Full Tuition Covered'}
+                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333] inline-flex items-center gap-1">
+                      <Landmark className="w-3 h-3 text-[#137333]" />
+                      <span>{tuitionCoverageType === 'fixed_cap' && Number(tuitionMaxAmount) > 0 ? `Tuition Subsidy Cap ₱${Number(tuitionMaxAmount).toLocaleString()}` : 'Full Tuition Covered'}</span>
                     </span>
                   )}
                   {coversStipend && (
-                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333]">
-                      🍱 Stipend / Allowance ₱{Number(stipendAmount).toLocaleString()}
+                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333] inline-flex items-center gap-1">
+                      <Coins className="w-3 h-3 text-[#137333]" />
+                      <span>Stipend / Allowance ₱{Number(stipendAmount).toLocaleString()}</span>
                     </span>
                   )}
                   {coversAllowance && (
-                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333]">
-                      📚 Book / Device ₱{Number(allowanceAmount).toLocaleString()}
+                    <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333] inline-flex items-center gap-1">
+                      <BookOpen className="w-3 h-3 text-[#137333]" />
+                      <span>Book / Device ₱{Number(allowanceAmount).toLocaleString()}</span>
                     </span>
                   )}
                   {customBenefitsList.map((cb, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333]">
-                      🎁 {cb.title}: ₱{Number(cb.amount).toLocaleString()} ({cb.frequency})
+                    <span key={i} className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333] inline-flex items-center gap-1">
+                      <Gift className="w-3 h-3 text-[#137333]" />
+                      <span>{cb.title}: ₱{Number(cb.amount).toLocaleString()} ({cb.frequency})</span>
                     </span>
                   ))}
                 </div>
@@ -2709,12 +2771,12 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                 <span className="px-2.5 py-1 rounded-lg bg-[#EBF5EE] border border-[#CEEAD6] text-[11px] font-bold text-[#137333] inline-flex items-center gap-1.5">
                   {disbursementMode === 'online_transfer' ? (
                     <>
-                      <span>🌐</span>
+                      <Globe className="w-3.5 h-3.5 text-[#137333]" />
                       <span>Online Transfer ({onlineBankType === 'personal_bank' ? "Scholar Personal Bank / E-Wallet" : "Provider-Issued ATM Card"})</span>
                     </>
                   ) : (
                     <>
-                      <span>💵</span>
+                      <Banknote className="w-3.5 h-3.5 text-[#137333]" />
                       <span>Over-the-Counter Cash (On-Site Release)</span>
                     </>
                   )}
@@ -2734,7 +2796,8 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                     const rName = typeof r === 'string' ? r : r.name;
                     return (
                       <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#D9D2C5] text-[11px] font-bold text-[#1A3C2E]">
-                        📄 {rName}
+                        <FileText className="w-3 h-3 text-[#1A3C2E]" />
+                        <span>{rName}</span>
                       </span>
                     );
                   })}
@@ -2789,9 +2852,15 @@ export const ProviderProgramFormTab: React.FC<ProviderProgramFormTabProps> = ({
                   Processing...
                 </>
               ) : isEditMode ? (
-                '💾 Save Program Changes'
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Save Program Changes</span>
+                </>
               ) : (
-                '🚀 Publish Scholarship Program'
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Publish Scholarship Program</span>
+                </>
               )}
             </button>
           )}

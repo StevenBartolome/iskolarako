@@ -1,4 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import {
+  ScrollText,
+  X,
+  Sparkles,
+  Award,
+  Briefcase,
+  Microscope,
+  Building2,
+  Pencil,
+  Eye,
+  Copy,
+  Check,
+  Send,
+} from 'lucide-react';
 import { generateScholarAgreementWithAi } from '@/services/aiExtractionService';
 import { sendScholarAgreementNotification } from '@/services/notificationService';
 import type { ApplicationDetail } from './ReviewApplicationModal';
@@ -119,8 +133,8 @@ export const ScholarGuidelinesModal: React.FC<ScholarGuidelinesModalProps> = ({
         {/* Header */}
         <div className="bg-[#F9F5EF] border-b border-[#D9D2C5] p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="w-10 h-10 rounded-2xl bg-[#EBF5EE] text-[#2D5941] flex items-center justify-center text-xl font-bold">
-              📜
+            <span className="w-10 h-10 rounded-2xl bg-[#EBF5EE] text-[#2D5941] flex items-center justify-center">
+              <ScrollText className="w-5 h-5 text-[#2D5941]" />
             </span>
             <div>
               <div className="flex items-center gap-2">
@@ -140,9 +154,9 @@ export const ScholarGuidelinesModal: React.FC<ScholarGuidelinesModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white border border-[#D9D2C5] text-[#6C6C70] hover:text-[#1A3C2E] flex items-center justify-center text-sm font-bold cursor-pointer transition-colors"
+            className="w-8 h-8 rounded-full bg-white border border-[#D9D2C5] text-[#6C6C70] hover:text-[#1A3C2E] flex items-center justify-center cursor-pointer transition-colors"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -180,7 +194,7 @@ export const ScholarGuidelinesModal: React.FC<ScholarGuidelinesModalProps> = ({
                   </>
                 ) : (
                   <>
-                    <span>✨</span>
+                    <Sparkles className="w-3.5 h-3.5" />
                     <span>Draft / Regenerate with AI</span>
                   </>
                 )}
@@ -190,28 +204,31 @@ export const ScholarGuidelinesModal: React.FC<ScholarGuidelinesModalProps> = ({
             {/* Template Buttons */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { id: 'merit', label: 'Academic Merit', icon: '🌟' },
-                { id: 'need', label: 'Financial Assistance', icon: '💼' },
-                { id: 'stem', label: 'STEM & Priority', icon: '🔬' },
-                { id: 'corporate', label: 'Foundation / NGO', icon: '🏛️' },
-              ].map(tpl => (
-                <button
-                  key={tpl.id}
-                  type="button"
-                  onClick={() => {
-                    setTemplateType(tpl.id as any);
-                    handleGenerateAi(tpl.id as any);
-                  }}
-                  className={`p-2 rounded-xl text-xs font-bold border transition-all text-left flex items-center gap-2 cursor-pointer ${
-                    templateType === tpl.id
-                      ? 'bg-white border-[#2D5941] text-[#2D5941] shadow-xs'
-                      : 'bg-transparent border-[#D9D2C5] text-[#6C6C70] hover:bg-white/60'
-                  }`}
-                >
-                  <span>{tpl.icon}</span>
-                  <span className="truncate">{tpl.label}</span>
-                </button>
-              ))}
+                { id: 'merit', label: 'Academic Merit', Icon: Award },
+                { id: 'need', label: 'Financial Assistance', Icon: Briefcase },
+                { id: 'stem', label: 'STEM & Priority', Icon: Microscope },
+                { id: 'corporate', label: 'Foundation / NGO', Icon: Building2 },
+              ].map(tpl => {
+                const IconComponent = tpl.Icon;
+                return (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => {
+                      setTemplateType(tpl.id as any);
+                      handleGenerateAi(tpl.id as any);
+                    }}
+                    className={`p-2 rounded-xl text-xs font-bold border transition-all text-left flex items-center gap-2 cursor-pointer ${
+                      templateType === tpl.id
+                        ? 'bg-white border-[#2D5941] text-[#2D5941] shadow-xs'
+                        : 'bg-transparent border-[#D9D2C5] text-[#6C6C70] hover:bg-white/60'
+                    }`}
+                  >
+                    <IconComponent className="w-4 h-4 shrink-0 text-[#2D5941]" />
+                    <span className="truncate">{tpl.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Policy Parameters Row */}
@@ -277,20 +294,22 @@ export const ScholarGuidelinesModal: React.FC<ScholarGuidelinesModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('edit')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer border-0 transition-all ${
+                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer border-0 transition-all flex items-center gap-1.5 ${
                     activeTab === 'edit' ? 'bg-[#1A3C2E] text-white shadow-xs' : 'bg-transparent text-[#6C6C70]'
                   }`}
                 >
-                  ✏️ Edit Markdown
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>Edit Markdown</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('preview')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer border-0 transition-all ${
+                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer border-0 transition-all flex items-center gap-1.5 ${
                     activeTab === 'preview' ? 'bg-[#1A3C2E] text-white shadow-xs' : 'bg-transparent text-[#6C6C70]'
                   }`}
                 >
-                  👁️ Formatted Preview
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Formatted Preview</span>
                 </button>
               </div>
 
@@ -324,7 +343,7 @@ export const ScholarGuidelinesModal: React.FC<ScholarGuidelinesModalProps> = ({
               onClick={handleCopyClipboard}
               className="px-3.5 py-2 rounded-2xl bg-white hover:bg-[#EDE8DE] text-[#1A3C2E] text-xs font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center gap-1.5"
             >
-              <span>📋</span>
+              <Copy className="w-3.5 h-3.5" />
               <span>Copy</span>
             </button>
             <span className="text-[11px] text-[#6C6C70]">
@@ -353,12 +372,12 @@ export const ScholarGuidelinesModal: React.FC<ScholarGuidelinesModalProps> = ({
                 </>
               ) : hasSent ? (
                 <>
-                  <span>✓</span>
+                  <Check className="w-3.5 h-3.5" />
                   <span>Sent Successfully!</span>
                 </>
               ) : (
                 <>
-                  <span>🚀</span>
+                  <Send className="w-3.5 h-3.5" />
                   <span>Send Guidelines to Scholar</span>
                 </>
               )}

@@ -5,7 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:iskoako/widgets/app_components.dart';
 import 'package:iskoako/utils/app_router.dart';
 import 'package:iskoako/widgets/bank_account_modal.dart';
@@ -1214,7 +1214,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
               shape: BoxShape.circle,
             ),
             child: const Center(
-              child: Text('💵', style: TextStyle(fontSize: 20)),
+              child: Icon(LucideIcons.banknote, size: 20, color: Color(0xFF15803D)),
             ),
           ),
           const SizedBox(width: 12),
@@ -1544,7 +1544,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
               },
               icon: Icon(hasBank ? LucideIcons.edit3 : LucideIcons.creditCard, size: 14),
               label: Text(
-                hasBank ? 'Update Bank Details for This Program' : 'Submit Bank Account & Card Scan 💳',
+                hasBank ? 'Update Bank Details for This Program' : 'Submit Bank Account & Card Scan',
                 style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
               ),
               style: ElevatedButton.styleFrom(
@@ -1612,7 +1612,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
               },
               icon: const Icon(LucideIcons.scale, size: 14),
               label: Text(
-                'Submit Formal Appeal ⚖️',
+                'Submit Formal Appeal',
                 style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
               ),
               style: ElevatedButton.styleFrom(
@@ -2031,8 +2031,8 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                           ),
                           child: Text(
                             isVerified
-                                ? '✓ Verified'
-                                : (isFlagged ? '🚩 Flagged' : '● In Review'),
+                                ? 'Verified'
+                                : (isFlagged ? 'Flagged' : 'In Review'),
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -2293,7 +2293,7 @@ class _ApplicationTrackerScreenState extends State<ApplicationTrackerScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '✓ ${scholarship.status}',
+                      scholarship.status,
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,

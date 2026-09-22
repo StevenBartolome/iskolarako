@@ -1,4 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import {
+  X,
+  Clock,
+  ExternalLink,
+  Info,
+  BarChart3,
+  Building2,
+  Wallet,
+  BookOpen,
+  Sparkles,
+  GraduationCap,
+  Coins,
+  AlertTriangle,
+  Check,
+  Pencil,
+  Send,
+  ArrowRight,
+} from 'lucide-react';
 import { supabase } from '@/services/supabaseClient';
 import { ScholarBankUploadModal } from '@/components/scholar/ScholarBankUploadModal';
 import { createAuditLog } from '@/services/auditLogService';
@@ -749,7 +767,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           // Trigger Realtime Notification for Scholar
           await supabase.from('notifications').insert({
             user_id: row.scholarId,
-            title: '💵 Cash Fund Released Successfully',
+            title: 'Cash Fund Released Successfully',
             message: `Your Over-the-Counter Cash payout of ₱${row.amount.toLocaleString()} for ${row.programTitle} has been released successfully. Please claim your payout on-site.`,
             type: 'fund_released',
             is_read: false,
@@ -829,7 +847,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           for (const row of onlineRows) {
             await supabase.from('notifications').insert({
               user_id: row.scholarId,
-              title: '💳 Scholarship Fund Released',
+              title: 'Scholarship Fund Released',
               message: `Your scholarship payout of ₱${row.amount.toLocaleString()} for ${row.programTitle} has been released and processed.`,
               type: 'fund_released',
               is_read: false,
@@ -949,9 +967,9 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
           <button
             onClick={onClose}
             disabled={isProcessingBatch}
-            className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-xl cursor-pointer disabled:opacity-50"
+            className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold p-1 cursor-pointer disabled:opacity-50"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -959,8 +977,8 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
         {batchResult ? (
           <div className="space-y-6 bg-[#FFF8EE] p-6 rounded-3xl border border-[#C97B2E]/30 animate-fade-in">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#C97B2E] text-white flex items-center justify-center font-bold text-xl shadow-md">
-                ⏳
+              <div className="w-12 h-12 rounded-2xl bg-[#C97B2E] text-white flex items-center justify-center font-bold shadow-md">
+                <Clock className="w-6 h-6 text-white" />
               </div>
               <div>
                 <h4 className="text-xl font-bold text-[#C97B2E] font-serif">
@@ -993,8 +1011,9 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                 <div key={idx} className="flex justify-between items-center py-1.5 border-b border-[#D9D2C5]/30">
                   <span className="font-semibold text-[#1C1C1E]">{item.scholarName}</span>
                   {item.txHash === 'Pending Authorization' ? (
-                    <span className="text-[#C97B2E] font-semibold flex items-center gap-1">
-                      <span>⏳ Awaiting Payment</span>
+                    <span className="text-[#C97B2E] font-semibold flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-[#C97B2E]" />
+                      <span>Awaiting Payment</span>
                     </span>
                   ) : item.txHash ? (
                     <a
@@ -1004,7 +1023,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                       className="font-mono text-[#2D5941] font-bold hover:underline flex items-center gap-1"
                     >
                       <span>{item.txHash.substring(0, 14)}...</span>
-                      <span>↗</span>
+                      <ExternalLink className="w-3 h-3" />
                     </a>
                   ) : (
                     <span className="text-[#B34040] font-bold">{item.error}</span>
@@ -1013,8 +1032,9 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
               ))}
             </div>
 
-            <div className="text-xs text-[#C97B2E] bg-amber-50/50 p-3.5 rounded-xl border border-[#C97B2E]/10 leading-relaxed font-medium">
-              ℹ️ Payout checkout links have been opened in separate tabs. The database and Polygon blockchain records will update automatically in real-time once you authorize and pay each transaction in PayMongo.
+            <div className="text-xs text-[#C97B2E] bg-amber-50/50 p-3.5 rounded-xl border border-[#C97B2E]/10 leading-relaxed font-medium flex items-start gap-2">
+              <Info className="w-4 h-4 text-[#C97B2E] shrink-0 mt-0.5" />
+              <span>Payout checkout links have been opened in separate tabs. The database and Polygon blockchain records will update automatically in real-time once you authorize and pay each transaction in PayMongo.</span>
             </div>
 
             <button
@@ -1047,7 +1067,6 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                       const isCash = mode === 'in_person_cash' || mode === 'cash' || (typeof mode === 'string' && mode.toLowerCase().includes('cash'));
                       return (
                         <option key={prog.id} value={prog.id}>
-                          {isCash ? '💵 ' : '🎓 '}
                           {prog.title}
                           {isCash ? ' (Over-the-Counter Cash)' : ''}
                         </option>
@@ -1092,7 +1111,6 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
                     return (
                       <option key={cyc.id} value={cyc.id}>
-                        {isRenewal ? '🔄 ' : '📅 '}
                         {rawName}
                         {isPerSemester && semTag ? semTag : ''}
                       </option>
@@ -1164,7 +1182,8 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
               <div className="bg-[#EBF5EE] p-4 rounded-2xl border border-[#2D5941]/30 space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-[#1A3C2E] uppercase tracking-wide flex items-center gap-1.5">
-                    <span>📊</span> Program Benefit Breakdown & Calculated Scholar Cash Payout
+                    <BarChart3 className="w-4 h-4 text-[#2D5941]" />
+                    <span>Program Benefit Breakdown & Calculated Scholar Cash Payout</span>
                   </h4>
                   <span className="text-xs font-extrabold text-[#2D5941] bg-white px-2.5 py-1 rounded-xl border border-[#2D5941]/20 font-mono">
                     ₱{programBenefitBreakdown.totalCalculated.toLocaleString('en-US', { minimumFractionDigits: 2 })} Total Payout Per Scholar
@@ -1173,7 +1192,10 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1">
                   <div className="bg-white p-2.5 rounded-xl border border-[#D9D2C5]/60">
-                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🏫 Tuition Subsidy</span>
+                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase flex items-center gap-1">
+                      <Building2 className="w-3 h-3 text-[#2D5941]" />
+                      <span>Tuition Subsidy</span>
+                    </span>
                     {programBenefitBreakdown.isTuitionDirectToSchool ? (
                       <span className="text-[10px] font-bold text-[#C97B2E] block mt-0.5">Paid to School (Off-System)</span>
                     ) : programBenefitBreakdown.tuitionCoverageType === 'actual_matriculation' ? (
@@ -1198,21 +1220,30 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                   </div>
 
                   <div className="bg-white p-2.5 rounded-xl border border-[#D9D2C5]/60">
-                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🍱 Stipend / Allowance</span>
+                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase flex items-center gap-1">
+                      <Wallet className="w-3 h-3 text-[#2D5941]" />
+                      <span>Stipend / Allowance</span>
+                    </span>
                     <span className="font-bold text-[#1A3C2E] block mt-0.5">
                       ₱{programBenefitBreakdown.stipendAmt.toLocaleString()}
                     </span>
                   </div>
 
                   <div className="bg-white p-2.5 rounded-xl border border-[#D9D2C5]/60">
-                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">📚 Book / Device</span>
+                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase flex items-center gap-1">
+                      <BookOpen className="w-3 h-3 text-[#2D5941]" />
+                      <span>Book / Device</span>
+                    </span>
                     <span className="font-bold text-[#1A3C2E] block mt-0.5">
                       ₱{programBenefitBreakdown.allowanceAmt.toLocaleString()}
                     </span>
                   </div>
 
                   <div className="bg-white p-2.5 rounded-xl border border-[#D9D2C5]/60">
-                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase">🛠️ Custom Allowances</span>
+                    <span className="text-[10px] text-[#6C6C70] font-bold block uppercase flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-[#2D5941]" />
+                      <span>Custom Allowances</span>
+                    </span>
                     <span className="font-bold text-[#1A3C2E] block mt-0.5">
                       ₱{programBenefitBreakdown.customBenefitsTotal.toLocaleString()}
                     </span>
@@ -1221,7 +1252,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
 
                 {isActualMatriculation && !programBenefitBreakdown.isTuitionDirectToSchool && (
                   <div className="bg-[#FFF8EE] p-2.5 rounded-xl border border-[#C97B2E]/40 flex items-center gap-2 text-xs font-bold text-[#C97B2E] mt-2">
-                    <span className="text-sm">🎓</span>
+                    <GraduationCap className="w-4 h-4 text-[#C97B2E] shrink-0" />
                     <span>
                       Formula: <strong>Scholar's Individual Tuition Fee</strong> + <strong>₱{(programBenefitBreakdown.stipendAmt + programBenefitBreakdown.allowanceAmt + programBenefitBreakdown.customBenefitsTotal).toLocaleString()} (Fixed Allowances)</strong> = Total Scholar Payout
                     </span>
@@ -1299,12 +1330,25 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                         </th>
                         {isActualMatriculation && !programBenefitBreakdown?.isTuitionDirectToSchool && (
                           <>
-                            <th className="py-2.5 px-4 w-36 text-center">🏫 Tuition Fee (₱)</th>
-                            <th className="py-2.5 px-4 w-28 text-center">🍱 Allowances</th>
+                            <th className="py-2.5 px-4 w-36 text-center">
+                              <span className="inline-flex items-center justify-center gap-1">
+                                <GraduationCap className="w-3.5 h-3.5 text-[#2D5941]" />
+                                <span>Tuition Fee (₱)</span>
+                              </span>
+                            </th>
+                            <th className="py-2.5 px-4 w-28 text-center">
+                              <span className="inline-flex items-center justify-center gap-1">
+                                <Wallet className="w-3.5 h-3.5 text-[#2D5941]" />
+                                <span>Allowances</span>
+                              </span>
+                            </th>
                           </>
                         )}
                         <th className="py-2.5 px-4 w-36 text-right">
-                          {isActualMatriculation ? '💰 Total Payout (₱)' : 'Amount (₱)'}
+                          <span className="inline-flex items-center justify-end gap-1">
+                            {isActualMatriculation && <Coins className="w-3.5 h-3.5 text-[#2D5941]" />}
+                            <span>{isActualMatriculation ? 'Total Payout (₱)' : 'Amount (₱)'}</span>
+                          </span>
                         </th>
                         <th className="py-2.5 px-4 w-24 text-center">Status</th>
                       </tr>
@@ -1338,7 +1382,7 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                           <td className="py-2.5 px-4">
                             {isSelectedProgramCash || row.disbursementMode === 'in_person_cash' || String(row.disbursementMode).includes('cash') ? (
                               <div className="flex items-center gap-1.5 font-bold text-xs text-[#C97B2E]">
-                                <span>💵</span>
+                                <Coins className="w-3.5 h-3.5 text-[#C97B2E]" />
                                 <span>Over-the-Counter Cash (On-Site)</span>
                               </div>
                             ) : row.hasPaymentAccount && row.paymentAccount ? (
@@ -1352,8 +1396,9 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                               </div>
                             ) : (
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-[#B34040]">
-                                  ⚠️ Missing Bank Scan
+                                <span className="text-[10px] font-bold text-[#B34040] inline-flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 text-[#B34040]" />
+                                  <span>Missing Bank Scan</span>
                                 </span>
                                 <button
                                   type="button"
@@ -1376,16 +1421,19 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                               <td className="py-2.5 px-4 text-center">
                                 <div className="flex flex-col items-center gap-1">
                                   {row.tuitionSource === 'extracted' ? (
-                                    <span className="text-[9px] font-extrabold text-[#15803D] bg-[#DCFCE7] px-2 py-0.5 rounded-full border border-[#15803D]/20">
-                                      ✔ OCR ₱{row.extractedTuition.toLocaleString()}
+                                    <span className="text-[9px] font-extrabold text-[#15803D] bg-[#DCFCE7] px-2 py-0.5 rounded-full border border-[#15803D]/20 inline-flex items-center gap-1">
+                                      <Check className="w-2.5 h-2.5" />
+                                      <span>OCR ₱{row.extractedTuition.toLocaleString()}</span>
                                     </span>
                                   ) : row.tuitionSource === 'manual' ? (
-                                    <span className="text-[9px] font-extrabold text-[#7C3AED] bg-[#EDE9FE] px-2 py-0.5 rounded-full border border-[#7C3AED]/20">
-                                      ✏ Manual ₱{parseFloat(row.manualTuitionAmt || '0').toLocaleString()}
+                                    <span className="text-[9px] font-extrabold text-[#7C3AED] bg-[#EDE9FE] px-2 py-0.5 rounded-full border border-[#7C3AED]/20 inline-flex items-center gap-1">
+                                      <Pencil className="w-2.5 h-2.5" />
+                                      <span>Manual ₱{parseFloat(row.manualTuitionAmt || '0').toLocaleString()}</span>
                                     </span>
                                   ) : (
-                                    <span className="text-[9px] font-extrabold text-[#D97706] bg-[#FEF3C7] px-2 py-0.5 rounded-full border border-[#D97706]/20">
-                                      ⚠ Enter Tuition
+                                    <span className="text-[9px] font-extrabold text-[#D97706] bg-[#FEF3C7] px-2 py-0.5 rounded-full border border-[#D97706]/20 inline-flex items-center gap-1">
+                                      <AlertTriangle className="w-2.5 h-2.5" />
+                                      <span>Enter Tuition</span>
                                     </span>
                                   )}
                                   <input
@@ -1440,13 +1488,15 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                               </span>
                             )}
                             {row.status === 'success' && (
-                              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                                ✓ Sent
+                              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 inline-flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" />
+                                <span>Sent</span>
                               </span>
                             )}
                             {row.status === 'failed' && (
-                              <span className="px-2 py-0.5 rounded bg-red-100 text-red-800">
-                                ✕ Failed
+                              <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 inline-flex items-center gap-1">
+                                <X className="w-2.5 h-2.5" />
+                                <span>Failed</span>
                               </span>
                             )}
                           </td>
@@ -1460,8 +1510,9 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
             </div>
 
             {errorMessage && (
-              <div className="bg-red-50 border border-red-200 text-[#B34040] rounded-2xl p-4 text-xs font-semibold animate-shake">
-                ⚠️ {errorMessage}
+              <div className="bg-red-50 border border-red-200 text-[#B34040] rounded-2xl p-4 text-xs font-semibold animate-shake flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-[#B34040] shrink-0" />
+                <span>{errorMessage}</span>
               </div>
             )}
 
@@ -1511,9 +1562,15 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                       {isProcessingBatch ? (
                         <span>Processing Batch ({batchProgress.current}/{batchProgress.total})...</span>
                       ) : hasSelectedMissingTuition ? (
-                        <span>⚠️ Enter Missing Tuitions to Release ({selectedCount})</span>
+                        <>
+                          <AlertTriangle className="w-4 h-4" />
+                          <span>Enter Missing Tuitions to Release ({selectedCount})</span>
+                        </>
                       ) : (
-                        <span>🚀 Execute Batch Payout ({selectedCount})</span>
+                        <>
+                          <Send className="w-4 h-4" />
+                          <span>Execute Batch Payout ({selectedCount})</span>
+                        </>
                       )}
                     </button>
                   );
@@ -1562,15 +1619,16 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
               </div>
               <button
                 onClick={handleCancelBatchAuth}
-                className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold text-xl cursor-pointer"
+                className="text-[#8E8E93] hover:text-[#1C1C1E] font-bold p-1 cursor-pointer"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {batchAuthError && (
-              <div className="p-3.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-2xl text-xs text-[#B34040] font-semibold">
-                ⚠️ {batchAuthError}
+              <div className="p-3.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-2xl text-xs text-[#B34040] font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-[#B34040] shrink-0" />
+                <span>{batchAuthError}</span>
               </div>
             )}
 
@@ -1613,7 +1671,8 @@ export const ProviderBatchDisbursementModal: React.FC<ProviderBatchDisbursementM
                 onClick={handleAuthorizeAndExecuteBatch}
                 className="w-full py-3 rounded-2xl bg-[#2D5941] hover:bg-[#1A3C2E] text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                <span>Authorize & Disburse Batch ➔</span>
+                <span>Authorize & Disburse Batch</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>

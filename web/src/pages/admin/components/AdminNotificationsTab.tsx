@@ -1,4 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Settings,
+  Clock,
+  FileText,
+  Sparkles,
+  Users,
+  GraduationCap,
+  Building2,
+  User,
+  Search,
+  X,
+  Megaphone,
+  Landmark,
+  Check,
+  Trash2,
+} from 'lucide-react';
 import type { ProviderOrg, StudentAdminView } from '../types';
 
 export type AnnouncementTargetType = 'Students' | 'Providers' | 'Both' | 'Specific Provider' | 'Specific Scholar';
@@ -166,30 +182,34 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
               <button
                 type="button"
                 onClick={() => applyTemplate('maintenance')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer inline-flex items-center gap-1.5"
               >
-                ⚙️ Maintenance
+                <Settings className="w-3.5 h-3.5" />
+                <span>Maintenance</span>
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('deadline')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer inline-flex items-center gap-1.5"
               >
-                ⏰ Deadline Notice
+                <Clock className="w-3.5 h-3.5" />
+                <span>Deadline Notice</span>
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('policy')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer inline-flex items-center gap-1.5"
               >
-                📜 Provider Policy
+                <FileText className="w-3.5 h-3.5" />
+                <span>Provider Policy</span>
               </button>
               <button
                 type="button"
                 onClick={() => applyTemplate('welcome')}
-                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer"
+                className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#EDE8DE] text-[#1A3C2E] border border-[#D9D2C5]/60 transition-all cursor-pointer inline-flex items-center gap-1.5"
               >
-                🎉 Welcome A.Y.
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Welcome A.Y.</span>
               </button>
             </div>
           </div>
@@ -202,27 +222,31 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 bg-[#FFFFFF] p-1.5 rounded-2xl border border-[#D9D2C5]/60">
                 {[
-                  { target: 'Both', label: '🌟 All Users' },
-                  { target: 'Students', label: '👨‍🎓 All Scholars' },
-                  { target: 'Providers', label: '🏢 All Providers' },
-                ].map(item => (
-                  <button
-                    key={item.target}
-                    type="button"
-                    onClick={() => {
-                      setAnnouncementTarget(item.target as AnnouncementTargetType);
-                      setIsProviderDropdownOpen(false);
-                      setIsScholarDropdownOpen(false);
-                    }}
-                    className={`py-2 px-1 text-xs font-bold rounded-xl transition-all cursor-pointer border-0 text-center ${
-                      announcementTarget === item.target
-                        ? 'bg-[#1A3C2E] text-white shadow-sm'
-                        : 'text-[#6C6C70] hover:text-[#1A3C2E]'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                  { target: 'Both', label: 'All Users', icon: Users },
+                  { target: 'Students', label: 'All Scholars', icon: GraduationCap },
+                  { target: 'Providers', label: 'All Providers', icon: Building2 },
+                ].map(item => {
+                  const IconComp = item.icon;
+                  return (
+                    <button
+                      key={item.target}
+                      type="button"
+                      onClick={() => {
+                        setAnnouncementTarget(item.target as AnnouncementTargetType);
+                        setIsProviderDropdownOpen(false);
+                        setIsScholarDropdownOpen(false);
+                      }}
+                      className={`py-2 px-1 text-xs font-bold rounded-xl transition-all cursor-pointer border-0 text-center inline-flex items-center justify-center gap-1.5 ${
+                        announcementTarget === item.target
+                          ? 'bg-[#1A3C2E] text-white shadow-sm'
+                          : 'text-[#6C6C70] hover:text-[#1A3C2E]'
+                      }`}
+                    >
+                      <IconComp className="w-3.5 h-3.5" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Specific Target Channel Options */}
@@ -239,7 +263,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                       : 'bg-[#F9F5EF] text-[#2D5941] border-[#D9D2C5]/60 hover:bg-[#EDE8DE]'
                   }`}
                 >
-                  <span>🏢</span>
+                  <Building2 className="w-4 h-4" />
                   <span>Specific Provider</span>
                 </button>
                 <button
@@ -254,7 +278,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                       : 'bg-[#F9F5EF] text-[#2D5941] border-[#D9D2C5]/60 hover:bg-[#EDE8DE]'
                   }`}
                 >
-                  <span>👤</span>
+                  <User className="w-4 h-4" />
                   <span>Specific Scholar</span>
                 </button>
               </div>
@@ -291,24 +315,26 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                         if (setSelectedTargetProviderId) setSelectedTargetProviderId('');
                         setIsProviderDropdownOpen(true);
                       }}
-                      className="text-xs font-bold text-[#B34040] hover:text-[#8E2F2F] bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border-0 cursor-pointer shrink-0 transition-colors"
+                      className="text-xs font-bold text-[#B34040] hover:text-[#8E2F2F] bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border-0 cursor-pointer shrink-0 transition-colors inline-flex items-center gap-1"
                     >
-                      Change ✕
+                      <span>Change</span>
+                      <X className="w-3 h-3" />
                     </button>
                   </div>
                 ) : (
                   <div className="relative space-y-1.5">
                     <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#6C6C70]" />
                       <input
                         type="text"
-                        placeholder="🔍 Search provider by name, type, rep, or email..."
+                        placeholder="Search provider by name, type, rep, or email..."
                         value={providerSearch}
                         onChange={(e) => {
                           setProviderSearch(e.target.value);
                           setIsProviderDropdownOpen(true);
                         }}
                         onFocus={() => setIsProviderDropdownOpen(true)}
-                        className="w-full pl-3.5 pr-8 py-2.5 rounded-xl border border-[#2D5941]/40 text-xs font-semibold focus:outline-none focus:border-[#1A3C2E] bg-white text-[#1A3C2E]"
+                        className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-[#2D5941]/40 text-xs font-semibold focus:outline-none focus:border-[#1A3C2E] bg-white text-[#1A3C2E]"
                       />
                       {providerSearch && (
                         <button
@@ -316,7 +342,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                           onClick={() => setProviderSearch('')}
                           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 border-0 bg-transparent cursor-pointer"
                         >
-                          ✕
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
@@ -388,24 +414,26 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                         if (setSelectedTargetUserId) setSelectedTargetUserId('');
                         setIsScholarDropdownOpen(true);
                       }}
-                      className="text-xs font-bold text-[#B34040] hover:text-[#8E2F2F] bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border-0 cursor-pointer shrink-0 transition-colors"
+                      className="text-xs font-bold text-[#B34040] hover:text-[#8E2F2F] bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border-0 cursor-pointer shrink-0 transition-colors inline-flex items-center gap-1"
                     >
-                      Change ✕
+                      <span>Change</span>
+                      <X className="w-3 h-3" />
                     </button>
                   </div>
                 ) : (
                   <div className="relative space-y-1.5">
                     <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#6C6C70]" />
                       <input
                         type="text"
-                        placeholder="🔍 Search scholar by name, email, or school..."
+                        placeholder="Search scholar by name, email, or school..."
                         value={scholarSearch}
                         onChange={(e) => {
                           setScholarSearch(e.target.value);
                           setIsScholarDropdownOpen(true);
                         }}
                         onFocus={() => setIsScholarDropdownOpen(true)}
-                        className="w-full pl-3.5 pr-8 py-2.5 rounded-xl border border-[#2D5941]/40 text-xs font-semibold focus:outline-none focus:border-[#1A3C2E] bg-white text-[#1A3C2E]"
+                        className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-[#2D5941]/40 text-xs font-semibold focus:outline-none focus:border-[#1A3C2E] bg-white text-[#1A3C2E]"
                       />
                       {scholarSearch && (
                         <button
@@ -413,7 +441,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                           onClick={() => setScholarSearch('')}
                           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 border-0 bg-transparent cursor-pointer"
                         >
-                          ✕
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
@@ -498,7 +526,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                 </>
               ) : (
                 <>
-                  <span>📢</span>
+                  <Megaphone className="w-4 h-4" />
                   <span>
                     {announcementTarget === 'Specific Provider'
                       ? 'Send Direct Announcement to Provider'
@@ -534,7 +562,7 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                         : 'text-[#6C6C70] hover:text-[#1A3C2E]'
                     }`}
                   >
-                    {filter === 'Specific Provider' ? '🏢 Direct Provider' : filter === 'Specific Scholar' ? '👤 Direct Scholar' : filter}
+                    {filter === 'Specific Provider' ? 'Direct Provider' : filter === 'Specific Scholar' ? 'Direct Scholar' : filter}
                   </button>
                 ))}
               </div>
@@ -544,8 +572,8 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
           <div className="space-y-4">
             {filteredBroadcasts.length === 0 ? (
               <div className="bg-white rounded-3xl border border-dashed border-[#D9D2C5] p-12 text-center space-y-3">
-                <div className="w-14 h-14 bg-[#EDE8DE] rounded-2xl flex items-center justify-center mx-auto text-2xl text-[#2D5941]">
-                  📢
+                <div className="w-14 h-14 bg-[#EDE8DE] rounded-2xl flex items-center justify-center mx-auto text-[#2D5941]">
+                  <Megaphone className="w-7 h-7" />
                 </div>
                 <h4 className="font-bold text-[#1A3C2E] font-serif text-base">No Broadcasts Found</h4>
                 <p className="text-xs text-[#6C6C70] max-w-sm mx-auto">
@@ -561,8 +589,9 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide bg-purple-100 text-purple-800 border border-purple-200">
-                          🏛️ System Announcement
+                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wide bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1">
+                          <Landmark className="w-3 h-3" />
+                          <span>System Announcement</span>
                         </span>
                         <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold ${
                           bc.target === 'Specific Provider'
@@ -573,8 +602,9 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                         }`}>
                           Target: {bc.targetName ? `${bc.target} (${bc.targetName})` : bc.target}
                         </span>
-                        <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
-                          ✓ Delivered
+                        <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1">
+                          <Check className="w-3 h-3" />
+                          <span>Delivered</span>
                         </span>
                       </div>
                       <h4 className="text-base font-bold text-[#1A3C2E] font-serif mt-2">
@@ -593,9 +623,10 @@ export const AdminNotificationsTab: React.FC<AdminNotificationsTabProps> = ({
                             onDeleteBroadcast(bc.broadcastId || bc.id);
                           }
                         }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-red-600 hover:text-red-800 font-bold px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border-0 cursor-pointer shrink-0"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-red-600 hover:text-red-800 font-bold px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border-0 cursor-pointer shrink-0 inline-flex items-center gap-1"
                       >
-                        Delete 🗑️
+                        <span>Delete</span>
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>

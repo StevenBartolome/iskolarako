@@ -45,5 +45,25 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- Camera (used by face verification & image picker) -->
+	<key>NSCameraUsageDescription</key>
+	<string>IskoAko needs camera access for face verification during scholarship applications.</string>
+
+	<!-- Photo Library (used by image picker & document upload) -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>IskoAko needs photo library access to upload profile photos and documents.</string>
+
+	<!-- Photo Library Add (used by image_picker to save photos) -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>IskoAko needs permission to save photos to your library.</string>
+
+	<!-- Microphone (required by camera plugin even if not recording audio) -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>IskoAko needs microphone access for video-based face verification.</string>
+
+	<!-- File access (used by file_picker for document uploads) -->
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>IskoAko needs access to your files to upload scholarship application documents.</string>
 </dict>
 </plist>

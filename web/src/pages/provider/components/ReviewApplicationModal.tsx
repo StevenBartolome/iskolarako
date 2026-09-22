@@ -1,4 +1,34 @@
 import React, { useState, useEffect } from 'react';
+import {
+  GraduationCap,
+  User,
+  MapPin,
+  Users,
+  FileText,
+  Ban,
+  AlertTriangle,
+  Coins,
+  CheckCircle2,
+  Clock,
+  Sparkles,
+  Loader2,
+  ShieldCheck,
+  ShieldAlert,
+  Lock,
+  Microscope,
+  Check,
+  Flag,
+  Zap,
+  ChevronUp,
+  BarChart2,
+  Edit3,
+  Scale,
+  X,
+  XCircle,
+  Banknote,
+  Bot,
+  Eye,
+} from 'lucide-react';
 import type { ApplicantStatus } from '../types';
 import {
   verifyDocumentAuthenticity,
@@ -207,7 +237,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
     // Rule: If applicant passed documents and rejected/flagged count >= 1 (e.g. 3/5), change status to 'Under Review'
     if (flaggedDocs.length > 0) {
       setSelectedStatus((prev: ApplicantStatus) => (prev === 'Approved' ? 'Under Review' : prev));
-      setRemarks((prev: string) => prev || `⚠️ AI Auto-Scan: ${flaggedDocs.length} of ${scannableDocs.length} document(s) flagged for manual provider review.`);
+      setRemarks((prev: string) => prev || `AI Auto-Scan: ${flaggedDocs.length} of ${scannableDocs.length} document(s) flagged for manual provider review.`);
     } else if (docs.length > 0 && docs.every(d => d.status === 'Verified')) {
       setSelectedStatus((prev: ApplicantStatus) => (prev === 'For Exam' ? 'For Exam' : 'Approved'));
     }
@@ -1130,7 +1160,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
           {/* Section 1: Student Profile & Real GWA */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-[#F9F5EF]/60 p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2">
-              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block">🎓 Academic Dossier</span>
+              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5 text-[#8E8E93]" /> Academic Dossier
+              </span>
               <div className="space-y-1">
                 <div><span className="text-[#6C6C70]">Institution: </span><strong className="text-[#1C1C1E]">{application.school}</strong></div>
                 <div><span className="text-[#6C6C70]">Course: </span><strong className="text-[#1C1C1E]">{application.course}</strong></div>
@@ -1148,7 +1180,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
             </div>
 
             <div className="bg-[#F9F5EF]/60 p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2">
-              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block">👤 Contact & Demographics</span>
+              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-[#8E8E93]" /> Contact & Demographics
+              </span>
               <div className="space-y-1">
                 <div><span className="text-[#6C6C70]">Email: </span><strong className="text-[#1C1C1E]">{application.email || 'N/A'}</strong></div>
                 <div><span className="text-[#6C6C70]">Phone: </span><strong className="text-[#1C1C1E]">{application.phone || 'N/A'}</strong></div>
@@ -1176,8 +1210,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
           {/* Section 1.2: Residential Address & Family Background (For Provider Reference) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-[#F9F5EF]/50 p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2">
-              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block flex items-center gap-1">
-                <span>📍</span> Permanent Address
+              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-[#8E8E93]" /> Permanent Address
               </span>
               <p className="text-xs font-semibold text-[#1A3C2E] leading-relaxed">
                 {application.address || 'N/A'}
@@ -1193,8 +1227,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
             </div>
 
             <div className="bg-[#F9F5EF]/50 p-4 rounded-2xl border border-[#D9D2C5]/50 space-y-2">
-              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block flex items-center gap-1">
-                <span>👨‍👩‍👧</span> Family & Household Background
+              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider block flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-[#8E8E93]" /> Family & Household Background
               </span>
               <div className="space-y-1 text-xs">
                 <div>
@@ -1243,7 +1277,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
             <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 space-y-3 animate-fade-in shadow-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-purple-900">
-                  <span className="text-xl">📋</span>
+                  <span className="text-xl">
+                    <FileText className="w-5 h-5 text-purple-900" />
+                  </span>
                   <h4 className="text-xs font-extrabold uppercase tracking-wider">
                     Scholar Dispute / AI Rejection Appeal
                   </h4>
@@ -1271,9 +1307,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                       await onUpdateStatus(application.id, 'Barred', 'Dispute rejected by provider. Scholar barred for cycle.');
                       onClose();
                     }}
-                    className="px-4 py-2 rounded-xl bg-red-950 hover:bg-black text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-red-950 hover:bg-black text-white text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                   >
-                    🚫 Reject Appeal & Bar Scholar
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Reject Appeal & Bar Scholar</span>
                   </button>
                   <button
                     type="button"
@@ -1281,9 +1318,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                       await onUpdateStatus(application.id, 'Under Review', 'Appeal accepted by provider. Status updated to Under Review.');
                       setSelectedStatus('Under Review');
                     }}
-                    className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                   >
-                    ✓ Accept Appeal
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Accept Appeal</span>
                   </button>
                 </div>
               )}
@@ -1295,7 +1333,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
             <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-3 animate-fade-in shadow-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-amber-900">
-                  <span className="text-xl">⚠️</span>
+                  <span className="text-xl">
+                    <AlertTriangle className="w-5 h-5 text-amber-800" />
+                  </span>
                   <h4 className="text-xs font-extrabold uppercase tracking-wider">
                     AI Pre-Submission Document Flags
                   </h4>
@@ -1306,9 +1346,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                     await onUpdateStatus(application.id, 'Pending', 'Provider cleared AI document flags.');
                     setSelectedStatus('Pending');
                   }}
-                  className="px-3 py-1 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-[11px] font-bold cursor-pointer transition-all"
+                  className="px-3 py-1 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-[11px] font-bold cursor-pointer transition-all inline-flex items-center gap-1"
                 >
-                  ✓ Clear Flags → Mark Pending
+                  <Check className="w-3 h-3" />
+                  <span>Clear Flags → Mark Pending</span>
                 </button>
               </div>
               {application.rawApplication?.under_review_reasons && (
@@ -1344,11 +1385,22 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                           ? 'bg-[#2D5941] text-white'
                           : 'bg-amber-500 text-white'
                     }`}>
-                      {application.disbursement_mode === 'in_person_cash'
-                        ? '💵 In-Person Cash Payout'
-                        : application.paymentAccount
-                          ? '✓ Bank Account Uploaded & Ready'
-                          : '⚠️ Bank Account Not Uploaded Yet'}
+                      {application.disbursement_mode === 'in_person_cash' ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Banknote className="w-3.5 h-3.5" />
+                          <span>In-Person Cash Payout</span>
+                        </span>
+                      ) : application.paymentAccount ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Bank Account Uploaded & Ready</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>Bank Account Not Uploaded Yet</span>
+                        </span>
+                      )}
                     </span>
                   </div>
 
@@ -1385,16 +1437,18 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs font-bold text-[#2D5941] hover:text-[#1A3C2E] hover:underline"
                           >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                            View Scanned ATM Card / Proof 📄
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View Scanned ATM Card / Proof</span>
+                            <FileText className="w-3.5 h-3.5" />
                           </a>
                         )}
                       </div>
                     </div>
                   ) : (
                     <div className="text-xs text-amber-900 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200 mt-1">
-                      <p className="font-medium">
-                        ⚠️ <strong>Action Required from Scholar:</strong> This scholar was approved, but has not uploaded their official ATM card scan or bank details yet. They were sent an onboarding prompt in their mobile app.
+                      <p className="font-medium flex items-start gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                        <span><strong>Action Required from Scholar:</strong> This scholar was approved, but has not uploaded their official ATM card scan or bank details yet. They were sent an onboarding prompt in their mobile app.</span>
                       </p>
                     </div>
                   )}
@@ -1408,7 +1462,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
             <div className="bg-[#F9F5EF]/60 p-4 rounded-2xl border border-[#D9D2C5]/70 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-base">💰</span>
+                  <Coins className="w-4 h-4 text-[#1A3C2E]" />
                   <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider">
                     Release Payout History
                   </h4>
@@ -1450,11 +1504,11 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                 </span>
                               ) : isReleased ? (
                                 <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                  ✅ Released
+                                  <CheckCircle2 className="w-3 h-3" /> Released
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                                  ⏳ Pending
+                                  <Clock className="w-3 h-3" /> Pending
                                 </span>
                               )}
                             </td>
@@ -1503,12 +1557,13 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                     >
                       {isBatchScanning ? (
                         <>
-                          <span className="animate-spin">⏳</span>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           <span>Scanning Documents...</span>
                         </>
                       ) : (
                         <>
-                          <span>⚡ Verify All with AI</span>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Verify All with AI</span>
                         </>
                       )}
                     </button>
@@ -1532,7 +1587,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
               {isBatchScanning && (
                 <div className="bg-[#FFF8EE] border border-[#C97B2E]/40 p-3 rounded-2xl flex items-center justify-between text-xs animate-pulse">
                   <div className="flex items-center gap-2 text-[#C97B2E] font-bold">
-                    <span className="animate-spin text-base">⚙️</span>
+                    <Loader2 className="w-4 h-4 animate-spin text-base" />
                     <span>{batchProgressMsg || 'Running AI Forensic Verification across documents...'}</span>
                   </div>
                   <span className="text-[10px] font-mono font-bold text-[#C97B2E]/80 bg-white px-2 py-0.5 rounded-lg border border-[#C97B2E]/30">
@@ -1550,7 +1605,11 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                 }`}>
                   <div className="flex items-center gap-2.5">
                     <span className="text-xl">
-                      {autoScanSummary.flagged > 0 ? '⚠️' : '🟢'}
+                      {autoScanSummary.flagged > 0 ? (
+                        <AlertTriangle className="w-5 h-5 text-amber-600" />
+                      ) : (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      )}
                     </span>
                     <div>
                       <div className="font-extrabold flex items-center gap-2">
@@ -1561,8 +1620,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                       </div>
                       <p className="text-[11px] opacity-90 mt-0.5">
                         {autoScanSummary.flagged > 0
-                          ? `⚠️ ${autoScanSummary.flagged} of ${autoScanSummary.total} requirement(s) were flagged by AI. Application status has been automatically adjusted to 'Under Review'.`
-                          : `✓ All ${autoScanSummary.total} requirement(s) verified authentic with matching credentials.`}
+                          ? `${autoScanSummary.flagged} of ${autoScanSummary.total} requirement(s) were flagged by AI. Application status has been automatically adjusted to 'Under Review'.`
+                          : `All ${autoScanSummary.total} requirement(s) verified authentic with matching credentials.`}
                       </p>
                     </div>
                   </div>
@@ -1580,7 +1639,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                 <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200 space-y-3 animate-fade-in">
                   <div className="flex items-center justify-between">
                     <h5 className="text-xs font-bold text-[#1A3C2E] flex items-center gap-1.5">
-                      <span>📄 Request Additional Requirement from {application?.name}</span>
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Request Additional Requirement from {application?.name}</span>
                     </h5>
                     <span className="text-[10px] text-[#C97B2E] font-semibold bg-amber-100/70 px-2 py-0.5 rounded-md">
                       Student will be notified to upload this file
@@ -1687,9 +1747,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             docStatus === 'Flagged' ? 'bg-red-50 text-[#B34040]' :
                             'bg-[#EDE8DE] text-[#6C6C70]'
                           }`}>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
+                            <FileText className="w-5 h-5" />
                           </div>
 
                           <div className="min-w-0 flex-1">
@@ -1702,7 +1760,22 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                 docStatus === 'Flagged' ? 'bg-red-50 text-[#B34040] border border-[#B34040]/20' :
                                 'bg-amber-50 text-[#C97B2E] border border-[#C97B2E]/20'
                               }`}>
-                                {docStatus === 'Verified' ? '✓ Approved' : docStatus === 'Flagged' ? '🚩 Flagged' : '⏳ Pending'}
+                                {docStatus === 'Verified' ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Approved</span>
+                                  </span>
+                                ) : docStatus === 'Flagged' ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <Flag className="w-3 h-3" />
+                                    <span>Flagged</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    <span>Pending</span>
+                                  </span>
+                                )}
                               </span>
 
                               {/* AI Verification Badge */}
@@ -1720,18 +1793,30 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                       onClick={() => toggleExpandDoc(idx)}
                                       title="Click to toggle AI forensic breakdown"
                                     >
-                                      <span>
-                                        {aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD'
-                                          ? `🟢 ⚡ AI Verified (Good)`
-                                          : aiRes.tamperingDetected || assessment.quality === 'BAD'
-                                          ? `🔴 ⚠️ Security Risk (High Risk)`
-                                          : `🟡 ⚠️ AI Flagged (Needs Review)`}
+                                      <span className="inline-flex items-center gap-1">
+                                        {aiRes.verificationStatus === 'verified' && assessment.quality === 'GOOD' ? (
+                                          <>
+                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                            <span>AI Verified (Good)</span>
+                                          </>
+                                        ) : aiRes.tamperingDetected || assessment.quality === 'BAD' ? (
+                                          <>
+                                            <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                            <span>Security Risk (High Risk)</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <AlertTriangle className="w-3 h-3 text-amber-500" />
+                                            <span>AI Flagged (Needs Review)</span>
+                                          </>
+                                        )}
                                       </span>
                                     </span>
                                   );
                                 })() : doc.isAiScanning ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300">
-                                  ⏳ AI Scanning...
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 animate-pulse border border-amber-300 inline-flex items-center gap-1">
+                                  <Clock className="w-3 h-3 animate-spin" />
+                                  <span>AI Scanning...</span>
                                 </span>
                               ) : null}
                             </div>
@@ -1753,7 +1838,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
                               return reqRemarks ? (
                                 <div className="text-[11px] text-[#C97B2E] bg-amber-50/90 px-2.5 py-1 rounded-xl border border-amber-200/80 mt-1 flex items-start gap-1.5 font-medium">
-                                  <span className="font-bold shrink-0">📋 Provider Requirement Instructions:</span>
+                                  <span className="font-bold shrink-0 flex items-center gap-1">
+                                    <FileText className="w-3 h-3" />
+                                    Provider Requirement Instructions:
+                                  </span>
                                   <span className="break-words text-[#1C1C1E]">{reqRemarks}</span>
                                 </div>
                               ) : null;
@@ -1813,12 +1901,12 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             >
                               {doc.isAiScanning ? (
                                 <>
-                                  <span className="animate-spin text-xs">⏳</span>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                   <span>Scanning</span>
                                 </>
                               ) : (
                                 <>
-                                  <span>⚡</span>
+                                  <Zap className="w-3.5 h-3.5" />
                                   <span>{aiRes ? 'Re-scan' : 'Scan AI'}</span>
                                 </>
                               )}
@@ -1835,7 +1923,19 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   : 'bg-white text-[#1A3C2E] border-[#D9D2C5] hover:bg-[#F9F5EF]'
                               }`}
                             >
-                              <span>{isExpanded ? '▲ Hide Analysis' : '📊 AI Report'}</span>
+                              <span className="inline-flex items-center gap-1">
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="w-3 h-3" />
+                                    <span>Hide Analysis</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <BarChart2 className="w-3 h-3" />
+                                    <span>AI Report</span>
+                                  </>
+                                )}
+                              </span>
                             </button>
                           )}
                         </div>
@@ -1853,7 +1953,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   : 'bg-[#EBF5EE] text-[#2D5941] border-[#2D5941]/30 hover:bg-[#2D5941] hover:text-white'
                               }`}
                             >
-                              <span>✓</span>
+                              <Check className="w-3.5 h-3.5" />
                               <span>{docStatus === 'Verified' ? 'Approved' : 'Approve'}</span>
                             </button>
 
@@ -1867,7 +1967,7 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   : 'bg-red-50 text-[#B34040] border-[#B34040]/30 hover:bg-[#B34040] hover:text-white'
                               }`}
                             >
-                              <span>🚩</span>
+                              <Flag className="w-3.5 h-3.5" />
                               <span>{docStatus === 'Flagged' ? 'Flagged' : 'Flag'}</span>
                             </button>
                           </div>
@@ -1882,8 +1982,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                             {/* Header bar */}
                             <div className="flex items-center justify-between border-b border-[#D9D2C5]/60 pb-2 flex-wrap gap-2">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider">
-                                  🔬 Forensic Analysis Report
+                                <span className="font-bold text-[#1A3C2E] uppercase text-[10px] tracking-wider flex items-center gap-1.5">
+                                  <Microscope className="w-3.5 h-3.5" /> Forensic Analysis Report
                                 </span>
                                 <span className="text-[10px] text-[#6C6C70] bg-[#F9F5EF] px-2 py-0.5 rounded-md border border-[#D9D2C5]">
                                   Model: <strong>{aiRes.aiModelUsed || 'Gemini 2.5 Flash'}</strong> ({aiRes.provider || 'DeepMind'})
@@ -1902,8 +2002,14 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                 ? 'bg-[#FFF8EE] border-[#C97B2E]/30 text-[#8C4A00]'
                                 : 'bg-red-50 border-red-200 text-red-900'
                             }`}>
-                              <span className="text-sm shrink-0">
-                                {assessment.quality === 'GOOD' ? '🟢' : assessment.quality === 'CAUTION' ? '🟡' : '🔴'}
+                              <span className="shrink-0 mt-0.5">
+                                {assessment.quality === 'GOOD' ? (
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                ) : assessment.quality === 'CAUTION' ? (
+                                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                ) : (
+                                  <XCircle className="w-4 h-4 text-rose-600" />
+                                )}
                               </span>
                               <div className="space-y-0.5">
                                 <span className="font-bold block text-xs">
@@ -1921,8 +2027,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             {/* Left: Declared Profile */}
                             <div className="bg-[#F9F5EF]/50 p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1.5">
-                              <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
-                                👤 Declared Applicant Profile
+                              <span className="text-[10px] font-bold text-[#6C6C70] uppercase flex items-center gap-1">
+                                <User className="w-3 h-3" /> Declared Applicant Profile
                               </span>
                               <div className="space-y-1 text-xs">
                                 <div className="flex justify-between">
@@ -1946,8 +2052,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
                             {/* Right: AI Extracted Data */}
                             <div className="bg-white p-3 rounded-xl border border-[#D9D2C5]/70 space-y-1.5">
-                              <span className="text-[10px] font-bold text-[#6C6C70] uppercase block">
-                                📄 AI Extracted Document Data
+                              <span className="text-[10px] font-bold text-[#6C6C70] uppercase flex items-center gap-1">
+                                <FileText className="w-3 h-3" /> AI Extracted Document Data
                               </span>
                               <div className="space-y-1 text-xs">
                                 <div className="flex justify-between items-center">
@@ -1955,9 +2061,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   <div className="flex items-center gap-1">
                                     <strong className="text-[#1C1C1E]">{aiRes.extractedName || 'Not detected'}</strong>
                                     {aiRes.crossCheckResults?.nameMatch ? (
-                                      <span className="text-[10px] text-[#2D5941]" title="Name matches profile">✓</span>
+                                      <span title="Name matches profile"><Check className="w-3 h-3 text-[#2D5941]" /></span>
                                     ) : (
-                                      <span className="text-[10px] text-[#B34040]" title="Name mismatch detected">⚠️</span>
+                                      <span title="Name mismatch detected"><AlertTriangle className="w-3 h-3 text-[#B34040]" /></span>
                                     )}
                                   </div>
                                 </div>
@@ -1966,9 +2072,9 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   <div className="flex items-center gap-1">
                                     <strong className="text-[#1C1C1E]">{aiRes.extractedSchool || 'Not detected'}</strong>
                                     {aiRes.crossCheckResults?.schoolMatch ? (
-                                      <span className="text-[10px] text-[#2D5941]">✓</span>
+                                      <Check className="w-3 h-3 text-[#2D5941]" />
                                     ) : (
-                                      <span className="text-[10px] text-[#B34040]">⚠️</span>
+                                      <AlertTriangle className="w-3 h-3 text-[#B34040]" />
                                     )}
                                   </div>
                                 </div>
@@ -2004,10 +2110,20 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                         return (
                                           <div className="flex items-center gap-1.5 flex-wrap justify-end">
                                             <strong className="text-xs text-[#2D5941]">{normalizedPercent.toFixed(1)}% <span className="text-[10px] font-normal text-[#6C6C70]">(GWA {aiRes.extractedGwa})</span></strong>
-                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${
                                               isQualified ? 'bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30' : 'bg-red-50 text-[#B34040] border border-red-200'
                                             }`} title={`Equivalent ${normalizedPercent.toFixed(1)}% vs Min required ${minPercent !== null ? minPercent.toFixed(1) + '%' : 'None'}`}>
-                                              {minPercent !== null ? `${normalizedPercent.toFixed(1)}% vs Min ${minPercent.toFixed(1)}% (${isQualified ? 'Meets Min ✓' : 'Below Min ⚠️'})` : 'Valid Grade ✓'}
+                                              {minPercent !== null ? (
+                                                <>
+                                                  <span>{normalizedPercent.toFixed(1)}% vs Min {minPercent.toFixed(1)}% ({isQualified ? 'Meets Min' : 'Below Min'})</span>
+                                                  {isQualified ? <Check className="w-2.5 h-2.5" /> : <AlertTriangle className="w-2.5 h-2.5" />}
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <span>Valid Grade</span>
+                                                  <Check className="w-2.5 h-2.5" />
+                                                </>
+                                              )}
                                             </span>
                                           </div>
                                         );
@@ -2022,9 +2138,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => setEditingTuitionDocIdx(null)}
-                                        className="text-[10px] text-[#6C6C70] hover:text-[#1C1C1E] cursor-pointer"
+                                        className="text-[10px] text-[#6C6C70] hover:text-[#1C1C1E] cursor-pointer inline-flex items-center gap-1"
                                       >
-                                        ✕ Cancel
+                                        <X className="w-3 h-3" />
+                                        <span>Cancel</span>
                                       </button>
                                     </div>
                                     <div className="flex items-center gap-1.5">
@@ -2062,10 +2179,11 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                           setEditingTuitionDocIdx(idx);
                                           setEditingTuitionVal(aiRes.extractedTuitionAmount && Number(aiRes.extractedTuitionAmount) > 0 ? String(aiRes.extractedTuitionAmount) : '');
                                         }}
-                                        className="text-[10px] text-[#2D5941] hover:underline cursor-pointer font-bold px-1.5 py-0.5 bg-[#EBF5EE] rounded-md border border-[#2D5941]/20"
+                                        className="text-[10px] text-[#2D5941] hover:underline cursor-pointer font-bold px-1.5 py-0.5 bg-[#EBF5EE] rounded-md border border-[#2D5941]/20 inline-flex items-center gap-1"
                                         title="Edit or enter assessed tuition fee"
                                       >
-                                        ✏️ Edit
+                                        <Edit3 className="w-2.5 h-2.5" />
+                                        <span>Edit</span>
                                       </button>
                                     </div>
                                   </div>
@@ -2077,19 +2195,27 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                           {/* Security Signals Checklist */}
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
                             <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
-                              <span>{aiRes.hasOfficialSealOrSignature ? '🟢' : '🟡'}</span>
+                              {aiRes.hasOfficialSealOrSignature ? (
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              ) : (
+                                <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              )}
                               <span className="text-[#1C1C1E]">
                                 {aiRes.hasOfficialSealOrSignature ? 'Official Seal / Signature Detected' : 'Seal / Signature Unclear'}
                               </span>
                             </div>
                             <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60">
-                              <span>{aiRes.tamperingDetected ? '🔴' : '🟢'}</span>
+                              {aiRes.tamperingDetected ? (
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              ) : (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              )}
                               <span className="text-[#1C1C1E]">
                                 {aiRes.tamperingDetected ? 'Visual Alteration Detected' : 'No Digital Tampering'}
                               </span>
                             </div>
                             <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#D9D2C5]/60 col-span-2 sm:col-span-1">
-                              <span>🔒</span>
+                              <Lock className="w-3.5 h-3.5 text-[#6C6C70] shrink-0" />
                               <span className="text-[#6C6C70] break-words break-all font-mono text-[10px]" title={`SHA-256: ${aiRes.sha256Hash || 'N/A'}`}>
                                 Hash: {aiRes.sha256Hash || 'N/A'}
                               </span>
@@ -2099,8 +2225,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                           {/* Flags and Warnings list */}
                           {aiRes.flags && aiRes.flags.length > 0 && (
                             <div className="p-2.5 bg-[#FDF2F2] border border-[#B34040]/30 rounded-xl space-y-1">
-                              <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider block">
-                                ⚠️ Compliance Anomalies & Warnings:
+                              <span className="text-[10px] font-bold text-[#B34040] uppercase tracking-wider flex items-center gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5" /> Compliance Anomalies & Warnings:
                               </span>
                               <ul className="list-disc list-inside text-xs text-[#B34040] space-y-0.5 font-medium">
                                 {aiRes.flags.map((flag, fIdx) => (
@@ -2112,8 +2238,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
 
                           {/* AI Forensic Summary */}
                           <div className="p-3 bg-white rounded-xl border border-[#D9D2C5]/70 text-xs text-[#1C1C1E] space-y-1">
-                            <span className="text-[10px] font-bold text-[#1A3C2E] uppercase block tracking-wider">
-                              🤖 AI Forensic Summary:
+                            <span className="text-[10px] font-bold text-[#1A3C2E] uppercase flex items-center gap-1.5 tracking-wider">
+                              <Bot className="w-3.5 h-3.5" /> AI Forensic Summary:
                             </span>
                             <p className="text-xs text-[#1C1C1E] font-medium leading-relaxed">
                               {(() => {
@@ -2143,9 +2269,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   toggleDocStatus(idx, 'Verified');
                                   setDocumentsList(prev => prev.map((d, i) => i === idx ? { ...d, remarks: '' } : d));
                                 }}
-                                className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] text-xs font-bold transition-all cursor-pointer border-0"
+                                className="px-3 py-1.5 rounded-xl bg-[#EBF5EE] hover:bg-[#2D5941] hover:text-white text-[#2D5941] text-xs font-bold transition-all cursor-pointer border-0 inline-flex items-center gap-1"
                               >
-                                ✓ Accept as Verified
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Accept as Verified</span>
                               </button>
                               <button
                                 type="button"
@@ -2154,9 +2281,10 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
                                   const flagReason = aiRes.flags && aiRes.flags.length > 0 ? getFlagString(aiRes.flags[0]) : aiRes.summary;
                                   setDocumentsList(prev => prev.map((d, i) => i === idx ? { ...d, remarks: `AI Flag: ${flagReason}` } : d));
                                 }}
-                                className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-[#B34040] hover:text-white text-[#B34040] text-xs font-bold transition-all cursor-pointer border-0"
+                                className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-[#B34040] hover:text-white text-[#B34040] text-xs font-bold transition-all cursor-pointer border-0 inline-flex items-center gap-1"
                               >
-                                🚩 Flag Issue with AI Reason
+                                <Flag className="w-3.5 h-3.5" />
+                                <span>Flag Issue with AI Reason</span>
                               </button>
                             </div>
                           )}
@@ -2196,8 +2324,8 @@ export const ReviewApplicationModal: React.FC<ReviewApplicationModalProps> = ({
             return (
               <form onSubmit={handleSaveDecision} className="bg-[#F9F5EF] p-5 rounded-2xl border border-[#D9D2C5]/70 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider">
-                    ⚖️ Application Decision & Provider Remarks
+                  <h4 className="text-xs font-extrabold text-[#1A3C2E] uppercase tracking-wider flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-[#1A3C2E]" /> Application Decision & Provider Remarks
                   </h4>
                   {allDocsApproved && (
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#EBF5EE] text-[#2D5941] border border-[#2D5941]/30">

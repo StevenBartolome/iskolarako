@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:iskoako/constants/app_colors.dart';
 import 'package:iskoako/services/ai_extraction_service.dart';
@@ -276,7 +276,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '✓ Attached $bankName account to this scholarship program!',
+              'Attached $bankName account to this scholarship program!',
               style: GoogleFonts.inter(fontWeight: FontWeight.w700),
             ),
             backgroundColor: AppColors.primary,
@@ -573,7 +573,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '✓ Bank details verified & saved! Payouts are now activated.',
+              'Bank details verified & saved! Payouts are now activated.',
               style: GoogleFonts.inter(fontWeight: FontWeight.w700),
             ),
             backgroundColor: AppColors.primary,
@@ -682,7 +682,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
                           width: 34,
                           height: 34,
                           decoration: const BoxDecoration(color: Color(0xFFDCFCE7), shape: BoxShape.circle),
-                          child: const Center(child: Text('💳', style: TextStyle(fontSize: 16))),
+                          child: const Center(child: Icon(LucideIcons.creditCard, size: 16, color: Color(0xFF15803D))),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -921,7 +921,7 @@ class _BankAccountModalState extends State<BankAccountModal> {
                     ),
                     child: _isSaving
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text('Confirm & Activate Payouts 🚀', style: _buttonStyle),
+                        : Text('Confirm & Activate Payouts', style: _buttonStyle),
                   ),
                 ),
               ],

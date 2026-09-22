@@ -1,4 +1,19 @@
 import React, { useState } from 'react';
+import {
+  Plus,
+  Lock,
+  GraduationCap,
+  Settings,
+  AlertTriangle,
+  Pencil,
+  Trash2,
+  PartyPopper,
+  Send,
+  Trophy,
+  RefreshCw,
+  Eye,
+  X,
+} from 'lucide-react';
 import type { Program, ProviderDetails } from '../types';
 import { supabase } from '@/services/supabaseClient';
 import { createAuditLog } from '@/services/auditLogService';
@@ -115,7 +130,12 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
               : 'bg-gray-200 text-gray-500 cursor-not-allowed border-gray-400'
           }`}
         >
-          <span>{providerDetails?.verificationStatus === 'verified' ? '+' : '🔒'}</span> New program
+          {providerDetails?.verificationStatus === 'verified' ? (
+            <Plus className="w-4 h-4" />
+          ) : (
+            <Lock className="w-4 h-4" />
+          )}
+          <span>New program</span>
         </button>
       </div>
 
@@ -144,8 +164,8 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
 
       {programsList.length === 0 ? (
         <div className="bg-[#F9F5EF]/60 rounded-3xl border border-dashed border-[#D9D2C5] p-12 text-center space-y-4">
-          <div className="w-16 h-16 bg-[#EDE8DE] rounded-full flex items-center justify-center mx-auto text-[#2D5941] text-2xl">
-            🎓
+          <div className="w-16 h-16 bg-[#EDE8DE] rounded-full flex items-center justify-center mx-auto text-[#2D5941]">
+            <GraduationCap className="w-8 h-8 text-[#2D5941]" />
           </div>
           <div className="space-y-1">
             <h4 className="font-bold text-[#1A3C2E] font-serif text-lg">No Scholarship Programs Yet</h4>
@@ -184,8 +204,9 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                       }`}>
                         {prog.status}
                       </span>
-                      <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5]">
-                        ⚙️ Policy: {prog.renewalPolicy || prog.renewal_policy || 'Semestral Re-evaluation'}
+                      <span className="px-3 py-1 rounded-lg text-[10px] font-bold bg-[#EDE8DE] text-[#6C6C70] border border-[#D9D2C5] inline-flex items-center gap-1">
+                        <Settings className="w-3 h-3 text-[#6C6C70]" />
+                        <span>Policy: {prog.renewalPolicy || prog.renewal_policy || 'Semestral Re-evaluation'}</span>
                       </span>
                     </div>
                   </div>
@@ -205,7 +226,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                       isDepleted ? 'bg-[#FDF2F2] border-[#FADBD8] text-[#B34040]' : 'bg-[#FFF8EE] border-[#F5EAD6] text-[#C97B2E]'
                     }`}>
                       <div className="flex items-center gap-2">
-                        <span>⚠️</span>
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                         <span>
                           {isDepleted
                             ? 'Program Budget Depleted! Top up to enable scholar payouts.'
@@ -238,13 +259,19 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                               {cyc.status}
                             </span>
                             {handleOpenEditCycle && (
-                              <button onClick={(e) => { e.stopPropagation(); handleOpenEditCycle(prog, cyc); }} className="p-0.5 hover:text-[#2D5941] cursor-pointer bg-transparent border-0" title="Edit cycle">✏️</button>
+                              <button onClick={(e) => { e.stopPropagation(); handleOpenEditCycle(prog, cyc); }} className="p-0.5 hover:text-[#2D5941] cursor-pointer bg-transparent border-0" title="Edit cycle">
+                                <Pencil className="w-3 h-3" />
+                              </button>
                             )}
                             {handleDeleteCycle && (
-                              <button onClick={(e) => { e.stopPropagation(); handleDeleteCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-red-700 cursor-pointer bg-transparent border-0" title="Delete cycle">🗑️</button>
+                              <button onClick={(e) => { e.stopPropagation(); handleDeleteCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-red-700 cursor-pointer bg-transparent border-0" title="Delete cycle">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
                             )}
                             {handleCloseCycle && cyc.status !== 'Closed' && cyc.status !== 'closed' && (
-                              <button onClick={(e) => { e.stopPropagation(); handleCloseCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-amber-700 cursor-pointer bg-transparent border-0" title="Force Close cycle">🔒</button>
+                              <button onClick={(e) => { e.stopPropagation(); handleCloseCycle(cyc.id.toString(), cyc.name); }} className="p-0.5 hover:text-amber-700 cursor-pointer bg-transparent border-0" title="Force Close cycle">
+                                <Lock className="w-3 h-3" />
+                              </button>
                             )}
                           </div>
                         </div>
@@ -287,7 +314,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                     return (
                       <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 my-2 space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-base">🎉</span>
+                          <PartyPopper className="w-4 h-4 text-[#2D5941]" />
                           <div>
                             <h4 className="text-xs font-bold text-[#1A3C2E]">Program Cycle Completed</h4>
                             <p className="text-[11px] text-[#2D5941]">All scholars for {lastCycle.name || 'this cycle'} have completed disbursements.</p>
@@ -298,7 +325,8 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                           onClick={() => handleOpenRenewModal(prog, 'next_academic_year')}
                           className="w-full py-2 px-3 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
                         >
-                          <span>🚀</span> Re-Open Program for Next Academic Year
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Re-Open Program for Next Academic Year</span>
                         </button>
                       </div>
                     );
@@ -317,7 +345,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                     return (
                       <div className="bg-[#EBF5EE] border border-[#2D5941]/30 rounded-2xl p-3.5 my-2 space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-base">🏆</span>
+                          <Trophy className="w-4 h-4 text-[#2D5941]" />
                           <div>
                             <h4 className="text-xs font-bold text-[#1A3C2E]">Academic Year Fully Completed</h4>
                             <p className="text-[11px] text-[#2D5941]">Both 1st & 2nd semester cycles are completed for this program.</p>
@@ -328,7 +356,8 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                           onClick={() => handleOpenRenewModal(prog, 'next_academic_year')}
                           className="w-full py-2 px-3 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
                         >
-                          <span>🚀</span> Re-Open Program for Next Academic Year
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Re-Open Program for Next Academic Year</span>
                         </button>
                       </div>
                     );
@@ -337,7 +366,7 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                     return (
                       <div className="bg-[#FFF8EE] border border-[#C97B2E]/30 rounded-2xl p-3.5 my-2 space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-base">🎓</span>
+                          <GraduationCap className="w-4 h-4 text-[#C97B2E]" />
                           <div>
                             <h4 className="text-xs font-bold text-[#8C5216]">1st Semester Cycle Completed</h4>
                             <p className="text-[11px] text-[#C97B2E]">Ready to accept 2nd semester renewal requirements from scholars.</p>
@@ -348,7 +377,8 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                           onClick={() => handleOpenRenewModal(prog, 'renewal_2nd_sem')}
                           className="w-full py-2 px-3 rounded-xl bg-[#C97B2E] hover:bg-[#A86220] text-white text-xs font-bold border-0 cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-xs"
                         >
-                          <span>🔄</span> Open 2nd Semester Renewal Cycle
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Open 2nd Semester Renewal Cycle</span>
                         </button>
                       </div>
                     );
@@ -404,25 +434,29 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
                       onClick={() => handleViewDetails(prog)}
                       className="py-2 px-2.5 rounded-xl bg-[#EDE8DE] hover:bg-[#D9D2C5] text-[#1A3C2E] text-[11px] font-bold border-0 cursor-pointer transition-all text-center shadow-2xs flex items-center justify-center gap-1"
                     >
-                      <span>👁️</span> View
+                      <Eye className="w-3 h-3" />
+                      <span>View</span>
                     </button>
                     <button
                       onClick={() => handleEditProgram(prog)}
                       className="py-2 px-2.5 rounded-xl bg-[#1A3C2E] hover:bg-[#2D5941] text-white text-[11px] font-bold border-0 cursor-pointer transition-all text-center shadow-2xs flex items-center justify-center gap-1"
                     >
-                      <span>✏️</span> Edit
+                      <Pencil className="w-3 h-3" />
+                      <span>Edit</span>
                     </button>
                     <button
                       onClick={() => handleOpenRenewModal(prog)}
                       className="py-2 px-2.5 rounded-xl bg-[#F9F5EF] hover:bg-[#EDE8DE] text-[#1A3C2E] text-[11px] font-bold border border-[#D9D2C5] cursor-pointer transition-all flex items-center justify-center gap-1 shadow-2xs"
                     >
-                      <span>🔄</span> Renew
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Renew</span>
                     </button>
                     <button
                       onClick={() => setTopUpProgram(prog)}
                       className="py-2 px-2.5 rounded-xl bg-[#FFF8EE] hover:bg-[#F5EAD6] text-[#C97B2E] text-[11px] font-extrabold border border-[#F5EAD6] cursor-pointer transition-all flex items-center justify-center gap-1 shadow-2xs"
                     >
-                      <span>➕</span> Top-Up
+                      <Plus className="w-3 h-3" />
+                      <span>Top-Up</span>
                     </button>
                   </div>
                 </div>
@@ -438,14 +472,14 @@ export const ProviderProgramsTab: React.FC<ProviderProgramsTabProps> = ({
           <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-[#D9D2C5] shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#EDE8DE] pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-xl">➕</span>
+                <Plus className="w-5 h-5 text-[#1A3C2E]" />
                 <h3 className="text-lg font-bold text-[#1A3C2E]">Top-Up Program Budget</h3>
               </div>
               <button
                 onClick={() => setTopUpProgram(null)}
-                className="text-gray-400 hover:text-gray-600 text-lg cursor-pointer bg-transparent border-0"
+                className="text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-0 p-1"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
